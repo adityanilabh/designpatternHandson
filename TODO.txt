@@ -1,0 +1,12 @@
+Things to learn: 
+1. Conquer dp at all cost:
+  -> do knapsack/subset problems
+  -> grid matrix problems
+  -> interval/partition dp
+  -> String dp
+  ->tree/graph dp
+  ->bitmask and Advance dp.
+
+how to do?
+-> first complete only algorithm as well as 1-2 derived questions on these topics
+-> write notes on all the important thing, improvements to these problems.
