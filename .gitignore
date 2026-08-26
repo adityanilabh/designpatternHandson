@@ -1,0 +1,10 @@
+# tracker progress — personal, and it changes on every click
+target-ladder-progress.json
+target-ladder-*.json
+
+# editor / OS noise
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Target Ladder — 154 days</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">TL</span>
+    <div>
+      <h1>Target Ladder</h1>
+      <p class="sub">154 days &middot; JPM &rarr; Amazon &rarr; Google</p>
+    </div>
+  </div>
+
+  <div class="topmeta">
+    <div class="metric"><span class="metric-val" id="m-day">&mdash;</span><span class="metric-lbl">day</span></div>
+    <div class="metric phase"><span class="metric-val" id="m-phase">P1</span><span class="metric-lbl">phase</span></div>
+    <div class="metric"><span class="metric-val" id="m-done">0</span><span class="metric-lbl">done</span></div>
+    <div class="metric warn"><span class="metric-val" id="m-due">0</span><span class="metric-lbl">due</span></div>
+    <div class="bar-wrap" title="Overall completion">
+      <div class="bar"><i id="m-bar"></i></div>
+      <span class="bar-pct" id="m-pct">0%</span>
+    </div>
+  </div>
+
+  <div class="topactions">
+    <button class="btn ghost" id="btn-theme" title="Toggle theme">&#9689;</button>
+    <button class="btn ghost" id="btn-storage" title="Storage &amp; backup">Storage</button>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-tab="dashboard">Dashboard</button>
+  <button class="tab" data-tab="dsa">DSA</button>
+  <button class="tab" data-tab="sd">System design</button>
+  <button class="tab" data-tab="lld">LLD</button>
+  <button class="tab" data-tab="tech">Tech</button>
+  <button class="tab" data-tab="revision">Revision <span class="pill" id="tab-due">0</span></button>
+  <button class="tab" data-tab="companies">Ladder</button>
+  <button class="tab" data-tab="reference">Reference</button>
+  <button class="tab" data-tab="log">Log</button>
+  <button class="tab" data-tab="strategy">Strategy</button>
+</nav>
+
+<main>
+  <section class="view active" id="view-dashboard"></section>
+  <section class="view" id="view-dsa"></section>
+  <section class="view" id="view-sd"></section>
+  <section class="view" id="view-lld"></section>
+  <section class="view" id="view-tech"></section>
+  <section class="view" id="view-revision"></section>
+  <section class="view" id="view-companies"></section>
+  <section class="view" id="view-reference"></section>
+  <section class="view" id="view-log"></section>
+  <section class="view" id="view-strategy"></section>
+</main>
+
+<!-- Item detail drawer -->
+<div class="drawer-scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" hidden>
+  <div class="drawer-head">
+    <div>
+      <div class="drawer-eyebrow" id="dr-eyebrow"></div>
+      <h2 id="dr-title"></h2>
+    </div>
+    <button class="btn ghost" id="dr-close">&#10005;</button>
+  </div>
+  <div class="drawer-body" id="dr-body"></div>
+</aside>
+
+<!-- Storage modal -->
+<div class="modal-scrim" id="modal-scrim" hidden>
+  <div class="modal">
+    <div class="drawer-head">
+      <h2>Storage &amp; backup</h2>
+      <button class="btn ghost" id="st-close">&#10005;</button>
+    </div>
+    <div class="modal-body" id="st-body"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
