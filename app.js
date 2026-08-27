@@ -387,7 +387,9 @@ function navModel(tab) {
   if (tab === 'sd') {
     g1 = []; g2 = [];
     PLAN.sd.forEach(function (s) {
-      (s.tier === 'b' ? g1 : g2).push({ id: String(s.n), n: 'SD ' + s.n, label: s.t, sub: 'week ' + s.wk });
+      var hasSol = !!(PLAN.sdSolution || {})[s.n];
+      (s.tier === 'b' ? g1 : g2).push({ id: String(s.n), n: 'SD ' + s.n, label: s.t,
+        sub: 'week ' + s.wk + (hasSol ? ' · solution' : '') });
     });
     return [{ g: 'Block B · tier 1–2', items: g1 }, { g: 'Block C · top tier', items: g2 }];
   }
@@ -762,6 +764,90 @@ function bulletList(items, cls) {
   return h + '</ul>';
 }
 
+/* the expandable worked solution on a system design session */
+function renderSdSolution(n) {
+  var s = (PLAN.sdSolution || {})[n];
+  if (!s) {
+    return '<div class="soln-none">Worked solution not written yet for this session. ' +
+      'The blocks above are complete.</div>';
+  }
+  var open = !!state.ui.open['sdsoln-' + n];
+  var h = '<button class="soln-bar' + (open ? ' open' : '') + '" data-sdsoln="' + n + '">' +
+    '<span class="chev">▶</span><span class="soln-t">Full solution</span>' +
+    '<span class="soln-sub">requirements &middot; estimation &middot; API &middot; data model &middot; architecture &middot; ' +
+    'flows &middot; deep dive &middot; scaling &middot; trade-offs</span></button>';
+  if (!open) return h;
+
+  h += '<div class="soln-body">';
+
+  h += '<h2 class="pane-h2">Requirements</h2>' +
+    '<div class="req-cols"><div><h3>Functional</h3>' + bulletList(s.req.functional) + '</div>' +
+    '<div><h3>Non-functional</h3>' + bulletList(s.req.nonFunctional) + '</div></div>';
+
+  h += '<h2 class="pane-h2">Estimation — out loud, rounded</h2>' +
+    '<div class="tbl-wrap"><table><thead><tr><th>Quantity</th><th>Working</th><th>Result</th></tr></thead><tbody>';
+  s.estimate.forEach(function (r) {
+    h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="mono-cell">' + esc(r[1]) + '</td>' +
+      '<td class="trig">' + esc(r[2]) + '</td></tr>';
+  });
+  h += '</tbody></table></div>';
+
+  h += '<h2 class="pane-h2">API</h2>' +
+    '<div class="tbl-wrap"><table><thead><tr><th>Endpoint</th><th>Request</th><th>Response</th><th>Note</th></tr></thead><tbody>';
+  s.api.forEach(function (r) {
+    h += '<tr><td class="mono-cell">' + esc(r[0]) + '</td><td class="canon">' + esc(r[1]) + '</td>' +
+      '<td class="canon">' + esc(r[2]) + '</td><td class="trig">' + esc(r[3]) + '</td></tr>';
+  });
+  h += '</tbody></table></div>';
+
+  h += '<h2 class="pane-h2">Data model</h2>' +
+    '<div class="tbl-wrap"><table><thead><tr><th>Table</th><th>Columns</th><th>Why</th></tr></thead><tbody>';
+  s.dataModel.forEach(function (r) {
+    h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="mono-cell">' + esc(r[1]) + '</td>' +
+      '<td class="trig">' + esc(r[2]) + '</td></tr>';
+  });
+  h += '</tbody></table></div>';
+
+  h += '<h2 class="pane-h2">Architecture</h2>' + asciiBlock(s.arch);
+
+  h += '<h2 class="pane-h2">Flows</h2>';
+  s.flows.forEach(function (f) {
+    h += '<h3 class="prac-h">' + esc(f[0]) + '</h3>' + bulletList(f[1]);
+  });
+
+  h += '<h2 class="pane-h2">Deep dive <span class="h2-count">' + s.deepDive.length + '</span></h2>' +
+    '<p class="pane-p">Pick one of these at minute 30, before they ask. Choosing well is itself scored.</p>';
+  s.deepDive.forEach(function (d) {
+    h += '<h3 class="prac-h">' + esc(d[0]) + '</h3>';
+    String(d[1]).split('\n\n').forEach(function (para) {
+      h += '<p class="pane-p">' + esc(para) + '</p>';
+    });
+  });
+
+  h += '<h2 class="pane-h2">Scaling — in the order it bites</h2>' +
+    '<div class="tbl-wrap"><table><thead><tr><th>Bottleneck</th><th>What you do</th></tr></thead><tbody>';
+  s.scaling.forEach(function (r) {
+    h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td></tr>';
+  });
+  h += '</tbody></table></div>';
+
+  h += '<h2 class="pane-h2">Trade-offs — say the alternative you rejected</h2>' +
+    '<div class="tbl-wrap"><table><thead><tr><th>Decision</th><th>Chose</th><th>Over</th><th>Because</th></tr></thead><tbody>';
+  s.tradeoffs.forEach(function (r) {
+    h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig"><b>' + esc(r[1]) + '</b></td>' +
+      '<td class="canon">' + esc(r[2]) + '</td><td class="trig">' + esc(r[3]) + '</td></tr>';
+  });
+  h += '</tbody></table></div>';
+
+  h += '<h2 class="pane-h2">What each company pushes on</h2>';
+  s.angle.forEach(function (r) {
+    h += '<div class="qa static"><div class="qa-body"><b class="qa-q">' + esc(r[0]) + '</b>' +
+      '<span class="qa-f">' + esc(r[1]) + '</span></div></div>';
+  });
+
+  return h + '</div>';
+}
+
 function renderSd() {
   var id = selected('sd');
   var s = null;
@@ -821,6 +907,8 @@ function renderSd() {
   if (s.fail && s.fail.length) {
     h += '<h2 class="pane-h2">What sinks candidates here</h2>' + bulletList(s.fail, 'fail');
   }
+
+  h += renderSdSolution(s.n);
 
   h += readingList((PLAN.sdRead || {})[s.n], 'Read more');
 
@@ -2046,6 +2134,12 @@ document.addEventListener('click', function (e) {
   if ((a = t.closest('[data-lpstory]'))) {
     toggleOpen('lp-story-' + a.getAttribute('data-lpstory'));
     save(); renderLp();
+    return;
+  }
+
+  if ((a = t.closest('[data-sdsoln]'))) {
+    toggleOpen('sdsoln-' + a.getAttribute('data-sdsoln'));
+    save(); renderSd();
     return;
   }
 

@@ -8041,6 +8041,490 @@ PLAN.method.worked = {
  whatTheMethodDid:'Nothing above required knowing anything about Alexa. Altitude check, restate, one example, scope, actors, verbs, happy path, estimate, failure sweep, product angle, ship-first. The primitives — API gateway, queue, stream, worker, push gateway, registry — came from the catalogue. The offline discussion came from the failure family. The partner constraint came from listing actors in step one. That is the whole claim of this section: the procedure produces the design, so an unheard-of prompt is an assembly problem rather than a recall problem.'
 };
 
+
+/* ================================================= SYSTEM DESIGN SOLUTIONS ===
+   The expandable half of each design session. Keyed by session number.
+
+     req         functional and non-functional requirements
+     estimate    the numbers, worked, not asserted
+     api         the public surface
+     dataModel   tables and keys, with the reason for each key
+     arch        ASCII architecture diagram
+     flows       the write path and the read path, step by step
+     deepDive    the one component worth 15 minutes
+     scaling     bottleneck -> fix, in the order they actually bite
+     tradeoffs   decision, what you chose, over what, and why
+     angle       what each company pushes on for THIS design
+
+   Scope: what 45 focused minutes produces. A complete, defensible design -
+   not a production runbook.                                                */
+
+PLAN.sdSolution = {};
+
+PLAN.sdSolution[7] = {
+ req:{
+  functional:[
+   'Shorten a long URL to a short code, and redirect on access.',
+   'Optional custom alias.',
+   'Optional expiry.',
+   'Click analytics — count, and ideally referrer and geography.'
+  ],
+  nonFunctional:[
+   'Redirect latency under 100ms at p99 — this is on the critical path of someone else page load.',
+   'Extremely read-heavy, roughly 100:1.',
+   'Short codes must never collide.',
+   'Highly available. A broken redirect breaks every link ever shared.'
+  ]
+ },
+ estimate:[
+  ['New URLs','100M/month','÷ 2.6M sec/month ≈ 40 writes/sec. Peak maybe 3x = 120/sec. Trivial.'],
+  ['Redirects','100:1 read ratio','≈ 4,000 reads/sec average, 12,000 peak. Also modest.'],
+  ['Storage','100M × 500 bytes/month','50 GB/month, 3 TB over five years. Small — say this out loud.'],
+  ['Code space','base62, 7 chars','62^7 ≈ 3.5 trillion. At 100M/month that is 2,900 years of codes.'],
+  ['The conclusion','—','This dataset fits on one machine. Sharding is a scale-out STORY, not a day-one need. Saying that shows you did the arithmetic rather than reciting a template.']
+ ],
+ api:[
+  ['POST /v1/urls','{ longUrl, customAlias?, expiresAt? }','201 { shortUrl, code, expiresAt }','409 if the alias is taken. Idempotency-Key header so a retry does not mint a second code.'],
+  ['GET /{code}','—','302 + Location header','302 not 301 — see the trade-offs. 404 if unknown, 410 if expired.'],
+  ['GET /v1/urls/{code}','—','200 { longUrl, createdAt, clicks }','Owner-only metadata.'],
+  ['DELETE /v1/urls/{code}','—','204','Soft delete so the code is never reissued.']
+ ],
+ dataModel:[
+  ['url','code PK (7 chars) · long_url · owner_id · created_at · expires_at NULL · deleted bool','Primary access is always by exact code, so a KV store fits perfectly. Code as PK means lookups never scan.'],
+  ['custom_alias','alias PK · code FK','A UNIQUE constraint on alias is what makes the concurrent-claim race impossible. Do not check-then-insert.'],
+  ['click_event (async)','code · ts · referrer · country · ua','Append-only, written from a stream, never on the redirect path. Partition by day.'],
+  ['click_agg','code · day · count','Rolled up from the events. What the dashboard reads.']
+ ],
+ arch:[
+  '                        ┌──────────────┐',
+  '   create ─────────────▶│  API service │───┐',
+  '                        └──────────────┘   │  counter range',
+  '                                           ▼',
+  '                                  ┌──────────────────┐',
+  '                                  │ Counter / ID svc │  (range-allocated)',
+  '                                  └──────────────────┘',
+  '                                           │',
+  '                                           ▼',
+  '   ┌────────┐   ┌─────┐   ┌──────────────────────────┐',
+  '   │ Client │──▶│ CDN │──▶│    Redirect service      │',
+  '   └────────┘   └─────┘   │   (stateless, many)      │',
+  '     GET /abc123   ▲      └────────┬─────────────────┘',
+  '                   │               │ 1. cache lookup',
+  '                   │               ▼',
+  '                   │      ┌──────────────────┐',
+  '                   │      │  Redis  (hot)    │  ~95% hit',
+  '                   │      └────────┬─────────┘',
+  '                   │               │ miss',
+  '                   │               ▼',
+  '                   │      ┌──────────────────┐',
+  '                   │      │  KV store        │  code -> longUrl',
+  '                   │      │  (sharded by     │',
+  '                   │      │   code hash)     │',
+  '                   │      └──────────────────┘',
+  '                   │',
+  '                   └──── 302 Location ────┘',
+  '',
+  '   redirect ──fire──▶ ┌────────┐ ──▶ ┌──────────┐ ──▶ ┌────────────┐',
+  '   (async, never       │ Kafka  │     │ Analytics│     │ click_agg  │',
+  '    on the path)       └────────┘     │ consumer │     └────────────┘',
+  '                                      └──────────┘'
+ ],
+ flows:[
+  ['Write — create a short URL',[
+   '1. Auth, validate the URL, check it is not a redirect loop back to us.',
+   '2. If a custom alias was requested: INSERT into custom_alias. The unique constraint decides the race — no check-then-insert.',
+   '3. Otherwise take the next value from the app server pre-allocated counter RANGE (e.g. it owns 1,000,000–1,999,999) and base62-encode it.',
+   '4. INSERT the url row.',
+   '5. Return the short URL. Do NOT warm the cache — most created links are never clicked.'
+  ]],
+  ['Read — the redirect, the hot path',[
+   '1. GET /{code} hits the nearest edge.',
+   '2. Redirect service looks up Redis. ~95% hit.',
+   '3. On miss, read the KV store and populate the cache with a TTL.',
+   '4. Check expiry and deletion. 410 if expired, 404 if unknown.',
+   '5. Return 302 with the Location header. THIS IS THE WHOLE LATENCY BUDGET — nothing else may happen synchronously.',
+   '6. Fire a click event onto Kafka, fire-and-forget. If the analytics pipeline is down, redirects still work.'
+  ]]
+ ],
+ deepDive:[
+  ['Code generation, and why the counter wins',
+   'Three options. HASH the URL and take the first 7 chars: same URL gives the same code (feature or bug — it leaks that someone else shortened it), and you must handle collisions with a retry loop. RANDOM plus a existence check: a read on every write, and it degrades as the space fills. COUNTER plus base62: no collisions by construction and no coordination on the hot path.\n\nThe counter objection is that it is a single point of failure and a bottleneck. Both are solved by RANGE ALLOCATION: each app server claims a block of a million values from the counter service and hands them out locally. The counter service is then touched once per million URLs, so a brief outage does not stop writes.\n\nThe remaining objection is real: sequential base62 codes are ENUMERABLE. Anyone can walk /aaaaaa, /aaaaab and harvest every link. If that matters, encrypt the counter with a format-preserving cipher before encoding, which keeps uniqueness while destroying the ordering. Say this unprompted — it is the security follow-up.'],
+  ['Why the cache carries this design',
+   'The read/write ratio is 100:1 and the working set is tiny: a small fraction of links get almost all the traffic, and link popularity decays fast. A few GB of Redis gets you well above 90% hit rate.\n\nWatch for the stampede: a link goes viral, its cache entry expires, and thousands of requests hit the store at once. Fix with jittered TTLs and single-flight recomputation. And plan for one link being genuinely hot — 50k requests/sec on one key will melt a single Redis node, so replicate the hot key or push it to the CDN with a short TTL.'],
+  ['Analytics without touching the latency budget',
+   'The redirect must never wait on an analytics write. Fire an event onto Kafka and return. A consumer writes raw events and a rollup job maintains per-day counts.\n\nThis also decouples failure: an analytics outage degrades reporting, not redirection. Being explicit that you accepted approximate click counts in exchange for redirect availability is exactly the kind of trade-off statement that scores.']
+ ],
+ scaling:[
+  ['Redirect service CPU','Stateless — add instances behind the load balancer. This is the easy part.'],
+  ['Cache node saturation on a viral link','Replicate the hot key across nodes with a suffix, or serve it from the CDN edge with a 60s TTL.'],
+  ['KV store read volume','Read replicas, then shard by hash(code). Because every lookup is by exact key, sharding is clean — no cross-shard queries ever.'],
+  ['Counter service','Range allocation means it is already off the hot path. If it still worries you, per-server prefixes remove the shared counter entirely.'],
+  ['Analytics volume','This grows faster than anything else. Partition click events by day, roll up hourly, and expire raw events after 30 days.'],
+  ['Storage growth','3 TB over five years is nothing. Expiry sweeps and soft deletes keep it flat.']
+ ],
+ tradeoffs:[
+  ['Redirect status','302 Found','301 Permanent','301 is cached by the browser, so you never see the second click and your analytics silently die. 302 costs a request each time and keeps the data. If analytics do not matter, 301 is faster and cheaper — say which you picked and why.'],
+  ['Code generation','Counter + base62 + range allocation','Hash, or random-with-check','No collision handling, no coordination per request. Accept enumerability, or encrypt the counter.'],
+  ['Store','KV store','Relational','Access is always by exact key. Relational would work at this size; KV is the honest fit and shards trivially.'],
+  ['Analytics','Async via a stream','Synchronous counter increment','Protects the latency budget and the availability of the redirect. Costs exact real-time counts.'],
+  ['Custom alias collisions','Unique constraint','Check-then-insert','Check-then-insert is a race. The constraint is the only correct answer.']
+ ],
+ angle:[
+  ['Amazon','Will push on the ANALYTICS pipeline and on failure: "the click stream is down, what happens?" and "how do you count clicks exactly once?" Have the at-least-once plus idempotent-rollup answer ready. Also expect "what if one link gets 50,000 requests a second?"'],
+  ['Microsoft / Adobe','More likely to probe the code generation itself — collisions, enumerability, and what happens when you exhaust the space. Be able to do the 62^7 arithmetic aloud.'],
+  ['Uber','Will ask about the latency budget explicitly and about multi-region: where does the cache live if users are global, and what happens on a cross-region cache miss.'],
+  ['JPM / Amex','Least likely to ask this one. If they do, they will care about auditability — who created which link, retention, and whether you can prove a link was not tampered with.']
+ ]
+};
+
+PLAN.sdSolution[8] = {
+ req:{
+  functional:[
+   'Limit requests per identity (user, API key, or IP) over a time window.',
+   'Different limits per endpoint and per customer tier.',
+   'Return 429 with Retry-After when limited.',
+   'Operators can raise a specific customer limit without a deploy.'
+  ],
+  nonFunctional:[
+   'Adds under ~1ms to every request — it is on the hot path of everything.',
+   'Must not become the reason your API is down. Availability of the limiter matters more than perfect enforcement.',
+   'Approximate counting is acceptable; exact is usually not worth the cost.'
+  ]
+ },
+ estimate:[
+  ['Traffic','50,000 req/sec','Every one needs a limiter decision.'],
+  ['Naive Redis round trip','~0.5–1ms each','50,000 extra Redis ops/sec. Feasible, but it is now a hard dependency on your hot path.'],
+  ['Memory','1M active keys × ~100 bytes','100 MB. Trivial — memory is never the constraint here.'],
+  ['The conclusion','—','The design pressure is LATENCY and AVAILABILITY, not storage. That reframing is the point of the estimate.']
+ ],
+ api:[
+  ['Internal: allow(key, endpoint) → Decision','—','{ allowed, remaining, resetAt }','Called by the gateway before routing.'],
+  ['Response headers','—','X-RateLimit-Limit / -Remaining / -Reset','Well-behaved clients back off correctly if you tell them.'],
+  ['429 response','—','Retry-After: seconds','Without this, clients hammer you harder during an incident.'],
+  ['Admin: PUT /limits/{customer}','{ endpoint, limit, window }','204','Config lookup, not a code change. Interviewers ask how you raise one customer limit at 2am.']
+ ],
+ dataModel:[
+  ['Redis: rl:{key}:{window}','counter, TTL = window length','Fixed / sliding counter. TTL means no cleanup job.'],
+  ['Redis: tb:{key}','HASH { tokens, lastRefillNanos }','Token bucket state. Updated atomically by a Lua script.'],
+  ['Config store','tier → { endpoint, limit, window }','Cached in-process with a short TTL so a config read is not on the hot path.'],
+  ['No durable storage','—','Rate limit state is disposable. Losing it means one window of over-permission, which is acceptable. Saying so is the right instinct.']
+ ],
+ arch:[
+  '   ┌────────┐',
+  '   │ Client │',
+  '   └───┬────┘',
+  '       │',
+  '       ▼',
+  '   ┌──────────────────────────────────────────┐',
+  '   │            API Gateway                   │',
+  '   │  ┌────────────────────────────────────┐  │',
+  '   │  │  Rate limiter middleware           │  │',
+  '   │  │   1. local token bucket (L1)       │  │  ◄── absorbs most decisions,',
+  '   │  │   2. Redis Lua script (L2)         │  │      no network hop',
+  '   │  │   3. fail-open on Redis error      │  │',
+  '   │  └───────────────┬────────────────────┘  │',
+  '   └──────────────────┼───────────────────────┘',
+  '            allow │   │ deny',
+  '                  │   └──────▶ 429 + Retry-After',
+  '                  ▼',
+  '        ┌──────────────────┐        ┌──────────────────┐',
+  '        │  Your services   │        │  Redis cluster   │',
+  '        └──────────────────┘        │  (sharded by key)│',
+  '                                    └──────────────────┘',
+  '                                             ▲',
+  '                                    ┌────────┴─────────┐',
+  '                                    │  Config service  │',
+  '                                    │  tier -> limits  │',
+  '                                    └──────────────────┘'
+ ],
+ flows:[
+  ['The decision path',[
+   '1. Gateway extracts the identity — API key, then user id, then IP as a fallback.',
+   '2. Resolve the limit from cached config (tier + endpoint). No network call.',
+   '3. L1: check the in-process token bucket for this key. If it is already clearly over, reject immediately without touching Redis.',
+   '4. L2: run a Lua script on Redis that refills and takes atomically, returning remaining tokens.',
+   '5. Allowed → forward, with rate-limit headers on the response.',
+   '6. Denied → 429 with Retry-After computed from the refill rate.',
+   '7. Redis error → FAIL OPEN, fall back to the L1 local limit only, and emit a metric.'
+  ]]
+ ],
+ deepDive:[
+  ['Why fixed window is wrong, and what to use instead',
+   'Fixed window: count per clock minute. A 100/min limit permits 100 requests at 11:00:59 and 100 more at 11:01:00 — 200 in one second, all legal. That boundary burst is the reason the algorithm is a trap, and interviewers ask about it specifically.\n\nSliding window LOG stores every timestamp: exact, and memory grows with traffic. Sliding window COUNTER blends the previous and current window by elapsed fraction: nearly exact, constant memory, and usually the right answer for accuracy.\n\nTOKEN BUCKET refills at a fixed rate up to a capacity, which permits controlled bursts. That is what most user-facing APIs actually want, because legitimate clients are bursty. Pick token bucket for public APIs and say why: bursts are legitimate, and smoothing them punishes good clients.'],
+  ['Making it atomic and distributed',
+   'The naive distributed implementation reads the counter, decides, then writes — a race across gateway instances. Use a Lua script so refill-and-take is one atomic Redis operation. Lua on Redis is single-threaded per key, which is exactly the guarantee you need.\n\nThe two-tier design matters more than people expect. A purely central limiter puts a network round trip on every request and makes Redis a hard dependency. A local bucket per gateway instance absorbs the obvious cases with zero latency and degrades to approximate enforcement — you may allow up to N × limit in the worst case, where N is the instance count. State that number; it is the honest cost.'],
+  ['Failure, which is the real question',
+   '"What if Redis goes down?" FAIL OPEN, with the local L1 bucket as a conservative fallback. A limiter that takes your API down when it fails is worse than no limiter at all.\n\nThe counter-argument exists: for a limiter protecting a fragile downstream, or a paid-quota boundary, fail-closed may be correct. The right answer is that it depends on WHAT you are protecting — protecting your own capacity, fail open; enforcing a billing boundary, fail closed. Making that distinction is the senior answer.']
+ ],
+ scaling:[
+  ['Redis round trip on every request','Two-tier: local bucket first, Redis only when the local view is uncertain.'],
+  ['One Redis node saturating','Shard by rate-limit key. Keys are independent, so this shards perfectly.'],
+  ['A hot key (one huge customer)','Give them their own shard, or split their bucket into N sub-buckets and pick one at random.'],
+  ['Config lookups','Cache in-process with a 30s TTL. Never read config from the network per request.'],
+  ['Multi-region','Per-region limits with the global limit divided, or accept N× over-permission globally. Cross-region synchronous counting is not worth the latency — say so.']
+ ],
+ tradeoffs:[
+  ['Algorithm','Token bucket','Fixed window','Bursts are legitimate for real clients. Fixed window has the boundary-burst flaw.'],
+  ['Placement','Gateway / edge','Per service','Rejects before any work is done. Per-service limiters remain useful as a second layer protecting specific dependencies.'],
+  ['State','Central Redis + local L1','Purely local, or purely central','Local alone is too approximate; central alone is a latency tax and a hard dependency.'],
+  ['Failure mode','Fail open','Fail closed','Availability of your API beats perfect enforcement — unless you are enforcing a paid quota.'],
+  ['Accuracy','Approximate','Exact','Exactness costs a synchronous round trip per request. Almost nobody needs it.']
+ ],
+ angle:[
+  ['Amazon','"What if Redis goes down?" is close to guaranteed. Also "how do you limit expensive endpoints differently?" — weighted permits, where a heavy call costs 10 tokens.'],
+  ['Uber','Will push on latency: what does this add to p99, and how do you avoid the round trip. The two-tier answer is what they want.'],
+  ['JPM / Amex','Will ask about fairness and about the paid-quota case, where fail-open is wrong. Also audit: can you prove a customer was throttled?'],
+  ['Microsoft / Adobe','More likely to want the algorithm comparison in detail — draw the fixed-window boundary burst on the board.']
+ ]
+};
+
+PLAN.sdSolution[11] = {
+ req:{
+  functional:[
+   'Charge a customer for an order, and record it immutably.',
+   'Refund fully or partially.',
+   'Show a customer their balance and transaction history.',
+   'Reconcile against the payment provider daily and explain every difference.',
+   'Support multiple currencies with the rate captured at transaction time.'
+  ],
+  nonFunctional:[
+   'A customer must NEVER be double-charged, including under client retries.',
+   'Every number must be explainable: why is this balance what it is?',
+   'Strong consistency within the ledger. Money is the canonical case for not being eventually consistent.',
+   'Auditable and immutable — corrections are new entries, never updates.',
+   'Minimise PCI scope: your services should never see a raw card number.'
+  ]
+ },
+ estimate:[
+  ['Transactions','1M/day','≈ 12 TPS average, maybe 50 TPS peak. LOW.'],
+  ['Ledger rows','2 entries per transaction (double-entry)','2M rows/day, 730M/year. Large but ordinary.'],
+  ['Storage','~500 bytes/entry','~1 GB/day, 365 GB/year. Retention is usually 7+ years by regulation.'],
+  ['The conclusion','—','This is NOT a throughput problem. Say that in the first two minutes. It is a CORRECTNESS problem under partial failure, and reframing it that way changes the entire conversation in your favour.']
+ ],
+ api:[
+  ['POST /v1/payments','Idempotency-Key hdr + { orderId, amount, currency, paymentMethodToken }','201 { paymentId, status }','The idempotency key is the single most important element of this API.'],
+  ['GET /v1/payments/{id}','—','200 { status, amount, events[] }','Status is derived from the ledger, never a mutable field.'],
+  ['POST /v1/payments/{id}/refunds','Idempotency-Key + { amount, reason }','201 { refundId, status }','Partial refunds allowed; sum of refunds must not exceed the capture.'],
+  ['GET /v1/accounts/{id}/balance','—','200 { balance, asOf }','Derived from entries, cached as a snapshot.'],
+  ['POST /webhooks/psp','provider payload','200','MUST be idempotent — providers retry, sometimes for days.']
+ ],
+ dataModel:[
+  ['idempotency_key','key PK · request_hash · response_json · status · created_at · expires_at','UNIQUE on key. This table is what makes double-charging impossible. request_hash catches a client reusing a key with a different body.'],
+  ['payment','id PK · order_id · customer_id · amount_minor · currency · status · psp_ref · created_at','amount in MINOR UNITS as an integer. Never a float, never a decimal string.'],
+  ['ledger_entry','id PK · txn_id · account_id · direction (DR/CR) · amount_minor · currency · created_at','APPEND ONLY. No UPDATE, no DELETE, ever. Index (account_id, created_at).'],
+  ['transaction','id PK · type · reference · created_at','Groups the entries. The invariant: SUM(debits) = SUM(credits) for every txn_id.'],
+  ['balance_snapshot','account_id · as_of · balance_minor','A cache. Rebuildable by replaying entries — which is the point.'],
+  ['fx_rate','from · to · rate · captured_at','Stored ON the transaction. Never recompute a historic amount at today rate.']
+ ],
+ arch:[
+  '   ┌────────┐        ┌───────────────────┐',
+  '   │ Client │───────▶│   Payment API     │',
+  '   └────────┘        │  (idempotency     │',
+  '                     │   check FIRST)    │',
+  '                     └─────────┬─────────┘',
+  '                               │',
+  '        ┌──────────────────────┼──────────────────────┐',
+  '        ▼                      ▼                      ▼',
+  '  ┌───────────┐        ┌──────────────┐       ┌──────────────┐',
+  '  │idempotency│        │   Ledger     │       │  PSP client  │',
+  '  │  table    │        │ (append-only)│       │ (Stripe/…)   │',
+  '  │ UNIQUE key│        │  DR   +  CR  │       └──────┬───────┘',
+  '  └───────────┘        └──────┬───────┘              │',
+  '                              │                      │ tokenised card',
+  '                              │ outbox               │ (PCI stays outside)',
+  '                              ▼                      ▼',
+  '                     ┌─────────────────┐      ┌──────────────┐',
+  '                     │  Outbox relay   │      │   Provider   │',
+  '                     └────────┬────────┘      └──────┬───────┘',
+  '                              ▼                      │ webhook',
+  '                        ┌──────────┐                 │ (retried, must',
+  '                        │  Kafka   │◄────────────────┘  be idempotent)',
+  '                        └────┬─────┘',
+  '          ┌──────────────────┼──────────────────┐',
+  '          ▼                  ▼                  ▼',
+  '   ┌────────────┐    ┌──────────────┐   ┌──────────────┐',
+  '   │ Notifier   │    │ Balance      │   │ Reconciler   │',
+  '   │            │    │ projector    │   │  (nightly)   │',
+  '   └────────────┘    └──────────────┘   └──────────────┘'
+ ],
+ flows:[
+  ['Charge — the happy path',[
+   '1. Client sends POST /payments with an Idempotency-Key it generated.',
+   '2. INSERT the key row. If the unique constraint fires, this is a retry: return the stored response. STOP HERE.',
+   '3. Begin a transaction: write the payment row as PENDING, write the ledger entries, write an outbox row. One local transaction, all or nothing.',
+   '4. Commit.',
+   '5. Call the PSP with the SAME idempotency key, so their retry protection aligns with yours.',
+   '6. On success: write a new transaction moving PENDING to CAPTURED, plus its ledger entries. Never UPDATE the old ones.',
+   '7. Store the response against the idempotency key.',
+   '8. The outbox relay publishes events; consumers notify, project balances, and feed reconciliation.'
+  ]],
+  ['The retry that would double-charge',[
+   '1. Client times out waiting, does not know whether it succeeded, and retries with the SAME key.',
+   '2. INSERT hits the unique constraint.',
+   '3. Read the stored response and return it. The customer is charged exactly once.',
+   '4. TWO CONCURRENT retries: one INSERT wins, the other blocks or fails. The loser reads the winner result, or returns 409 and the client retries once more. Either is correct; state which you chose.'
+  ]],
+  ['Refund',[
+   '1. Idempotency-Key again — refunds are just as retryable.',
+   '2. Validate: sum of existing refunds + this one must not exceed the captured amount.',
+   '3. New transaction, REVERSING entries. The original entries stay untouched forever.',
+   '4. Call the PSP refund API. Reconcile the result via webhook.'
+  ]]
+ ],
+ deepDive:[
+  ['Double-entry, and why the balance is not a column',
+   'Every transaction writes at least two entries that sum to zero: debit one account, credit another. The invariant SUM(DR) = SUM(CR) per transaction is checkable by a query, which means corruption is detectable rather than silent.\n\nThe balance is DERIVED — SUM of entries for an account — and cached as a snapshot for speed. That is the whole argument: with a mutable balance column, when a customer says "my balance is wrong", you have nothing to investigate. With entries, you replay them and find the exact transaction that caused it.\n\nCorrections are new REVERSING entries, never updates. "How do you fix a mistake?" is asked in almost every payments interview and "I would update the row" is the wrong answer — it destroys the audit trail that is the reason the system exists.'],
+  ['Idempotency, in detail',
+   'The client generates a UUID per payment ATTEMPT — not per retry — and sends it as a header. The server inserts it under a unique constraint before doing anything else.\n\nThree subtleties interviewers probe. First, store the RESPONSE, not just the key, so the retry returns the same body rather than a bare 409. Second, hash the request body and compare — a client reusing a key with different content is a bug you should reject loudly, not silently return the old answer to. Third, TTL: keys cannot live forever, and 24 hours is typical; after that a retry becomes a new payment, which is a documented risk.\n\nAnd propagate the same key DOWN to the PSP. Stripe and Adyen both accept one. That way your retry protection and theirs are aligned rather than independent.'],
+  ['The states you do not control',
+   'The hard part of payments is that the PSP is a separate system and the network between you can fail at any point. Four bad cases:\n\n(a) You called, it succeeded, your process died before recording it. Reconciliation catches this — poll the PSP for every PENDING payment older than N minutes.\n(b) You called, it timed out, you do not know the outcome. Do NOT retry blindly; query by your idempotency key first.\n(c) The webhook arrives twice. Make webhook handling idempotent, keyed on the provider event id.\n(d) The webhook arrives before your own commit finishes. Handle out-of-order: the webhook handler must tolerate a payment it has not seen yet, usually by parking it briefly and retrying.\n\nHaving all four ready is what separates someone who has run a payment system from someone who has read about one.'],
+  ['Sagas, because money crosses services',
+   'Placing an order touches inventory, payment and fulfilment. Two-phase commit would hold locks across services for the duration of network calls, and its coordinator is a single point of failure — unacceptable for availability.\n\nUse a saga: reserve inventory, charge payment, confirm order, with a compensating action for each step. Compensations are business-level undos — a refund, not a rollback — and they must themselves be idempotent and retryable.\n\nOrder the steps so IRREVERSIBLE actions come last. Sending a confirmation email should be the final step, after everything reversible has already succeeded.']
+ ],
+ scaling:[
+  ['Ledger write volume','Partition by account_id. Entries for one account stay together, which is also what the balance query needs.'],
+  ['Balance queries','Snapshot per account per day; sum only the entries since the snapshot. Rebuildable by replay at any time.'],
+  ['Idempotency table growth','TTL and archive. It only needs to cover the retry window.'],
+  ['Reconciliation over 7 years of data','Run it incrementally over a daily window, never over the full history.'],
+  ['Hot account (a marketplace platform account)','Sub-accounts that roll up, or accept contention on that one row and serialise it.'],
+  ['Multi-region','Money usually does NOT go active-active. Pin an account to a home region and accept cross-region latency for the rare foreign access. Say this — casually distributing a ledger is a red flag.']
+ ],
+ tradeoffs:[
+  ['Balance','Derived from entries + snapshot','A mutable balance column','Auditability. You can always answer "why is this number what it is".'],
+  ['Consistency','Strong within the ledger','Eventual','Money is the canonical exception. Across services, saga with compensations.'],
+  ['Distributed txn','Saga','Two-phase commit','2PC holds locks across network calls and its coordinator is a SPOF.'],
+  ['Event publishing','Outbox','Publish after commit','The dual-write problem. If the publish fails post-commit, the systems silently diverge.'],
+  ['Card data','Tokenised at the edge','Stored by us','Keeps almost your entire estate out of PCI scope. This alone is worth saying.'],
+  ['Amount type','Integer minor units','Decimal or float','Floats cannot represent 0.1. Integers in cents remove a whole class of bug.']
+ ],
+ angle:[
+  ['JP MORGAN / AMEX','This is their home turf and the depth will be real. Expect: "walk me through every way a customer could be double-charged", "how do you correct a mistaken transaction" (reversing entry, and if you say UPDATE you are done), "what is your reconciliation process", and multi-region DR with an explicit RPO. Failing to raise idempotency unprompted is close to disqualifying.'],
+  ['Amazon','Will come at it through ORDERS — see session 12 — and push on the saga: what happens when payment succeeds but inventory reservation has expired. Also "how do you handle a partial refund with a marketplace fee?", which is really a business-rules question, and saying so is a good answer.'],
+  ['Uber','Driver payouts rather than customer charges. Same ledger, different direction, plus scheduled batch payouts and the question of what happens when a payout fails.'],
+  ['Microsoft / Adobe','Subscription billing flavour: proration, mid-cycle upgrades, dunning when a card fails. The ledger design is identical; the state machine is richer.']
+ ]
+};
+
+PLAN.sdSolution[12] = {
+ req:{
+  functional:[
+   'Add items to a cart and place an order.',
+   'Reserve inventory so it cannot be sold twice.',
+   'Take payment, then confirm and fulfil.',
+   'Cancel and refund, including partial cancellation of one line.',
+   'Show accurate-enough stock on the product page.'
+  ],
+  nonFunctional:[
+   'NEVER oversell a physical item.',
+   'Placing an order must be idempotent — a double-click must not create two orders.',
+   'Survive a flash sale where one SKU takes enormous concurrent load.',
+   'Order state transitions must be legal and auditable.'
+  ]
+ },
+ estimate:[
+  ['Orders','10M/day','≈ 115/sec average.'],
+  ['Peak','Prime Day / flash sale','20–50x. Say 5,000 orders/sec, and on ONE SKU possibly 50,000 attempts/sec.'],
+  ['The real number','—','That single-SKU figure is the whole design. Aggregate QPS is easy; one contended row is not. Lead with this.'],
+  ['Storage','10M orders × 2 KB','20 GB/day of orders, plus the inventory table which is small and extremely hot.']
+ ],
+ api:[
+  ['POST /v1/orders','Idempotency-Key + { cartId, addressId, paymentMethodId }','201 { orderId, status }','Idempotent. A double-click returns the same order.'],
+  ['GET /v1/orders/{id}','—','200 { status, lines[], total, timeline[] }','Timeline is derived from the state-transition log.'],
+  ['POST /v1/orders/{id}/cancel','Idempotency-Key + { lineIds? }','200','Legal only from certain states. Partial cancel needs line-level status.'],
+  ['GET /v1/products/{sku}/availability','—','200 { available, asOf }','Explicitly allowed to be slightly stale. Say so in the contract.'],
+  ['Internal: reserve(sku, qty, orderId, ttl)','—','{ reserved: bool }','The atomic operation everything hinges on.']
+ ],
+ dataModel:[
+  ['inventory','sku PK · warehouse_id · available INT · reserved INT · version','The contended row. UPDATE ... WHERE available >= qty is the whole correctness story.'],
+  ['reservation','id PK · sku · qty · order_id · expires_at · status','TTL-based. Index on expires_at for the sweeper.'],
+  ['order','id PK · customer_id · status · total_minor · currency · idempotency_key UNIQUE · created_at','The unique key gives idempotent placement for free.'],
+  ['order_line','id PK · order_id · sku · qty · unit_price_minor · status','Line-level status is what makes partial cancellation possible. Add it now, not later.'],
+  ['order_event','id PK · order_id · from_status · to_status · reason · at','Append-only. This is the timeline and the audit trail.'],
+  ['Note on price','—','Store unit_price AT ORDER TIME on the line. Never join to the current price — the customer paid what they paid.']
+ ],
+ arch:[
+  '   ┌────────┐     ┌──────────────┐',
+  '   │ Client │────▶│  Order API   │  (idempotency key)',
+  '   └────────┘     └──────┬───────┘',
+  '                         │',
+  '                         ▼',
+  '              ┌────────────────────────┐',
+  '              │   Order orchestrator   │  ← the saga lives here',
+  '              │   (state machine)      │',
+  '              └───┬────────┬────────┬──┘',
+  '     1. reserve   │        │        │  3. confirm',
+  '                  ▼        │        ▼',
+  '        ┌──────────────┐   │   ┌──────────────┐',
+  '        │  Inventory   │   │   │ Fulfilment   │',
+  '        │              │   │   └──────────────┘',
+  '        │ UPDATE ...   │   │ 2. charge',
+  '        │  WHERE       │   ▼',
+  '        │  available   │  ┌──────────────┐',
+  '        │  >= qty      │  │   Payment    │  (see session 11)',
+  '        └──────┬───────┘  └──────────────┘',
+  '               │',
+  '               │ outbox',
+  '               ▼',
+  '         ┌──────────┐',
+  '         │  Kafka   │──▶ availability projector ──▶ ┌─────────────┐',
+  '         └──────────┘    (stale is FINE for         │ Read model  │',
+  '                          the product page)         │  (cache)    │',
+  '                                                    └─────────────┘',
+  '',
+  '   ┌────────────────────┐',
+  '   │ Reservation sweeper│  every 30s: release expired holds',
+  '   └────────────────────┘'
+ ],
+ flows:[
+  ['Place an order — the saga',[
+   '1. INSERT order with the idempotency key. Constraint violation means a retry: return the existing order.',
+   '2. RESERVE inventory for every line: UPDATE inventory SET available = available - :qty WHERE sku = :sku AND available >= :qty. Require rowsAffected = 1.',
+   '3. If any line fails, RELEASE everything already reserved and fail the order cleanly.',
+   '4. CHARGE payment, passing the same idempotency key downstream.',
+   '5. If payment fails: compensate by releasing the reservations, transition the order to CANCELLED.',
+   '6. CONFIRM: reservation becomes a committed decrement, order moves to CONFIRMED.',
+   '7. Emit OrderConfirmed via the outbox. Fulfilment, notification and analytics consume it.'
+  ]],
+  ['Read the product page',[
+   '1. Read availability from the CACHED read model, not the inventory table.',
+   '2. This is deliberately stale by up to a few seconds. "Only 3 left" being slightly wrong is acceptable; a wrong RESERVATION is not.',
+   '3. Separating those two is the mature answer and interviewers listen for it.'
+  ]]
+ ],
+ deepDive:[
+  ['The oversell race — the reason this question exists',
+   'The wrong version: read available, check it is greater than zero, write available minus one. Two threads both pass the check and you have sold the same item twice.\n\nThe right version is a single conditional statement:\n\n  UPDATE inventory SET available = available - :qty\n   WHERE sku = :sku AND available >= :qty\n\nThen require rowsAffected = 1. One caller succeeds, the other affects zero rows and gets a clean out-of-stock. There is no window between check and decrement because there is no separate check.\n\nIn memory, the same shape is a compareAndSet loop or an AtomicInteger. The point is identical: the check and the decrement must be one operation.'],
+  ['The flash sale, which is a different problem',
+   'Aggregate QPS is easy. 50,000 attempts per second on ONE ROW is not — that row becomes a serialisation point and everything queues behind its lock.\n\nThree real answers. SHARD THE STOCK: split 1,000 units into 10 buckets of 100 and have each request decrement a random bucket, falling back to scanning buckets when one is empty. Contention drops 10x, at the cost of slightly awkward "is anything left" logic. QUEUE IT: accept requests into a queue and process serially against the row — throughput is capped but nobody is oversold and latency becomes predictable. WAITING ROOM: admit users in batches, which is what ticketing sites do, and is as much a product decision as a technical one.\n\nSay which you would choose and why. There is no universally right answer, and knowing that is the signal.'],
+  ['Reservations and the payment-failure window',
+   'A reservation is inventory held with a TTL, typically 10–15 minutes. Two mechanisms, and you need both: a background SWEEPER releasing expired holds, and a LAZY check when someone tries to reserve — otherwise an abandoned hold blocks a live sale until the sweeper next runs.\n\nThe question everyone gets asked: what if the hold expires while the customer is on the payment page? You must have a stated policy. Either refuse the payment with a clear message, or extend the hold once when payment begins. Silently taking payment for released stock is the failure that actually ships to production, and saying that out loud demonstrates you have thought past the happy path.'],
+  ['Multi-warehouse allocation',
+   'Do NOT sum stock across three warehouses and then decrement one — that is the same race with extra steps.\n\nTwo correct shapes. One LOGICAL counter for the SKU, with warehouse allocation decided after the reservation succeeds. Or PER-WAREHOUSE reservation where the request names the warehouse, chosen by proximity before the atomic decrement.\n\nThe first is simpler and usually right for a customer-facing flow; the second matters when shipping cost or delivery promise depends on which warehouse serves it.']
+ ],
+ scaling:[
+  ['One contended SKU row','Bucket the stock, or serialise through a queue. This bites long before anything else.'],
+  ['Order write volume','Shard orders by customer_id. Orders are never queried across customers on the hot path.'],
+  ['Product page reads','Cached read model fed by the event stream. Never read the inventory table for display.'],
+  ['Reservation sweeper','Index on expires_at, process in batches, and keep the lazy check so the sweeper is not on the critical path.'],
+  ['Order history queries','Separate read model. Do not run reporting queries against the transactional store.'],
+  ['Peak traffic','Autoscale the stateless order API. The inventory row does not autoscale — that is the real ceiling and you should say so.']
+ ],
+ tradeoffs:[
+  ['Concurrency control','Atomic conditional UPDATE','Read-then-write, or a lock','No window, no lock held across a network call. The correct default.'],
+  ['Display availability','Eventually consistent read model','Read the live table','Protects the hot row and is honest about what "only 3 left" means.'],
+  ['Reservation expiry','Lazy check + sweeper','Sweeper alone','A sweeper alone leaves a window where a dead hold blocks a real sale.'],
+  ['Cross-service consistency','Saga with compensations','2PC','Availability, and no locks held across service calls.'],
+  ['Order status','Explicit state machine','A status string','Illegal transitions become impossible. "Can a DELIVERED order be cancelled?" is asked constantly — the answer is that it becomes a RETURN, a different flow.'],
+  ['Line-level status','Yes, from the start','Order-level only','Partial cancellation and partial shipment are always the follow-up. Retrofitting this is painful.']
+ ],
+ angle:[
+  ['AMAZON','Their own domain, so expect precision. Guaranteed: "two customers buy the last item at the same instant — walk me through exactly what happens." Then the flash sale. Then "is eventual consistency ever OK for inventory?" — the answer is yes for display, never for reservation, and that distinction IS the question. Also expect the state machine probe about cancelling a delivered order.'],
+  ['Flipkart / Expedia','Same machine, different nouns — seats, rooms, slots. Expedia will push on the hold TTL and what happens when a hotel changes availability underneath you.'],
+  ['Uber','Closest analogue is surge capacity and driver allocation rather than stock, but the atomic-assignment argument transfers directly.'],
+  ['JPM / Amex','Less likely to ask this design, but if they do they will focus on the money half: the saga, the compensations, and what happens when the refund itself fails.']
+ ]
+};
+
 /* ============================================================ TEMPLATES === */
 
 PLAN.templates = [
