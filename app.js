@@ -46,6 +46,14 @@ function toast(msg) {
   clearTimeout(t._t); t._t = setTimeout(function () { t.hidden = true; }, 2200);
 }
 function pct(x) { return Math.round(x * 100); }
+/* Math.round(0.0035 * 100) is 0, which reads as "nothing registered".
+   Show one decimal below 10% so early progress is visible and honest. */
+function fmtPct(x) {
+  var v = x * 100;
+  if (v <= 0) return '0%';
+  if (v < 10) return (v < 0.1 ? '<0.1' : v.toFixed(1)) + '%';
+  return Math.round(v) + '%';
+}
 
 /* ---------------------------------------------------------------- IDB --- */
 function idb() {
@@ -284,13 +292,23 @@ function scoreOf(items) {
   });
   return got / items.length;
 }
+/* how many items are actually ticked, ignoring quality weighting */
+function doneCountOf(items) {
+  if (!items || !items.length) return 0;
+  var n = 0;
+  items.forEach(function (x) {
+    var p = state.problems[x.key];
+    if (p && p.done) n++;
+  });
+  return n;
+}
 function readiness(c, buckets) {
   var b = buckets || bucketItems();
   var parts = [], total = 0;
   Object.keys(c.weights).forEach(function (k) {
     var items = (k === 'pack') ? packItems(c) : (b[k] || []);
     var s = scoreOf(items);
-    parts.push({ k: k, w: c.weights[k], s: s, n: items.length });
+    parts.push({ k: k, w: c.weights[k], s: s, n: items.length, done: doneCountOf(items) });
     total += c.weights[k] * s;
   });
   parts.sort(function (a, z) { return z.w - a.w; });
@@ -1606,10 +1624,23 @@ function renderCompanies() {
   });
   h += '</div>';
 
+  h += '<div class="card"><div class="card-head"><h2>What is counted</h2><span class="spacer"></span>' +
+    '<span class="dim">every tick lands in one of these</span></div><div class="statrow">';
+  ['core', 'hard', 'tech', 'sd', 'lld', 'lp', 'mock'].forEach(function (k) {
+    var items = b[k] || [];
+    h += stat(doneCountOf(items) + '<span class="of">/' + items.length + '</span>',
+              String(BUCKET_LBL[k] || k).replace(/ \(.*\)/, ''));
+  });
+  h += '</div><p class="dim" style="margin-top:14px">Counts are exact. The percentages below are weighted by attempt ' +
+    'quality — clean 1.0, ugly 0.7, failed 0.4 — so early on they sit near zero even though the count has moved. ' +
+    '<b>Trust the counts.</b></p></div>';
+
   [1, 2, 3].forEach(function (tier) {
     h += '<h2 class="tier-hd tier' + tier + '">' + TIER_LBL[tier] + '</h2>';
     PLAN.companies.filter(function (c) { return c.tier === tier; }).forEach(function (c) {
       var r = readiness(c, b), p100 = pct(r.score);
+      var pShown = fmtPct(r.score);
+      var barW = r.score > 0 ? Math.max(0.6, r.score * 100).toFixed(1) : '0';
       var lo = Math.round(c.band[0] * r.score), hi = Math.round(c.band[1] * r.score);
       var open = !!state.ui.open['co-' + c.id];
       var pk = packItems(c);
@@ -1619,18 +1650,22 @@ function renderCompanies() {
       h += '<div class="card co-card"><div class="card-head" style="margin-bottom:10px">' +
         '<h2 style="font-size:17px">' + esc(c.name) + ' <span class="dim" style="font-weight:400">' +
         esc(c.level) + '</span></h2><span class="spacer"></span>' +
-        '<span class="co-pct ' + (hit ? 'hit' : '') + '">' + p100 + '%</span></div>' +
-        '<div class="co-bar"><i style="width:' + p100 + '%"></i><u style="left:75%"></u></div>' +
+        '<span class="co-pct ' + (hit ? 'hit' : '') + '">' + pShown + '</span></div>' +
+        '<div class="co-bar"><i style="width:' + barW + '%"></i><u style="left:75%"></u></div>' +
         '<p class="dim" style="margin:7px 0 14px;font-size:12.5px">' +
         (hit ? '<b class="ok-txt">Past the 75% target.</b> ' : 'Target line at 75%. ') +
         'Estimated onsite pass at this readiness: <b>' + lo + '–' + hi + '%</b> ' +
         '<span style="opacity:.7">(band at full readiness: ' + c.band[0] + '–' + c.band[1] + '%)</span></p>' +
         '<div class="co-parts">';
       r.parts.forEach(function (pt) {
+        /* a non-empty bucket always gets a visible sliver, so "I ticked
+           something and nothing moved" cannot happen */
+        var w = pt.s > 0 ? Math.max(0.8, pt.s * 100).toFixed(1) : '0';
         h += '<div class="co-part"><span class="co-part-lbl">' + esc(BUCKET_LBL[pt.k] || pt.k) + '</span>' +
           '<span class="co-part-w">weight ' + pct(pt.w) + '%</span>' +
-          '<span class="co-part-bar"><i style="width:' + pct(pt.s) + '%"></i></span>' +
-          '<span class="co-part-n">' + pct(pt.s) + '% <span class="dim">of ' + pt.n + '</span></span></div>';
+          '<span class="co-part-bar"><i style="width:' + w + '%"></i></span>' +
+          '<span class="co-part-n"><b>' + pt.done + '</b><span class="dim">/' + pt.n + '</span>' +
+          '<span class="co-part-pct">' + fmtPct(pt.s) + '</span></span></div>';
       });
       h += '</div><div class="learn" style="margin-top:14px">' + esc(c.note) + '</div>' +
         '<div class="exit"><b>Biggest lever.</b> ' + esc(c.lever) + '</div>';

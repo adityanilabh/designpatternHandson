@@ -852,3 +852,10 @@ h3.prac-h:first-of-type { margin-top: 20px; }
   font-size: 15px; line-height: 1.72; color: var(--ink);
 }
 td.wrong-cell { color: var(--bad); font-size: 13px; }
+
+/* --- ladder: counts first, percentage secondary --- */
+.co-part-n b { font-size: 13.5px; color: var(--ink); font-weight: 650; }
+.co-part-pct {
+  display: inline-block; min-width: 46px; text-align: right;
+  margin-left: 10px; font-family: var(--mono); font-size: 11px; color: var(--ink-3);
+}
