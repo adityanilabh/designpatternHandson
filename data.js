@@ -3466,19 +3466,6 @@ PLAN.lldProblems = PLAN.lldProblems.concat([
 
 ]);
 
-/* Amazon Leadership Principles - a parallel workstream, not a soft round. */
-PLAN.lldLp = [
-  ['LP stories 1–3 — ownership · dive deep · deliver results','Real numbers. Written down, not remembered.'],
-  ['LP stories 4–6 — customer obsession · invent and simplify · bias for action',''],
-  ['LP stories 7–9 — earn trust · have backbone and disagree · learn and be curious',''],
-  ['LP stories 10–12 — hire and develop · frugality · think big',''],
-  ['LP stories 13–15 — highest standards · are right a lot · best employer',''],
-  ['LP: "your biggest failure" — rehearsed cold','This one catches people. Prepare it specifically.'],
-  ['LP: "when you disagreed with a manager" — rehearsed cold','So does this one.'],
-  ['LP full rehearsal — all 15 under two minutes each, "I" not "we"','Record it. Count how often you say "we".']
-];
-
-PLAN.lldLpNote = 'LP is roughly half of Amazon\'s signal and the bar-raiser can reject you on it alone. It is the single most common way strong coders fail Amazon. Two stories per Sunday from week 2, reaching 15 by week 13. Each with real numbers, each rehearsed to under two minutes, each saying "I" not "we" — Amazon scores your actions, not your team\'s.';
 
 
 
@@ -5513,6 +5500,537 @@ PLAN.lldSolution.lru = {
    'Being able to walk all three levels — and naming Caffeine and W-TinyLFU at the end — is what separates someone who has implemented a cache from someone who has run one.']
  ]
 };
+
+
+/* ============================================ AMAZON LEADERSHIP PRINCIPLES ===
+   Roughly half of Amazon's hiring signal, and the most common reason strong
+   coders are rejected. It is not one round - it is woven through every round,
+   and the bar-raiser can veto on LP alone.
+
+   This section is a workstream, not a reading list. The story bank at the end
+   is meant to be filled in and rehearsed out loud.                          */
+
+PLAN.lp = {};
+
+PLAN.lp.scoring = {
+  intro:'LP is not a soft round you turn up to. It is a structured, rubric-scored evaluation running through the entire loop, and it carries roughly half the decision.',
+  rounds:[
+   ['Every technical round','15–20 min at the end','Your coding interviewer also scores LP. They will ask one or two behavioural questions after the problem, and they write them up against named principles.'],
+   ['The dedicated behavioural round','45–60 min','Usually 3–5 stories, each with 4–8 follow-up probes. This is where depth is tested.'],
+   ['The bar-raiser','45–60 min','A trained interviewer from OUTSIDE the hiring team, with veto power. They are not measuring you against this team — they are measuring whether you raise the bar for Amazon overall. Often the hardest LP probing of the loop.'],
+   ['Debrief','after','Every interviewer submits written notes tagged to principles. Gaps are visible: if nobody scored you on Dive Deep, that is itself a problem.']
+  ],
+  rubric:[
+   ['What they write down','Interviewers take near-verbatim notes as you speak. Vague answers produce vague notes, and vague notes do not get you hired.'],
+   ['They score the ACTION','Not the outcome, not the team. What did YOU do, decide, and change?'],
+   ['They probe for depth','The story is the setup. The follow-ups are the test. A polished story with thin follow-ups reads as rehearsed rather than lived.'],
+   ['They look for data','"It got much faster" is a claim. "p99 went from 3.2s to 380ms" is evidence. Amazon is a metrics culture and this is scored.'],
+   ['They look for failure','A candidate with no failure stories is either inexperienced or not self-aware. Both are rejections.'],
+   ['Coverage matters','You are scored against specific principles. If you tell four Deliver Results stories, you have one data point across four rounds.']
+  ],
+  reality:[
+   'The bar-raiser can reject you when every coding round passed. This happens constantly.',
+   'You will be interrupted mid-story. That is not rudeness — they are steering toward the part they need to score.',
+   'Two hours of stories from a 45-minute round means you told too few, too long. Aim for a 2-minute story plus 6 minutes of probing.',
+   'They can tell a fabricated story within three follow-ups, because invented detail does not survive "what exactly did you say to them?"'
+  ]
+};
+
+PLAN.lp.star = {
+  intro:'STAR is the format. Amazon uses it with very specific proportions, and most candidates get the balance backwards — long setup, thin action.',
+  parts:[
+   ['S — Situation','15 sec · ~10%','Context only. Company, team, what the system did, what was wrong. Two or three sentences. If you are still describing the architecture at 60 seconds, you have lost them.'],
+   ['T — Task','15 sec · ~10%','YOUR specific responsibility. Not the team goal — the part you owned. "I was asked to…" or "I decided to…".'],
+   ['A — Action','60–75 sec · ~60%','THE BULK. What you did, in first person, in sequence. Decisions you made, alternatives you rejected and why, who you convinced, what you built. This is the only part that gets scored properly.'],
+   ['R — Result','20 sec · ~15%','Quantified. Latency, cost, revenue, incident count, hours saved, users affected. If you genuinely cannot measure it, say what you observed and be explicit that it was not measured.'],
+   ['L — Learning','10 sec · ~5%','Not formally in STAR, but Amazon expects it. What you would do differently. Volunteering this pre-empts the most common follow-up.']
+  ],
+  rules:[
+   'Say "I", not "we". Amazon scores your actions. If a story genuinely was a team effort, say what YOUR part was inside it.',
+   'Present tense for the situation, past tense for actions. It keeps the narration crisp.',
+   'One story, one primary principle. Know which one you are answering before you start talking.',
+   'Have the numbers ready before the interview. Digging for them mid-story kills the pace.',
+   'Practise the 2-minute version AND the 30-second version. Sometimes they only want the headline.',
+   'Never read from notes. Rehearsed-but-natural is the target; recited is worse than rough.'
+  ],
+  timing:'Target: 2 minutes for the story, then 5–8 minutes of follow-ups. If you talk for five minutes uninterrupted, the interviewer has no time to probe, and un-probed stories score low because they cannot be verified.'
+};
+
+PLAN.lp.probes = {
+  intro:'The story is the setup. These are the test. Prepare answers to every one of these for every story you own — the follow-ups are where fabricated stories fall apart and real ones earn their score.',
+  groups:[
+   ['On your specific contribution',[
+     'What exactly was YOUR part in this?',
+     'Who else was involved, and what did they do?',
+     'What would have happened if you had not been there?',
+     'Was this your idea, or were you assigned it?'
+   ]],
+   ['On the decision',[
+     'What alternatives did you consider?',
+     'Why did you reject the other options?',
+     'What data did you have at the time?',
+     'What did you get wrong in your initial assessment?',
+     'Who disagreed with you, and how did you handle it?'
+   ]],
+   ['On depth (this is Dive Deep, and it is where people fail)',[
+     'Walk me through how it actually worked, technically.',
+     'How did you know that was the root cause and not a symptom?',
+     'What did the metric look like before and after?',
+     'How did you measure that?',
+     'What was the hardest bug, and how did you find it?'
+   ]],
+   ['On difficulty and failure',[
+     'What was the hardest part?',
+     'What went wrong?',
+     'What would you do differently?',
+     'What did you learn?',
+     'If you had twice the time, what would you have changed?'
+   ]],
+   ['On impact',[
+     'How do you know it worked?',
+     'What was the business impact?',
+     'Did it hold up over time?',
+     'What did it cost — in effort, in money, in complexity?'
+   ]],
+   ['On people',[
+     'How did you convince them?',
+     'What did they say?',
+     'What happened to the relationship afterwards?',
+     'How did you handle it when someone pushed back?'
+   ]]
+  ],
+  tactics:[
+   ['When you do not know a number','Say so, then give the shape: "I do not have the exact figure, but it was roughly a 5x improvement and we stopped getting paged." Guessing precisely is worse than being honest about approximation.'],
+   ['When you are interrupted','Stop and answer. Do not finish your sentence first. They are steering toward what they need to score.'],
+   ['When the probe goes deeper than your story','Go with it. This is what Dive Deep looks like — you are being invited to demonstrate real understanding. Never bluff; they will keep going.'],
+   ['When you genuinely did not do the thing','Say so and reframe: "I was not the one who built that, but I did X." Claiming someone else\'s work is the fastest rejection there is.'],
+   ['When they ask for a second example','Have one. "Give me another time you did this" is standard, and having only one story per principle shows.']
+  ]
+};
+
+PLAN.lp.antipatterns = [
+ ['Saying "we" throughout','The single most common failure. Amazon scores individual actions. Record yourself and count — most people say "we" 20+ times in a two-minute story without noticing.',
+  'FIX: rewrite every story in first person, then rehearse it. Where the work truly was collective, say "the team decided X; I owned Y and did Z."'],
+ ['No numbers','"It improved performance a lot" is unverifiable and scores as a claim, not a result.',
+  'FIX: dig out the real figures now, before the interview. Latency, error rate, throughput, cost, hours, incident count, number of users. Any real number beats an adjective.'],
+ ['A 6-minute story','You have crowded out the follow-ups, and un-probed stories score low because they cannot be verified.',
+  'FIX: time yourself. Two minutes. Cut the architecture description first — it is almost always the bloat.'],
+ ['No failure stories','A candidate who has never failed is either junior or not self-aware. Both are rejections, and "biggest failure" is asked in most loops.',
+  'FIX: prepare two genuine failures with real consequences, and what changed in your behaviour afterwards. Not "I worked too hard."'],
+ ['A fake failure','"My weakness is that I care too much" is transparent and actively damaging — it reads as evasion.',
+  'FIX: pick something that actually cost the business, that you actually caused, and that you actually fixed your process over.'],
+ ['One story reused for everything','Interviewers compare notes at debrief. The same story in three rounds is visible and reads as thin experience.',
+  'FIX: build the coverage matrix. 12–15 distinct stories mapped across the principles.'],
+ ['Blaming others','"The other team gave us bad requirements" reads as lack of ownership, which is the LP they care most about.',
+  'FIX: even when it was genuinely someone else\'s fault, the story is about what YOU did about it.'],
+ ['Only success stories with tidy endings','Real engineering is messy. Perfect arcs read as fabricated.',
+  'FIX: include the part that went badly, the thing you missed, the pushback you got.'],
+ ['Reciting','A word-perfect story delivered at speed sounds memorised, and memorised sounds untrue.',
+  'FIX: rehearse the STRUCTURE and the numbers, not the sentences. Different words each time is a good sign.'],
+ ['Answering a different principle','Being asked about Have Backbone and telling a Deliver Results story means the interviewer has nothing to score.',
+  'FIX: before you speak, name the principle to yourself. If you are unsure what they are asking for, ask them to clarify — that is allowed and reads well.']
+];
+
+PLAN.lp.worked = {
+ question:'Tell me about a time you took ownership of something outside your remit.',
+ principle:'Ownership (primary) · Dive Deep and Bias for Action (secondary)',
+ story:[
+  ['S — Situation (18 sec)',
+   'Our backend runs as a monolith on Kubernetes, and we started getting paged two or three nights a week for pods restarting under load. It was logged as an infra issue and sat with the platform team for about three weeks with no progress.',
+   'Short. Enough context to follow, no architecture tour. Note the concrete pain — "two or three nights a week" is already a number.'],
+  ['T — Task (12 sec)',
+   'It was not my service and not my team, but I was on the on-call rota being woken up by it, so I decided to find the actual cause rather than keep acknowledging alerts.',
+   'This is the Ownership hook: explicitly outside the remit, explicitly a decision to act. "I decided" not "I was asked."'],
+  ['A — Action (75 sec)',
+   'I started with the pod events rather than the application logs, and saw exit code 137 — OOMKilled, not a crash. The container limit was 1GB and the JVM had no heap configuration, so it was sizing the heap from the node\'s memory, about 16GB, and blowing past the container limit. ' +
+   'I reproduced it locally by running the image with a 1GB constraint and driving load at it. ' +
+   'Two options: raise the limit, which was the fast fix everyone wanted, or make the JVM container-aware, which meant a config change plus a rollout. I pushed for the second because raising the limit would have masked it until the next traffic increase. ' +
+   'I set MaxRAMPercentage to 75 and accounted for metaspace and thread stacks on top of heap. ' +
+   'The platform lead pushed back — he thought it was a genuine leak. I took a heap dump under load and showed him the dominator tree: it was steady-state, no leak. He agreed and we shipped it. ' +
+   'I also added a Grafana panel for container memory versus JVM heap, because nobody could see the gap.',
+   'This is 60% of the runtime and it is all first-person decisions. Notice: a rejected alternative WITH the reason, a named disagreement and how it was resolved, and evidence rather than assertion. The heap dump is the Dive Deep moment.'],
+  ['R — Result (20 sec)',
+   'Restarts went from roughly 15 a week to zero, and they stayed at zero through the next quarter including a traffic increase. We stopped being paged for it entirely. The dashboard later caught the same class of problem in a different service before it caused an incident.',
+   'Numbers, durability ("stayed at zero"), and a second-order impact. The last sentence quietly demonstrates broader value.'],
+  ['L — Learning (12 sec)',
+   'What I would do differently is escalate sooner. I sat with three weeks of bad sleep before deciding it was mine to fix. Now when something wakes me twice, I either own it or get it explicitly owned by someone else that week.',
+   'A real, specific behaviour change. This pre-empts "what would you do differently?" and it is not a humblebrag.']
+ ],
+ probesAndAnswers:[
+  ['How did you know it was OOMKilled and not an application crash?','Exit code 137 in kubectl describe, and the kernel OOM message in the node events. An application exception would exit 1 and leave a stack trace in the logs — there was none.'],
+  ['Why not just raise the memory limit?','It would have worked until the next traffic increase, and it would have cost us capacity across every replica. The JVM was misconfigured; raising the limit treats the symptom. I said that explicitly at the time.'],
+  ['What did the platform lead actually say?','He thought it was a memory leak and wanted a profiler run before any config change. That was a reasonable position — I just had evidence it was not. I took the heap dump, showed him retained size was flat across an hour under load, and he changed his mind in about ten minutes.'],
+  ['What was the hardest part?','Convincing people it was worth fixing properly when a one-line limit increase would have stopped the pages that night. The pressure to take the fast fix was real.'],
+  ['How did you measure the result?','Restart count from the kube-state metrics, weekly. It was about 15 a week before and zero after, sustained over the following quarter.'],
+  ['Would this have been caught earlier with better process?','Yes. We had no alert on container memory versus heap, and no default JVM configuration in the base image. I fixed the first; the second is still open, and I would push for it if I were doing it again.']
+ ],
+ why:'This story works because: it names a decision made against the easy option, it contains a disagreement resolved with evidence, every claim has a number behind it, the learning is a genuine behaviour change, and the follow-ups go deeper than the story without running out of material. It also happens to be true for the person telling it — which is why the probes are answerable.'
+};
+
+/* freq: how often this comes up for an SDE2 / mid-level backend candidate.
+   high = expect it in most loops · med = likely once · low = rare below senior */
+
+PLAN.lp.principles = [
+
+{id:'ownership', n:1, name:'Ownership', freq:'high',
+ official:'Leaders are owners. They think long term and do not sacrifice long-term value for short-term results. They act on behalf of the entire company, beyond just their own team. They never say "that is not my job."',
+ means:'You did something because it needed doing, not because it was assigned to you — and you stayed with it past the point where you could have handed it off.',
+ signal:'Will this person let a problem rot because it sits in someone else\'s column? Amazon is deliberately under-staffed relative to scope, so people who wait to be told are expensive.',
+ asked:[
+  'Tell me about a time you took on something outside your job responsibilities.',
+  'Describe a time you saw a problem nobody owned and acted on it.',
+  'Tell me about a time you had to make a decision with long-term consequences.',
+  'When have you sacrificed a short-term win for a long-term one?'
+ ],
+ probes:[
+  'Why was it your problem?',
+  'What would have happened if you had done nothing?',
+  'Did anyone tell you to stop?',
+  'How did you balance this against your actual assigned work?'
+ ],
+ strong:'You crossed a boundary deliberately, you can say why the easy option was wrong, and you stayed involved through the follow-through — including the unglamorous parts like documentation, alerting, or handover.',
+ weak:'"I helped out another team when they asked." That is cooperation, not ownership. Ownership starts with nobody asking.',
+ pairs:'Bias for Action · Dive Deep · Deliver Results',
+ yourAngle:'Your on-call and production experience is the natural source here. An incident you chased past the point of "restart it and go back to bed" is an Ownership story.'},
+
+{id:'dive-deep', n:2, name:'Dive Deep', freq:'high',
+ official:'Leaders operate at all levels, stay connected to the details, audit frequently, and are sceptical when metrics and anecdote differ. No task is beneath them.',
+ means:'You went to the actual mechanism rather than stopping at the plausible explanation.',
+ signal:'The single most-probed principle for engineers. They are testing whether you understand what you built or merely operated it. This is the one where bluffing is detected fastest.',
+ asked:[
+  'Tell me about the most complex problem you have debugged.',
+  'Describe a time the data contradicted what everyone believed.',
+  'Tell me about a time you found a root cause others had missed.',
+  'When did you have to learn something deeply and quickly?'
+ ],
+ probes:[
+  'Walk me through exactly how it worked.',
+  'How did you know that was the root cause and not a symptom?',
+  'What did you rule out, and how?',
+  'What tools did you use?',
+  'What did the numbers look like before and after?'
+ ],
+ strong:'You can go three levels deeper than the story required, unprompted. You name the specific tool, the specific metric, the specific line of reasoning that eliminated the wrong hypothesis.',
+ weak:'"I looked at the logs and found the issue." No mechanism, no elimination, no measurement. Also weak: a deep story you can no longer explain, which reads as someone else\'s work.',
+ pairs:'Ownership · Insist on the Highest Standards · Are Right, A Lot',
+ yourAngle:'A slow Postgres query you traced through EXPLAIN, or a Kubernetes issue where the obvious cause was wrong. These are your strongest raw material — you have felt them.'},
+
+{id:'deliver-results', n:3, name:'Deliver Results', freq:'high',
+ official:'Leaders focus on the key inputs for their business and deliver them with the right quality and in a timely fashion. Despite setbacks, they rise to the occasion and never settle.',
+ means:'You shipped, under constraint, and the outcome was measurable.',
+ signal:'Can you finish? Amazon has plenty of people with good ideas. This principle is about whether the thing actually landed.',
+ asked:[
+  'Tell me about a time you delivered under a tight deadline.',
+  'Describe a project where you had to overcome significant obstacles.',
+  'Tell me about a goal you achieved that seemed out of reach.',
+  'When did you have to push through despite setbacks?'
+ ],
+ probes:[
+  'What did you cut to make the date?',
+  'What was the setback and how did you get past it?',
+  'What did the result actually measure?',
+  'Did it hold up afterwards?'
+ ],
+ strong:'A named constraint (time, people, dependency), an explicit trade-off you chose, and a quantified outcome that survived contact with reality.',
+ weak:'A story where nothing went wrong. There was no obstacle, so there was nothing to demonstrate.',
+ pairs:'Bias for Action · Ownership · Insist on the Highest Standards',
+ yourAngle:'A release you got out despite a blocking dependency, or a migration you completed without downtime. Have the before/after numbers.'},
+
+{id:'customer-obsession', n:4, name:'Customer Obsession', freq:'high',
+ official:'Leaders start with the customer and work backwards. They work vigorously to earn and keep customer trust. Although leaders pay attention to competitors, they obsess over customers.',
+ means:'You changed a technical decision because of what it did to the person using the thing.',
+ signal:'Amazon\'s founding principle, asked in almost every loop. For backend engineers the trap is having no customer story at all because "I do not talk to customers."',
+ asked:[
+  'Tell me about a time you went above and beyond for a customer.',
+  'Describe a time you used customer feedback to drive a change.',
+  'Tell me about a time you had to balance customer needs against business or technical constraints.',
+  'When did you say no to a customer?'
+ ],
+ probes:[
+  'Who was the customer, specifically?',
+  'How did you know that was what they needed?',
+  'What did it cost you to do that?',
+  'How did you measure whether it helped?'
+ ],
+ strong:'Your "customer" can be an internal team, another service, or the on-call engineer downstream — say so explicitly and it counts. The strength is showing you traced a technical choice to a human consequence.',
+ weak:'"I do not have customer contact." Reframe it. Every backend engineer has consumers of their API, their data or their alerts.',
+ pairs:'Ownership · Insist on the Highest Standards · Earn Trust',
+ yourAngle:'You have a frontend consuming your backend pods. Their experience of your latency or your error responses IS the customer relationship.'},
+
+{id:'bias-for-action', n:5, name:'Bias for Action', freq:'high',
+ official:'Speed matters in business. Many decisions and actions are reversible and do not need extensive study. We value calculated risk taking.',
+ means:'You moved without full information, having correctly judged that the decision was reversible.',
+ signal:'Do you stall? Amazon distinguishes one-way doors (irreversible, deliberate) from two-way doors (reversible, act fast). Knowing the difference is the actual test.',
+ asked:[
+  'Tell me about a time you made a decision with incomplete information.',
+  'Describe a time you had to move fast on something.',
+  'Tell me about a calculated risk you took.',
+  'When did you act without waiting for approval?'
+ ],
+ probes:[
+  'What information were you missing?',
+  'What was the worst case if you were wrong?',
+  'How would you have reversed it?',
+  'Did it turn out to be the right call?'
+ ],
+ strong:'You explicitly reasoned about reversibility, and you had a rollback. Using the two-way-door framing unprompted lands very well because it is Amazon\'s own language.',
+ weak:'Recklessness dressed as speed — acting fast with no assessment of downside. And its opposite: a story where you gathered data for six weeks first.',
+ pairs:'Ownership · Deliver Results · Are Right, A Lot',
+ yourAngle:'A production hotfix you shipped behind a flag, or a config change you made during an incident with a rollback ready.'},
+
+{id:'earn-trust', n:6, name:'Earn Trust', freq:'high',
+ official:'Leaders listen attentively, speak candidly, and treat others respectfully. They are vocally self-critical, even when doing so is awkward. They benchmark themselves against the best.',
+ means:'You said the awkward true thing, or you admitted your own mistake before anyone caught it.',
+ signal:'"Vocally self-critical" is the operative phrase. They want someone who surfaces their own errors, not someone who is merely pleasant.',
+ asked:[
+  'Tell me about a time you made a mistake. What did you do?',
+  'Describe a time you had to give difficult feedback.',
+  'Tell me about a time you lost someone\'s trust and rebuilt it.',
+  'When have you been vocally self-critical?'
+ ],
+ probes:[
+  'Who did you tell, and how quickly?',
+  'What was the consequence?',
+  'How did they react?',
+  'What did you change afterwards?'
+ ],
+ strong:'You raised it yourself before it was discovered, you owned the consequence without hedging, and you changed a process rather than just promising to be careful.',
+ weak:'A mistake with no consequence, or one you were caught doing. Also weak: blaming the process rather than owning your part in it.',
+ pairs:'Ownership · Have Backbone · Insist on the Highest Standards',
+ yourAngle:'A production issue you caused. Everyone has one. The story is what you did in the first ten minutes and what you changed afterwards.'},
+
+{id:'backbone', n:7, name:'Have Backbone; Disagree and Commit', freq:'high',
+ official:'Leaders are obligated to respectfully challenge decisions when they disagree, even when doing so is uncomfortable or exhausting. Once a decision is determined, they commit wholly.',
+ means:'You pushed back on someone with more authority, with evidence — and then, if you lost, you executed the decision properly anyway.',
+ signal:'BOTH halves are scored, and most candidates only tell the first. Disagreeing is easy; committing wholeheartedly to a decision you argued against is the harder, rarer signal.',
+ asked:[
+  'Tell me about a time you disagreed with your manager.',
+  'Describe a time you challenged a decision you thought was wrong.',
+  'Tell me about a time you had to commit to a decision you disagreed with.',
+  'When did you stand alone on a position?'
+ ],
+ probes:[
+  'What exactly did you say?',
+  'What data did you bring?',
+  'What happened after the decision was made?',
+  'Did you turn out to be right?',
+  'How is your relationship with that person now?'
+ ],
+ strong:'Named disagreement, evidence rather than opinion, an explicit escalation path, and then — crucially — genuine commitment afterwards. "I still think I was right, and I made it work anyway" is a very strong ending.',
+ weak:'Only disagreeing (no commit half), or only committing (no backbone). Also weak: disagreeing with a peer. The signal is stronger when there was a power gradient.',
+ pairs:'Earn Trust · Are Right, A Lot · Dive Deep',
+ yourAngle:'This is one of the two questions that catches people. Prepare it specifically. A technical decision you argued against with data — architecture, tooling, a deadline.'},
+
+{id:'invent-simplify', n:8, name:'Invent and Simplify', freq:'med',
+ official:'Leaders expect and require innovation and invention from their teams and always find ways to simplify. They are externally aware, look for new ideas from everywhere, and are not limited by "not invented here."',
+ means:'You removed complexity, or you solved something in a way nobody on the team had considered.',
+ signal:'Simplification counts as much as invention, and is far more available to a mid-level engineer. Deleting things is a legitimate answer.',
+ asked:[
+  'Tell me about a time you simplified a complex process.',
+  'Describe something you invented or an unconventional solution you found.',
+  'Tell me about a time you improved an existing system significantly.',
+  'When did you challenge how something had always been done?'
+ ],
+ probes:[
+  'What made it complex in the first place?',
+  'What did you remove?',
+  'Why had nobody done this before?',
+  'What did the simplification cost you?'
+ ],
+ strong:'A measurable reduction — lines of code, steps in a process, services, deploy time, manual work eliminated. Simplification with a number is very strong and very underused.',
+ weak:'Describing normal feature work as invention. Also weak: a "simplification" that just moved complexity somewhere else, with no acknowledgement.',
+ pairs:'Deliver Results · Dive Deep · Frugality',
+ yourAngle:'Automating something manual, collapsing duplicated code, or replacing a hand-rolled component with something standard. Your custom event-driven components are also an invention story if you can say why you built rather than bought.'},
+
+{id:'highest-standards', n:9, name:'Insist on the Highest Standards', freq:'med',
+ official:'Leaders have relentlessly high standards — many people may think these standards are unreasonably high. Leaders continually raise the bar and drive their teams to deliver high-quality products, services and processes. They ensure defects do not get sent down the line.',
+ means:'You refused to ship something that met the requirement but not the bar, and you can say what the bar was.',
+ signal:'Do you have a bar at all, and can you articulate it? Also: do you hold OTHERS to it, which is the harder half.',
+ asked:[
+  'Tell me about a time you were not satisfied with the quality of something.',
+  'Describe a time you pushed back on shipping.',
+  'Tell me about how you have raised the bar for your team.',
+  'When did you refuse to accept "good enough"?'
+ ],
+ probes:[
+  'What specifically was not good enough?',
+  'What was the cost of holding the line?',
+  'Did anyone push back?',
+  'How do you decide when good enough IS good enough?'
+ ],
+ strong:'A specific, articulable standard, a real cost paid to hold it, and — importantly — evidence you know when NOT to. Perfectionism without judgement is a negative signal.',
+ weak:'"I am a perfectionist." Also weak: holding a standard nobody else agreed with and shipping late for no measurable benefit.',
+ pairs:'Earn Trust · Dive Deep · Deliver Results',
+ yourAngle:'A code review where you blocked a merge, a test suite you insisted on, or an incident postmortem where you pushed for the real fix over the quick one.'},
+
+{id:'learn-curious', n:10, name:'Learn and Be Curious', freq:'med',
+ official:'Leaders are never done learning and always seek to improve themselves. They are curious about new possibilities and act to explore them.',
+ means:'You learned something hard because you were curious, not because you were told to.',
+ signal:'Amazon changes stack and domain frequently. They want people who self-direct their learning rather than waiting for training.',
+ asked:[
+  'Tell me about something you learned recently outside your job.',
+  'Describe a time you had to get up to speed on something unfamiliar, fast.',
+  'Tell me about a time your curiosity led to a better outcome.',
+  'How do you stay current?'
+ ],
+ probes:[
+  'Why that, specifically?',
+  'How did you go about learning it?',
+  'What did you do with it?',
+  'What are you learning right now?'
+ ],
+ strong:'Self-directed, applied to something real, with an outcome. "I learned X and then used it to do Y" beats "I read about X."',
+ weak:'Listing courses or certifications with no application. Also weak: having no answer to "what are you learning right now?" — that question is nearly always asked.',
+ pairs:'Dive Deep · Invent and Simplify',
+ yourAngle:'Kafka and microservices, which you are learning without using at work, is a genuinely good answer — self-directed, and you will have a built artefact to point at.'},
+
+{id:'are-right', n:11, name:'Are Right, A Lot', freq:'med',
+ official:'Leaders are right a lot. They have strong judgement and good instincts. They seek diverse perspectives and work to disconfirm their beliefs.',
+ means:'You made a judgement call that turned out well — and you actively looked for evidence you were wrong before committing.',
+ signal:'"Work to disconfirm their beliefs" is the part being tested. They want someone who seeks the counter-argument, not someone who is merely confident.',
+ asked:[
+  'Tell me about a time you had to make a judgement call without data.',
+  'Describe a time you were wrong. How did you realise?',
+  'Tell me about a decision you made that others disagreed with.',
+  'How do you know when your instinct is wrong?'
+ ],
+ probes:[
+  'What made you confident?',
+  'Who did you ask, and what did they say?',
+  'What would have changed your mind?',
+  'Have you been wrong about something similar?'
+ ],
+ strong:'Showing the disconfirmation step explicitly: "I went to the person most likely to disagree with me and asked them to break it." That single sentence is what this principle is looking for.',
+ weak:'A story that is just "I was right." No process, no doubt, no seeking of other views — that reads as arrogance rather than judgement.',
+ pairs:'Dive Deep · Have Backbone · Bias for Action',
+ yourAngle:'A design decision where you deliberately sought the strongest objection before committing.'},
+
+{id:'frugality', n:12, name:'Frugality', freq:'low',
+ official:'Accomplish more with less. Constraints breed resourcefulness, self-sufficiency and invention. There are no extra points for growing headcount, budget size or fixed expense.',
+ means:'You achieved the outcome without the resources that seemed necessary.',
+ signal:'Resourcefulness under constraint. For engineers this is usually cost, or doing something with existing tools rather than new infrastructure.',
+ asked:[
+  'Tell me about a time you achieved something with limited resources.',
+  'Describe a time you reduced cost.',
+  'Tell me about a time you had to do more with less.'
+ ],
+ probes:[
+  'What resource were you short of?',
+  'What did you give up?',
+  'What did it save, quantified?'
+ ],
+ strong:'A real number — cloud spend, licence cost, engineer-hours saved by automation, capacity reclaimed. Right-sizing over-provisioned infrastructure is a very natural version of this.',
+ weak:'Cutting corners and calling it frugality. Frugality is about resourcefulness, not about lower quality.',
+ pairs:'Invent and Simplify · Deliver Results',
+ yourAngle:'Right-sizing Kubernetes resource requests, or removing an unnecessary dependency. Both have measurable cost impact.'},
+
+{id:'hire-develop', n:13, name:'Hire and Develop the Best', freq:'low',
+ official:'Leaders raise the performance bar with every hire and promotion. They recognise exceptional talent and willingly move them throughout the organisation. Leaders develop leaders and take seriously their role in coaching others.',
+ means:'You made someone else better, deliberately.',
+ signal:'Rarely a primary question at SDE2, but a mentoring story is often accepted where one is asked. Have one, do not build three.',
+ asked:[
+  'Tell me about a time you mentored someone.',
+  'Describe how you have helped a colleague grow.',
+  'Tell me about feedback you gave that changed someone\'s performance.'
+ ],
+ probes:[
+  'What specifically did you do?',
+  'How did you know they improved?',
+  'What did you learn from mentoring them?'
+ ],
+ strong:'A named change in the other person\'s capability, with evidence. "They went from needing review on every PR to reviewing mine" is concrete.',
+ weak:'"I answer questions when people ask." That is being helpful, not developing anyone.',
+ pairs:'Earn Trust · Insist on the Highest Standards',
+ yourAngle:'Onboarding a new joiner, or a code review habit you taught that stuck. One story is enough at this level.'},
+
+{id:'think-big', n:14, name:'Think Big', freq:'low',
+ official:'Thinking small is a self-fulfilling prophecy. Leaders create and communicate a bold direction that inspires results. They think differently and look around corners for ways to serve customers.',
+ means:'You proposed something significantly beyond the immediate scope, and made the case for it.',
+ signal:'Hard to demonstrate genuinely at SDE2 and interviewers know that. A scoped-up proposal that you actually got funded counts.',
+ asked:[
+  'Tell me about a time you proposed something ambitious.',
+  'Describe a time you looked beyond the immediate problem.',
+  'Where do you think your current system should be in two years?'
+ ],
+ probes:[
+  'Who did you have to convince?',
+  'What happened to the idea?',
+  'What would it have taken to do it properly?'
+ ],
+ strong:'An idea larger than your remit that you actually advanced — a proposal document, a prototype, a funded piece of work. Even "it was rejected, and here is what I learned about how to pitch" is usable.',
+ weak:'A vision with no action attached. Thinking big without doing anything is just talking.',
+ pairs:'Invent and Simplify · Ownership',
+ yourAngle:'Your monolith-to-microservices analysis is exactly this — a case for a direction bigger than any one ticket, with an honest cost assessment.'},
+
+{id:'best-employer', n:15, name:'Strive to be Earth\'s Best Employer', freq:'low',
+ official:'Leaders work every day to create a safer, more productive, higher performing, more diverse and more just work environment. They lead with empathy, have fun at work, and make it easy for others to have fun.',
+ means:'You improved the working environment for the people around you.',
+ signal:'Rarely asked below senior. If it comes up, a story about improving team process or supporting a struggling colleague works.',
+ asked:[
+  'Tell me about a time you improved your team\'s working environment.',
+  'Describe how you have supported a struggling teammate.'
+ ],
+ probes:['What changed as a result?','How did others respond?'],
+ strong:'A concrete process change with a human outcome — reducing on-call burden, fixing a painful deploy, making onboarding shorter.',
+ weak:'Generic statements about team culture with nothing you actually did.',
+ pairs:'Earn Trust · Hire and Develop the Best',
+ yourAngle:'If your on-call rota improved because of the alerting you fixed, that is this principle as well as Ownership.'},
+
+{id:'broad-responsibility', n:16, name:'Success and Scale Bring Broad Responsibility', freq:'low',
+ official:'We started in a garage, but we are not there any more. We are big, we impact the world, and we are far from perfect. We must be humble and thoughtful about even the secondary effects of our actions.',
+ means:'You considered the second-order consequences of a technical decision.',
+ signal:'Rarely asked below senior. Security, privacy, accessibility, environmental cost and data handling are the realistic angles for an engineer.',
+ asked:[
+  'Tell me about a time you considered the wider impact of a decision.',
+  'Describe a time you raised a concern about privacy, security or ethics.'
+ ],
+ probes:['Who else was affected?','What did you do about it?'],
+ strong:'A specific second-order effect you noticed and acted on — data retention, a security implication, a downstream team you would have broken.',
+ weak:'Abstract statements about responsibility with no decision attached.',
+ pairs:'Earn Trust · Are Right, A Lot',
+ yourAngle:'Data handling on the upstream Postgres data you work with, or a security concern you raised in review.'}
+
+];
+
+/* 15 slots. Prompts chosen so that filling them gives coverage across every
+   high and medium frequency principle, with two spare for whatever your
+   actual career hands you. */
+PLAN.lp.slots = [
+ ['A problem nobody owned that you fixed anyway','Ownership · Bias for Action','The clearest Ownership story. Cross a boundary, stay for the follow-through.'],
+ ['The hardest thing you have ever debugged','Dive Deep · Ownership','Must survive three levels of "how did you know?". Choose one you can still explain.'],
+ ['A mistake you made that had real consequences','Earn Trust · Ownership','Raised by you, not discovered. What process changed afterwards.'],
+ ['A time you disagreed with your manager or a senior engineer','Have Backbone · Earn Trust','BOTH halves: the disagreement AND the commitment afterwards.'],
+ ['Your biggest professional failure','Earn Trust · Learn and Be Curious','The other question that catches people. Real cost, real change.'],
+ ['Delivering under a hard deadline or a blocking dependency','Deliver Results · Bias for Action','Name what you cut. There must be a trade-off.'],
+ ['A decision made with incomplete information','Bias for Action · Are Right, A Lot','Use the two-way-door framing. Say what your rollback was.'],
+ ['Something you simplified or automated away','Invent and Simplify · Frugality','Quantify the reduction — steps, code, time, cost.'],
+ ['A time you refused to ship something','Insist on the Highest Standards','What the bar was, and what holding it cost.'],
+ ['Improving something for the team or a downstream consumer','Customer Obsession · Best Employer','Your "customer" can be internal. Say who, specifically.'],
+ ['Something hard you taught yourself and then used','Learn and Be Curious','Self-directed, applied, with an outcome.'],
+ ['A time you were wrong and changed your mind','Are Right, A Lot · Earn Trust','The disconfirmation step is the whole point.'],
+ ['Mentoring or levelling someone up','Hire and Develop the Best','One is enough at SDE2. Needs evidence they actually improved.'],
+ ['A proposal bigger than your remit','Think Big · Invent and Simplify','Even if rejected — what you learned about making the case.'],
+ ['Spare — whatever your best story is that these prompts missed','—','Every career has one that does not fit a template. Keep the slot.']
+];
+
+PLAN.lp.plan = [
+ ['Weeks 2–4','Write stories 1–5','Draft only. Get them on paper with real numbers dug out of Jira, Grafana, git history — whatever you still have access to. Do this while you are still employed.'],
+ ['Weeks 5–8','Write stories 6–11','By now you know the format. Faster.'],
+ ['Weeks 9–11','Write stories 12–15, build the coverage matrix','Check every high-frequency principle has at least two stories.'],
+ ['Week 12','Rehearse all 15 out loud, recorded','Two minutes each. Count how many times you say "we". Rewrite the ones over 2:30.'],
+ ['Week 13','Probe drill','Have someone ask you the follow-ups cold. If you cannot answer six probes on a story, it is not ready.'],
+ ['Ongoing','Two per Sunday','This is the schedule that actually gets it done. Fifteen stories in one weekend does not work.']
+];
+
+PLAN.lp.mining = [
+ ['Your incident history','On-call pages, postmortems, the thing that woke you at 3am. Richest single source: Ownership, Dive Deep, Earn Trust.'],
+ ['Your git history','Search your own commits for the big refactors and the reverts. The reverts are failure stories.'],
+ ['Jira / tickets','Look for the ones that took far longer than estimated. There is always a story in why.'],
+ ['Grafana and dashboards','This is where your NUMBERS are. Before/after latency, error rate, restart counts, throughput. Screenshot them now.'],
+ ['Code review comments','Times you pushed back, times you were pushed back on. Have Backbone and Highest Standards live here.'],
+ ['Your production system','Frontend and backend pods on Kubernetes, Postgres upstream, custom event-driven components, a monolith. Every one of those is a decision someone made, and you have opinions about all of them.'],
+ ['WARNING','Do this while you still have access. If a layoff comes in December you lose Grafana, Jira and the git history on the same day. Export what you need NOW.']
+];
 
 /* ================================================================= TECH ===
    The gradient INVERTS here: the deepest tech questioning is at the BOTTOM of

@@ -78,6 +78,7 @@ No single curve peaks in January. That is why the tech track is front-loaded int
 | Pattern rows (individually drillable) | 176 |
 | DSA questions — block B / block C | 283 / 218 |
 | System design sessions | 22 |
+| Amazon LP — principles, probes, anti-patterns, story bank | 238 rows |
 | Design patterns (intent, UML, runnable code, gotchas) | 13 |
 | LLD problems (entities, code, concurrency, extensions, cross-Q) | 13 |
 | LLD full worked solutions (statement, approach, UML, API, schema, code) | 4 of 13 |
@@ -102,6 +103,7 @@ Weighting is deliberately uneven: Graphs, Trees and DP carry 150 of the 501 DSA 
 - **System design** — the 6-step framework, requirement→block triggers, the six cross-question categories, 22 sessions
 - **LLD** — a 13-pattern catalogue with class diagrams and runnable code; 13 problems each with entities, the concurrency races, "now add X" follow-ups and cross-questions; and an expandable **Full solution** per problem carrying the statement, requirements, approach, ASCII class diagram, public API, schema and complete code
 - **Tech** — 13 modules with runnable code patterns; every Q&A row is question → answer spine → **the follow-up they will actually ask**
+- **Amazon LP** — roughly half of Amazon's signal, treated as a workstream: how it is scored across the loop, STAR with Amazon's proportions, all 16 principles with the questions and the probes that follow, 10 anti-patterns, one fully annotated worked story, and a **15-slot story bank you fill in and rehearse**
 - **Revision** — the spaced-repetition queue
 - **Ladder** — recorded mocks, then readiness per company grouped by rung
 - **Reference** — templates, every trigger table in one searchable index, blind hard pool
