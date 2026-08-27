@@ -32,7 +32,7 @@ That is **a ladder, not a target**. Three consequences, all of which the old pla
 | Fix | What it means |
 |---|---|
 | **Resequence by ladder rung, not by topic** | Tech + SD terms + easy-medium DSA front-load into Phase 1. Tarjan, rerooting, binary lifting and the DP hard tier move to Phase 3, where the Google loop actually is. |
-| **Add a fifth section: Tech** | Ten modules, ~110 hours, built around Java / Spring Boot / Postgres / Docker / Kubernetes — plus Kafka and microservices, which you do not use and must learn cold. |
+| **Add a fifth section: Tech** | Thirteen modules, ~115 hours, built around Java / Spring Boot / JPA / Postgres / Docker / Kubernetes — including **Spring event-driven and async**, which is what you build daily — plus Kafka and microservices, which you do not use and must learn cold. |
 | **Extend to 154 days** | 3 months to a tier-1/tier-2 offer, then 2 months of notice period aimed at Google and Uber. Matches your real constraint instead of pretending it is 13 weeks. |
 
 ### 0.3 The good news nobody expects
@@ -303,9 +303,9 @@ This splits the tech track into two halves that need completely different treatm
 
 **The thing to internalise:** running a monolith on Kubernetes with custom event-driven components is not a weakness to hide. It is a *better* story than "we use microservices" if you can articulate the trade-off. Most candidates parrot microservices without ever having felt the pain. You can say: *"we're monolithic, here's what actually hurts, here's the seam I'd split first, and here's why we haven't."* That answer beats an architecture diagram at every rung of this ladder.
 
-### 6.2 The ten modules
+### 6.2 The thirteen modules
 
-~110 hours, one hour every weekday. Front-loaded: modules 1–5, 7 and 9 land in Phase 1 because they are the JPM offer.
+~115 hours, one hour every weekday. Front-loaded: modules 1–8 and 12 land in Phase 1 because they are the JPM offer. Each module carries interview openers, **code patterns you must be able to type from memory**, question→spine→follow-up rows, and the traps that bite. The full detail lives in `recognition-sheet.md` Part IV, generated from `data.js` by `gen-sheet.js`.
 
 | # | Module | Phase | Hrs | Core content | The five you must answer cold |
 |---|---|---|---|---|---|

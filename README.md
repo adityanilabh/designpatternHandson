@@ -79,7 +79,9 @@ No single curve peaks in January. That is why the tech track is front-loaded int
 | DSA questions — block B / block C | 283 / 218 |
 | System design sessions | 22 |
 | LLD / machine-coding items | 35 (incl. 9 Amazon LP) |
-| Tech Q&A — *question → spine → **follow-up*** | 122 |
+| Tech modules | 13 |
+| Tech code patterns | 34 |
+| Tech Q&A — *question → spine → **follow-up*** | 197 |
 | Recorded mocks | 16 |
 | Templates | 29 |
 | Companies with readiness weights | 10 |
@@ -95,7 +97,7 @@ Weighting is deliberately uneven: Graphs, Trees and DP carry 150 of the 501 DSA 
 - **DSA** — 17 sections, blocks A/B/C, searchable across patterns and problems
 - **System design** — the 6-step framework, requirement→block triggers, the six cross-question categories, 22 sessions
 - **LLD** — the three round flavours, requirement→pattern, SOLID as refactors, machine-coding rules
-- **Tech** — 10 modules; every row is question → answer spine → **the follow-up they will actually ask**
+- **Tech** — 13 modules with runnable code patterns; every Q&A row is question → answer spine → **the follow-up they will actually ask**
 - **Revision** — the spaced-repetition queue
 - **Ladder** — recorded mocks, then readiness per company grouped by rung
 - **Reference** — templates, every trigger table in one searchable index, blind hard pool

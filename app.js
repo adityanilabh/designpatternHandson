@@ -85,7 +85,7 @@ function blankState() {
     patterns: {},   /* pt-key -> 'unknown'|'learning'|'fast' */
     templates: {},  /* index -> {status} */
     notes: {},      /* free text keyed by section / module / session id */
-    ui: { open: {}, refQuery: '', dsaQuery: '', techQuery: '', tab: 'dashboard', theme: 'dark' }
+    ui: { open: {}, sel: {}, navQuery: '', refQuery: '', tab: 'dashboard', theme: 'dark' }
   };
 }
 function loadState() {
@@ -341,6 +341,133 @@ function stat(v, l, cls) {
     '</span><span class="stat-l">' + l + '</span></div>';
 }
 
+/* Sidebar model. Every entry: {g: groupLabel, items:[{id, n, label, sub}]}
+   Tabs not listed here render full-width with no sidebar. */
+function navModel(tab) {
+  var g1, g2, out;
+
+  if (tab === 'dsa') {
+    g1 = []; g2 = [];
+    PLAN.sections.forEach(function (s) {
+      (s.phase === 1 ? g1 : g2).push({ id: s.id, n: '§' + s.n, label: s.name, sub: s.sub });
+    });
+    return [{ g: 'Phase 1 · foundations', items: g1 }, { g: 'Phase 2 · depth', items: g2 }];
+  }
+
+  if (tab === 'sd') {
+    g1 = []; g2 = [];
+    PLAN.sd.forEach(function (s) {
+      (s.tier === 'b' ? g1 : g2).push({ id: String(s.n), n: 'SD ' + s.n, label: s.t, sub: 'week ' + s.wk });
+    });
+    return [{ g: 'Block B · tier 1–2', items: g1 }, { g: 'Block C · top tier', items: g2 }];
+  }
+
+  if (tab === 'tech') {
+    g1 = []; g2 = [];
+    PLAN.tech.forEach(function (m) {
+      (m.phase === 1 ? g1 : g2).push({ id: m.id, n: String(m.n), label: m.name, sub: m.hrs + ' hours' });
+    });
+    return [{ g: 'Phase 1 · the JPM offer', items: g1 }, { g: 'Phase 2', items: g2 }];
+  }
+
+  if (tab === 'lld') {
+    return [
+      { g: 'Reference', items: [
+        { id: 'flavours', n: '', label: 'The three flavours', sub: 'OOD · machine coding · hybrid' },
+        { id: 'patterns', n: '', label: 'Requirement → pattern', sub: '12 rows' },
+        { id: 'solid', n: '', label: 'SOLID as refactors', sub: 'violation and fix' },
+        { id: 'rules', n: '', label: 'Machine-coding rules', sub: 'how to finish' }
+      ]},
+      { g: 'Problems', items: [
+        { id: 'b', n: '', label: 'Block B · tier 1–2', sub: PLAN.lld.b.length + ' items' },
+        { id: 'c', n: '', label: 'Block C · top tier', sub: PLAN.lld.c.length + ' items' }
+      ]}
+    ];
+  }
+
+  if (tab === 'reference') {
+    return [{ g: 'Reference', items: [
+      { id: 'templates', n: '', label: 'Template library', sub: PLAN.templates.length + ' templates' },
+      { id: 'triggers', n: '', label: 'All triggers', sub: 'one searchable index' },
+      { id: 'pool', n: '', label: 'Blind hard pool', sub: PLAN.hardPool.length + ' problems' }
+    ]}];
+  }
+
+  if (tab === 'strategy') {
+    out = PLAN.strategy.map(function (s, i) { return { id: String(i), n: '', label: s.t, sub: '' }; });
+    return [{ g: 'Strategy', items: out }];
+  }
+
+  return null;
+}
+
+function navFlat(tab) {
+  var m = navModel(tab), out = [];
+  if (!m) return out;
+  m.forEach(function (grp) { grp.items.forEach(function (it) { out.push(it); }); });
+  return out;
+}
+
+function selected(tab) {
+  if (!state.ui.sel) state.ui.sel = {};
+  var flat = navFlat(tab);
+  if (!flat.length) return null;
+  var cur = state.ui.sel[tab];
+  for (var i = 0; i < flat.length; i++) if (flat[i].id === cur) return cur;
+  return flat[0].id;
+}
+
+function renderSidenav(tab) {
+  var el = $('#sidenav');
+  var model = navModel(tab);
+  if (!model) { el.hidden = true; document.body.classList.remove('has-nav'); return; }
+  el.hidden = false;
+  document.body.classList.add('has-nav');
+
+  var q = (state.ui.navQuery || '').toLowerCase();
+  var sel = selected(tab);
+  var h = '<input class="nav-search" id="nav-search" placeholder="Filter…" value="' + esc(state.ui.navQuery || '') + '">';
+  var shown = 0;
+
+  model.forEach(function (grp) {
+    var items = grp.items.filter(function (it) {
+      return !q || (it.n + ' ' + it.label + ' ' + (it.sub || '')).toLowerCase().indexOf(q) >= 0;
+    });
+    if (!items.length) return;
+    shown += items.length;
+    h += '<div class="nav-group">' + esc(grp.g) + '</div>';
+    items.forEach(function (it) {
+      h += '<button class="nav-item' + (it.id === sel ? ' on' : '') + '" data-nav="' + esc(it.id) + '">' +
+        (it.n ? '<span class="nav-n">' + esc(it.n) + '</span>' : '') +
+        '<span class="nav-lbl">' + esc(it.label) +
+        (it.sub ? '<span>' + esc(it.sub) + '</span>' : '') + '</span></button>';
+    });
+  });
+  if (!shown) h += '<p class="dim" style="padding:14px 16px">No match.</p>';
+
+  el.innerHTML = h;
+  var si = $('#nav-search');
+  if (si) si.oninput = function () {
+    state.ui.navQuery = si.value; var pos = si.selectionStart;
+    renderSidenav(tab); var ns = $('#nav-search'); ns.focus(); ns.setSelectionRange(pos, pos);
+  };
+}
+
+/* prev / next footer inside the reading pane */
+function pagerFor(tab) {
+  var flat = navFlat(tab); if (!flat.length) return '';
+  var sel = selected(tab), i = 0;
+  flat.forEach(function (x, ix) { if (x.id === sel) i = ix; });
+  var prev = flat[i - 1], next = flat[i + 1];
+  var h = '<div class="pager">';
+  h += prev ? '<button class="btn" data-nav="' + esc(prev.id) + '">‹ ' + esc(prev.label) + '</button>'
+            : '<span></span>';
+  h += '<span class="pager-mid dim">' + (i + 1) + ' of ' + flat.length + '</span>';
+  h += next ? '<button class="btn" data-nav="' + esc(next.id) + '">' + esc(next.label) + ' ›</button>'
+            : '<span></span>';
+  return h + '</div>';
+}
+
 /* ---------------------------------------------------------- dashboard --- */
 function renderDashboard() {
   var s = stats(), due = dueReviews();
@@ -441,73 +568,57 @@ function questionRow(key, q) {
 }
 
 function renderDsa() {
-  var q = (state.ui.dsaQuery || '').toLowerCase();
-  var h = '<div class="card"><div class="card-head"><h2>DSA — 17 sections</h2><span class="spacer"></span>' +
-    '<button class="btn sm" id="dsa-expand">Expand all</button> ' +
-    '<button class="btn sm" id="dsa-collapse">Collapse all</button></div>' +
-    '<p class="dim">Every section has three blocks. <b>A · Patterns</b> is the machinery — each row is ' +
-    '<i>disguise → move</i>, and the disguise column is the whole point. <b>B · Tier 1–2</b> is ' +
-    'JPM / Amex / Expedia / Amazon / Microsoft / Adobe. <b>C · Google / Uber</b> is Phase 3.</p>' +
-    '<p class="dim" style="margin-top:8px"><b>The rule:</b> drill block A before touching the questions, and never solve one ' +
-    'without first naming which row of block A it is. If you cannot name the row, you are pattern-matching on the problem ' +
-    'statement rather than on the machinery.</p>' +
-    '<input class="search" id="dsa-search" placeholder="Filter sections, patterns and problems — try &quot;bitmask&quot;, &quot;regret&quot;, &quot;median&quot;…" value="' +
-    esc(state.ui.dsaQuery || '') + '"></div>';
+  var id = selected('dsa');
+  var s = null;
+  PLAN.sections.forEach(function (x) { if (x.id === id) s = x; });
+  if (!s) s = PLAN.sections[0];
 
-  PLAN.sections.forEach(function (s) {
-    var hay = (s.name + ' ' + s.sub + ' ' + s.cx + ' ' +
-      s.p.map(function (r) { return r.join(' '); }).join(' ') + ' ' +
-      s.b.concat(s.c).map(function (r) { return r.join(' '); }).join(' ')).toLowerCase();
-    if (q && hay.indexOf(q) < 0) return;
+  var bd = s.b.filter(function (_, i) { var p = state.problems['ds-' + s.id + '-b-' + i]; return p && p.done; }).length;
+  var cd = s.c.filter(function (_, i) { var p = state.problems['ds-' + s.id + '-c-' + i]; return p && p.done; }).length;
+  var pd = s.p.filter(function (_, i) { return state.patterns['pt-' + s.id + '-' + i] === 'fast'; }).length;
 
-    var open = !!state.ui.open['sec-' + s.id];
-    var bd = s.b.filter(function (_, i) { var p = state.problems['ds-' + s.id + '-b-' + i]; return p && p.done; }).length;
-    var cd = s.c.filter(function (_, i) { var p = state.problems['ds-' + s.id + '-c-' + i]; return p && p.done; }).length;
-    var pd = s.p.filter(function (_, i) { return state.patterns['pt-' + s.id + '-' + i] === 'fast'; }).length;
+  var h = '<div class="pane-head">' +
+    '<div class="eyebrow">DSA &middot; section ' + s.n + ' of ' + PLAN.sections.length +
+    ' &middot; <span class="chip ph' + s.phase + '">phase ' + s.phase + '</span></div>' +
+    '<h1>' + esc(s.name) + '</h1>' +
+    (s.sub ? '<p class="pane-sub">' + esc(s.sub) + '</p>' : '') +
+    '<div class="pane-stats">' +
+    '<span><b>' + pd + '</b>/' + s.p.length + ' patterns cold</span>' +
+    '<span><b>' + bd + '</b>/' + s.b.length + ' block B solved</span>' +
+    '<span><b>' + cd + '</b>/' + s.c.length + ' block C solved</span>' +
+    '</div></div>';
 
-    h += '<div class="sec' + (open ? ' open' : '') + '">' +
-      '<button class="sec-head" data-sec="' + s.id + '">' +
-      '<span class="chev">▶</span><span class="sec-n">§' + s.n + '</span>' +
-      '<span class="sec-title"><b>' + esc(s.name) + '</b><span>' + esc(s.sub || '') + '</span></span>' +
-      '<span class="chip ph' + s.phase + '">phase ' + s.phase + '</span>' +
-      '<span class="sec-prog">A ' + pd + '/' + s.p.length + ' · B ' + bd + '/' + s.b.length +
-      ' · C ' + cd + '/' + s.c.length + '</span></button><div class="sec-body">';
-
-    h += '<div class="block-lbl">A · Patterns — drill the disguise column</div>' +
-      '<div class="tbl-wrap"><table class="pat"><thead><tr><th>Pattern</th>' +
-      '<th>The disguise — what you actually hear</th><th>The move</th><th>Cost</th><th>Cold?</th></tr></thead><tbody>';
-    s.p.forEach(function (r, i) {
-      var pk = 'pt-' + s.id + '-' + i, st = state.patterns[pk] || '';
-      h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td>' +
-        '<td>' + esc(r[2]) + '</td><td class="canon">' + esc(r[3] || '') + '</td><td class="pat-act">' +
-        '<button class="btn xs bad ' + (st === 'unknown' ? 'on' : '') + '" data-pat="' + pk + ':unknown">?</button>' +
-        '<button class="btn xs warn ' + (st === 'learning' ? 'on' : '') + '" data-pat="' + pk + ':learning">~</button>' +
-        '<button class="btn xs ok ' + (st === 'fast' ? 'on' : '') + '" data-pat="' + pk + ':fast">✓</button>' +
-        '</td></tr>';
-    });
-    h += '</tbody></table></div>';
-
-    h += '<div class="block-lbl">B · Tier 1–2 — JPM · Amex · Expedia · Amazon · Microsoft · Adobe <span class="dim">(' + s.b.length + ')</span></div>';
-    s.b.forEach(function (r, i) { h += questionRow('ds-' + s.id + '-b-' + i, r); });
-
-    h += '<div class="block-lbl">C · Google / Uber L4 <span class="dim">(' + s.c.length + ')</span></div>';
-    if (s.cx) h += '<div class="learn"><b>Extra machinery.</b> ' + esc(s.cx) + '</div>';
-    s.c.forEach(function (r, i) { h += questionRow('ds-' + s.id + '-c-' + i, r); });
-
-    h += '<div class="field" style="margin-top:14px"><label>Notes — add YOUR disguises here</label>' +
-      '<textarea data-note="sec-' + s.id + '" placeholder="The phrase that should have tipped you off. One line per miss.">' +
-      esc(state.notes['sec-' + s.id] || '') + '</textarea></div></div></div>';
+  h += '<h2 class="pane-h2">A &middot; Patterns</h2>' +
+    '<p class="pane-p">The machinery. Each row is <b>disguise &rarr; move</b>, and the disguise column is what the ' +
+    'interviewer actually says. Cover the right side, read a disguise, say the move. Under five seconds or it is not learned.</p>' +
+    '<div class="tbl-wrap"><table class="pat"><thead><tr><th>Pattern</th>' +
+    '<th>The disguise — what you actually hear</th><th>The move</th><th>Cost</th><th>Cold?</th></tr></thead><tbody>';
+  s.p.forEach(function (r, i) {
+    var pk = 'pt-' + s.id + '-' + i, st = state.patterns[pk] || '';
+    h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td>' +
+      '<td>' + esc(r[2]) + '</td><td class="canon">' + esc(r[3] || '') + '</td><td class="pat-act">' +
+      '<button class="btn xs bad ' + (st === 'unknown' ? 'on' : '') + '" data-pat="' + pk + ':unknown">?</button>' +
+      '<button class="btn xs warn ' + (st === 'learning' ? 'on' : '') + '" data-pat="' + pk + ':learning">~</button>' +
+      '<button class="btn xs ok ' + (st === 'fast' ? 'on' : '') + '" data-pat="' + pk + ':fast">✓</button>' +
+      '</td></tr>';
   });
+  h += '</tbody></table></div>';
 
+  h += '<h2 class="pane-h2">B &middot; Tier 1–2 <span class="h2-count">' + s.b.length + '</span></h2>' +
+    '<p class="pane-p">JPM &middot; Amex &middot; Expedia &middot; Amazon &middot; Microsoft &middot; Adobe. ' +
+    'Never solve one without first naming which row of block A it is.</p>';
+  s.b.forEach(function (r, i) { h += questionRow('ds-' + s.id + '-b-' + i, r); });
+
+  h += '<h2 class="pane-h2">C &middot; Google / Uber L4 <span class="h2-count">' + s.c.length + '</span></h2>';
+  if (s.cx) h += '<div class="learn"><b>Extra machinery.</b> ' + esc(s.cx) + '</div>';
+  s.c.forEach(function (r, i) { h += questionRow('ds-' + s.id + '-c-' + i, r); });
+
+  h += '<div class="field pane-notes"><label>Notes — add YOUR disguises here</label>' +
+    '<textarea data-note="sec-' + s.id + '" placeholder="The phrase that should have tipped you off. One line per miss.">' +
+    esc(state.notes['sec-' + s.id] || '') + '</textarea></div>';
+
+  h += pagerFor('dsa');
   $('#view-dsa').innerHTML = h;
-  var si = $('#dsa-search');
-  if (si) si.oninput = function () {
-    state.ui.dsaQuery = si.value; var pos = si.selectionStart;
-    renderDsa(); var ns = $('#dsa-search'); ns.focus(); ns.setSelectionRange(pos, pos);
-  };
-  var ex = $('#dsa-expand'), co = $('#dsa-collapse');
-  if (ex) ex.onclick = function () { PLAN.sections.forEach(function (s) { state.ui.open['sec-' + s.id] = true; }); save(); renderDsa(); };
-  if (co) co.onclick = function () { PLAN.sections.forEach(function (s) { delete state.ui.open['sec-' + s.id]; }); save(); renderDsa(); };
 }
 
 /* ----------------------------------------------------- system design --- */
@@ -522,93 +633,124 @@ function triTable(rows, heads) {
   return h + '</tbody></table></div>';
 }
 
+function bulletList(items, cls) {
+  if (!items || !items.length) return '';
+  var h = '<ul class="sd-list ' + (cls || '') + '">';
+  items.forEach(function (x) { h += '<li>' + esc(x) + '</li>'; });
+  return h + '</ul>';
+}
+
 function renderSd() {
-  var h = '<div class="card"><div class="card-head"><h2>System design</h2><span class="spacer"></span>' +
-    '<span class="dim">22 Saturdays</span></div>' +
-    '<p class="dim"><b>The gradient does not run to Google.</b> Google L4 has little or no system design. The heavy SD ' +
-    'rounds are JP Morgan, Amex, Expedia, Amazon and Uber — so the tier 1–2 block is the big one here, and the ' +
-    'top tier means Uber / Apple / Amazon-senior depth.</p>' +
-    '<p class="dim" style="margin-top:8px">Each session is four blocks: <b>terms (45m) → the design (90m, timed, ' +
-    'recorded) → case study (45m) → cross-questions (60m, written)</b>. The cross-question block is the one most ' +
-    'people skip and the one that decides the round.</p></div>';
+  var id = selected('sd');
+  var s = null;
+  PLAN.sd.forEach(function (x) { if (String(x.n) === id) s = x; });
+  if (!s) s = PLAN.sd[0];
 
-  h += '<div class="card"><div class="card-head"><h2>The framework — use it every single time</h2></div>' +
-    '<div class="tbl-wrap"><table><thead><tr><th>Step</th><th>Min</th><th>What you actually do</th></tr></thead><tbody>';
-  PLAN.sdFramework.forEach(function (r) {
-    h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="canon">' + esc(r[1]) + '</td>' +
-      '<td class="trig">' + esc(r[2]) + '</td></tr>';
-  });
-  h += '</tbody></table></div><div class="exit"><b>Numbers to have memorised.</b> ' + esc(PLAN.sdNumbers) + '</div></div>';
+  var key = 'sd-' + s.n, p = state.problems[key] || {};
 
-  h += '<div class="card"><div class="card-head"><h2>Requirement → building block</h2><span class="spacer"></span>' +
-    '<span class="dim">the SD equivalent of a pattern table — drill it</span></div>' +
-    triTable(PLAN.sdTriggers, ['You hear', 'Reach for', 'The cross-question that follows']) + '</div>';
+  var h = '<div class="pane-head">' +
+    '<div class="eyebrow">System design &middot; session ' + s.n + ' of ' + PLAN.sd.length +
+    ' &middot; week ' + s.wk + ' &middot; <span class="chip tier' + (s.tier === 'b' ? '1' : '3') + '">' +
+    (s.tier === 'b' ? 'tier 1–2' : 'top tier') + '</span></div>' +
+    '<h1>' + esc(s.t) + '</h1>' +
+    (s.anchor ? '<p class="pane-sub">Case-study anchor: ' + esc(s.anchor) + '</p>' : '') +
+    '<div class="pane-actions">' +
+    '<button class="btn ' + (p.done ? 'ok on' : 'primary') + '" data-check="' + key + '">' +
+    (p.done ? '✓ Done' : 'Mark done') + '</button>' +
+    '<button class="btn" data-open="' + key + '">Log / status</button>' +
+    '<span class="dot ' + esc(p.status || '') + '"></span></div></div>';
 
-  h += '<div class="card"><div class="card-head"><h2>The six cross-question categories</h2><span class="spacer"></span>' +
-    '<span class="dim">answer all six, in writing, for every design</span></div>' +
-    triTable(PLAN.sdCross, ['Category', 'Shape', 'Examples']) + '</div>';
+  if (s.who) h += '<div class="sd-who"><i>Who asks it</i>' + esc(s.who) + '</div>';
 
-  [['b', 'Block B · tier 1–2 sessions'],
-   ['c', 'Block C · top tier — Uber / Apple / Amazon']].forEach(function (pair) {
-    var list = PLAN.sd.filter(function (s) { return s.tier === pair[0]; });
-    h += '<div class="card"><div class="card-head"><h2>' + pair[1] + '</h2><span class="spacer"></span>' +
-      '<span class="dim">' + list.length + ' sessions</span></div>';
-    list.forEach(function (s) {
-      var key = 'sd-' + s.n, p = state.problems[key] || {};
-      var open = !!state.ui.open[key];
-      h += '<div class="sec' + (open ? ' open' : '') + '"><div class="sec-head-row">' +
-        '<button class="cb" data-check="' + key + '">' + (p.done ? '✓' : '') + '</button>' +
-        '<button class="sec-head flat" data-secopen="' + key + '">' +
-        '<span class="chev">▶</span><span class="sec-n">SD ' + s.n + '</span>' +
-        '<span class="sec-title"><b>' + esc(s.t) + '</b><span>week ' + s.wk +
-        (s.anchor ? ' · ' + esc(s.anchor) : '') + '</span></span>' +
-        '<span class="dot ' + esc(p.status || '') + '"></span></button>' +
-        '<button class="btn xs" data-open="' + key + '">log</button></div>' +
-        '<div class="sec-body">' +
-        (s.terms ? '<div class="learn"><b>Terms you must own.</b> ' + esc(s.terms) + '</div>' : '') +
-        '<div class="exit"><b>The design.</b> ' + esc(s.design) + '</div>' +
-        '<div class="field" style="margin-top:12px"><label>Your one-page design + cross-question answers</label>' +
-        '<textarea data-note="' + key + '" placeholder="A weekend that produced nothing you can re-read did not happen.">' +
-        esc(state.notes[key] || '') + '</textarea></div></div></div>';
+  h += '<h2 class="pane-h2">Asked as</h2>' + bulletList(s.asked, 'asked');
+
+  if (s.clarify && s.clarify.length) {
+    h += '<h2 class="pane-h2">Clarify in the first three minutes</h2>' + bulletList(s.clarify);
+  }
+  if (s.scale) {
+    h += '<h2 class="pane-h2">Back of the envelope</h2><div class="learn">' + esc(s.scale) + '</div>';
+  }
+  if (s.terms && s.terms.length) {
+    h += '<h2 class="pane-h2">Terms you must own <span class="h2-count">' + s.terms.length + '</span></h2>' +
+      '<div class="tbl-wrap"><table><thead><tr><th>Term</th><th>In one sentence</th></tr></thead><tbody>';
+    s.terms.forEach(function (r) {
+      h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td></tr>';
     });
-    h += '</div>';
-  });
+    h += '</tbody></table></div>';
+  }
+  if (s.decisions && s.decisions.length) {
+    h += '<h2 class="pane-h2">Decision points</h2>' +
+      '<div class="tbl-wrap"><table><thead><tr><th>Decision</th><th>Options</th><th>Verdict, and why</th></tr></thead><tbody>';
+    s.decisions.forEach(function (r) {
+      h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="canon">' + esc(r[1] || '—') + '</td>' +
+        '<td class="trig">' + esc(r[2]) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  if (s.cross && s.cross.length) {
+    h += '<h2 class="pane-h2">Cross-questions <span class="h2-count">' + s.cross.length + '</span></h2>' +
+      '<p class="pane-p">Cover the answer and say it out loud. This is the block that decides the round.</p>';
+    s.cross.forEach(function (r) {
+      h += '<div class="qa static"><div class="qa-body">' +
+        '<b class="qa-q">' + esc(r[0]) + '</b>' +
+        '<span class="qa-f">' + esc(r[1]) + '</span></div></div>';
+    });
+  }
+  if (s.fail && s.fail.length) {
+    h += '<h2 class="pane-h2">What sinks candidates here</h2>' + bulletList(s.fail, 'fail');
+  }
 
+  h += '<div class="field pane-notes"><label>Your one-page design + cross-question answers</label>' +
+    '<textarea data-note="' + key + '" placeholder="A weekend that produced nothing you can re-read did not happen.">' +
+    esc(state.notes[key] || '') + '</textarea></div>';
+
+  h += pagerFor('sd');
   $('#view-sd').innerHTML = h;
 }
 
 /* --------------------------------------------------------------- LLD --- */
 function renderLld() {
-  var h = '<div class="card"><div class="card-head"><h2>LLD / OOD / machine coding</h2></div>' +
-    '<p class="dim"><b>Three different rounds wear this name</b>, and confusing them is how people lose the round.</p>' +
-    '<div class="tbl-wrap"><table><thead><tr><th>Flavour</th><th>Who</th><th>Format</th><th>What scores</th></tr></thead><tbody>';
-  PLAN.lldFlavours.forEach(function (r) {
-    h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="canon">' + esc(r[1]) + '</td>' +
-      '<td class="trig">' + esc(r[2]) + '</td><td>' + esc(r[3]) + '</td></tr>';
-  });
-  h += '</tbody></table></div></div>';
+  var id = selected('lld'), h = '';
 
-  h += '<div class="card"><div class="card-head"><h2>Requirement → pattern</h2><span class="spacer"></span>' +
-    '<span class="dim">about eight of the 23 GoF patterns appear. Learn these and stop.</span></div>' +
-    triTable(PLAN.lldPatterns, ['You hear', 'Reach for', 'Where it shows up']) + '</div>';
+  if (id === 'flavours') {
+    h += '<div class="pane-head"><div class="eyebrow">LLD</div><h1>The three flavours</h1>' +
+      '<p class="pane-sub">Three different rounds wear this name, and confusing them is how people lose the round.</p></div>' +
+      '<div class="tbl-wrap"><table><thead><tr><th>Flavour</th><th>Who</th><th>Format</th><th>What scores</th></tr></thead><tbody>';
+    PLAN.lldFlavours.forEach(function (r) {
+      h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="canon">' + esc(r[1]) + '</td>' +
+        '<td class="trig">' + esc(r[2]) + '</td><td>' + esc(r[3]) + '</td></tr>';
+    });
+    h += '</tbody></table></div>' +
+      '<h2 class="pane-h2">The framework</h2><div class="exit">' + esc(PLAN.lldFramework) + '</div>';
 
-  h += '<div class="card"><div class="card-head"><h2>SOLID as a refactor, not a definition</h2><span class="spacer"></span>' +
-    '<span class="dim">a 10-line violation and its fix for each</span></div>' +
-    '<div class="tbl-wrap"><table><thead><tr><th></th><th>Principle</th><th>The violation to be able to write</th></tr></thead><tbody>';
-  PLAN.lldSolid.forEach(function (r) {
-    h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td><td>' + esc(r[2]) + '</td></tr>';
-  });
-  h += '</tbody></table></div><div class="exit"><b>The framework.</b> ' + esc(PLAN.lldFramework) + '</div></div>';
+  } else if (id === 'patterns') {
+    h += '<div class="pane-head"><div class="eyebrow">LLD</div><h1>Requirement → pattern</h1>' +
+      '<p class="pane-sub">About eight of the 23 GoF patterns actually appear. Learn these and stop.</p></div>' +
+      triTable(PLAN.lldPatterns, ['You hear', 'Reach for', 'Where it shows up']);
 
-  h += '<div class="card"><div class="card-head"><h2>Machine-coding rules that decide the round</h2></div><ol class="rules">';
-  PLAN.lldRules.forEach(function (r) { h += '<li>' + esc(r) + '</li>'; });
-  h += '</ol></div>';
+  } else if (id === 'solid') {
+    h += '<div class="pane-head"><div class="eyebrow">LLD</div><h1>SOLID as refactors</h1>' +
+      '<p class="pane-sub">Be able to show a 10-line violation and its fix for each. Definitions score nothing.</p></div>' +
+      '<div class="tbl-wrap"><table><thead><tr><th></th><th>Principle</th><th>The violation to be able to write</th></tr></thead><tbody>';
+    PLAN.lldSolid.forEach(function (r) {
+      h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td><td>' + esc(r[2]) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
 
-  [['b', 'Block B · tier 1–2 — Amazon · Adobe · Microsoft · JPM'],
-   ['c', 'Block C · top tier — Amazon hybrid · Uber / Flipkart machine coding']].forEach(function (pair) {
-    var blk = pair[0];
-    h += '<div class="card"><div class="card-head"><h2>' + pair[1] + '</h2><span class="spacer"></span>' +
-      '<span class="dim">' + PLAN.lld[blk].length + ' items</span></div>';
+  } else if (id === 'rules') {
+    h += '<div class="pane-head"><div class="eyebrow">LLD</div><h1>Machine-coding rules</h1>' +
+      '<p class="pane-sub">An unfinished elegant design scores below a finished plain one.</p></div>' +
+      '<ol class="rules">';
+    PLAN.lldRules.forEach(function (r) { h += '<li>' + esc(r) + '</li>'; });
+    h += '</ol>';
+
+  } else {
+    var blk = (id === 'c') ? 'c' : 'b';
+    h += '<div class="pane-head"><div class="eyebrow">LLD &middot; problems</div><h1>' +
+      (blk === 'b' ? 'Block B · tier 1–2' : 'Block C · top tier') + '</h1>' +
+      '<p class="pane-sub">' + (blk === 'b'
+        ? 'Amazon · Adobe · Microsoft · JPM — whiteboard OOD.'
+        : 'Amazon hybrid · Uber and Flipkart machine coding · the Amazon LP story bank.') + '</p></div>';
     PLAN.lld[blk].forEach(function (r, i) {
       var key = 'ld-' + blk + '-' + i, p = state.problems[key] || {};
       h += '<div class="prow' + (p.done ? ' done' : '') + '" data-open="' + key + '">' +
@@ -618,64 +760,73 @@ function renderLld() {
         (r[2] ? '<span class="p-note">' + esc(r[2]) + '</span>' : '') +
         '<span class="dot ' + esc(p.status || '') + '"></span></div>';
     });
-    h += '</div>';
-  });
+  }
 
+  h += pagerFor('lld');
   $('#view-lld').innerHTML = h;
 }
 
 /* -------------------------------------------------------------- tech --- */
 function renderTech() {
-  var q = (state.ui.techQuery || '').toLowerCase();
-  var h = '<div class="card"><div class="card-head"><h2>Tech — 10 modules</h2><span class="spacer"></span>' +
-    '<span class="dim">~110 hours · 1h every weekday</span></div>' +
-    '<p class="dim"><b>The gradient inverts here.</b> The deepest tech questioning is at the <b>bottom</b> of your ladder ' +
-    '— JP Morgan and Amex go far deeper on <code>@Transactional</code>, thread pools and index plans than Google ever ' +
-    'will. Google asks none of it. So this is the JPM offer, and it is front-loaded into Phase 1.</p>' +
-    '<p class="dim" style="margin-top:8px">Every row is <b>question → the answer’s spine → the follow-up they ' +
-    'will actually ask.</b> <b>Learn the follow-up.</b> Anyone can answer the first question.</p>' +
-    '<input class="search" id="tech-search" placeholder="Filter — try &quot;OOMKilled&quot;, &quot;propagation&quot;, &quot;rebalance&quot;…" value="' +
-    esc(state.ui.techQuery || '') + '"></div>';
+  var id = selected('tech');
+  var m = null;
+  PLAN.tech.forEach(function (x) { if (x.id === id) m = x; });
+  if (!m) m = PLAN.tech[0];
 
-  PLAN.tech.forEach(function (m) {
-    var hay = (m.name + ' ' + (m.note || '') + ' ' +
-      m.qa.map(function (r) { return r.join(' '); }).join(' ')).toLowerCase();
-    if (q && hay.indexOf(q) < 0) return;
-    var open = !!state.ui.open['mod-' + m.id];
-    var done = m.qa.filter(function (_, i) { var p = state.problems['tq-' + m.id + '-' + i]; return p && p.done; }).length;
+  var done = m.qa.filter(function (_, i) { var p = state.problems['tq-' + m.id + '-' + i]; return p && p.done; }).length;
 
-    h += '<div class="sec' + (open ? ' open' : '') + '">' +
-      '<button class="sec-head" data-mod="' + m.id + '">' +
-      '<span class="chev">▶</span><span class="sec-n">' + m.n + '</span>' +
-      '<span class="sec-title"><b>' + esc(m.name) + '</b><span>' + m.hrs + ' hours</span></span>' +
-      '<span class="chip ph' + m.phase + '">phase ' + m.phase + '</span>' +
-      '<span class="sec-prog">' + done + '/' + m.qa.length + '</span></button><div class="sec-body">';
-    if (m.note) h += '<div class="learn"><b>Note.</b> ' + esc(m.note) + '</div>';
-    m.qa.forEach(function (r, i) {
-      var key = 'tq-' + m.id + '-' + i, p = state.problems[key] || {};
-      h += '<div class="qa' + (p.done ? ' done' : '') + '">' +
-        '<button class="cb" data-check="' + key + '">' + (p.done ? '✓' : '') + '</button>' +
-        '<div class="qa-body" data-open="' + key + '">' +
-        '<b class="qa-q">' + esc(r[0]) + '</b>' +
-        '<span class="qa-a">' + esc(r[1]) + '</span>' +
-        (r[2] ? '<span class="qa-f"><i>follow-up →</i> ' + esc(r[2]) + '</span>' : '') +
-        '</div><span class="dot ' + esc(p.status || '') + '"></span></div>';
+  var h = '<div class="pane-head">' +
+    '<div class="eyebrow">Tech &middot; module ' + m.n + ' of ' + PLAN.tech.length +
+    ' &middot; ' + m.hrs + ' hours &middot; <span class="chip ph' + m.phase + '">phase ' + m.phase + '</span></div>' +
+    '<h1>' + esc(m.name) + '</h1>' +
+    '<div class="pane-stats"><span><b>' + done + '</b>/' + m.qa.length + ' answered cold</span>' +
+    (m.code ? '<span><b>' + m.code.length + '</b> code patterns</span>' : '') +
+    (m.traps ? '<span><b>' + m.traps.length + '</b> traps</span>' : '') +
+    '</div></div>';
+
+  if (m.note) h += '<div class="learn"><b>Note.</b> ' + esc(m.note) + '</div>';
+
+  if (m.asked && m.asked.length) {
+    h += '<h2 class="pane-h2">How the interview opens</h2>' + bulletList(m.asked, 'asked');
+  }
+
+  if (m.code && m.code.length) {
+    h += '<h2 class="pane-h2">Patterns you must be able to write <span class="h2-count">' +
+      m.code.length + '</span></h2>' +
+      '<p class="pane-p">Type these from memory, not from a snippet file. The comments mark where candidates go wrong.</p>';
+    m.code.forEach(function (c) {
+      h += '<div class="codeblock">' +
+        '<div class="code-t">' + esc(c[0]) + '</div>' +
+        '<pre><code>' + esc(c[1].join('\n')) + '</code></pre>' +
+        (c[2] ? '<div class="code-why">' + esc(c[2]) + '</div>' : '') +
+        '</div>';
     });
-    h += '<div class="field" style="margin-top:14px"><label>Hands-on artefact / notes</label>' +
-      '<textarea data-note="mod-' + m.id + '" placeholder="What you actually built or broke. Not a summary of what you read.">' +
-      esc(state.notes['mod-' + m.id] || '') + '</textarea></div></div></div>';
+  }
+
+  h += '<h2 class="pane-h2">Question &rarr; spine &rarr; follow-up <span class="h2-count">' + m.qa.length + '</span></h2>' +
+    '<p class="pane-p"><b>Learn the follow-up.</b> Anyone can answer the first question.</p>';
+  m.qa.forEach(function (r, i) {
+    var key = 'tq-' + m.id + '-' + i, p = state.problems[key] || {};
+    h += '<div class="qa' + (p.done ? ' done' : '') + '">' +
+      '<button class="cb" data-check="' + key + '">' + (p.done ? '✓' : '') + '</button>' +
+      '<div class="qa-body" data-open="' + key + '">' +
+      '<b class="qa-q">' + esc(r[0]) + '</b>' +
+      '<span class="qa-a">' + esc(r[1]) + '</span>' +
+      (r[2] ? '<span class="qa-f"><i>follow-up →</i> ' + esc(r[2]) + '</span>' : '') +
+      '</div><span class="dot ' + esc(p.status || '') + '"></span></div>';
   });
 
-  h += '<div class="card"><div class="card-head"><h2>Tech triggers</h2><span class="spacer"></span>' +
-    '<span class="dim">drill this like a pattern table</span></div>' +
-    triTable(PLAN.techTriggers, ['You hear', 'Reach for']) + '</div>';
+  if (m.traps && m.traps.length) {
+    h += '<h2 class="pane-h2">Traps that bite <span class="h2-count">' + m.traps.length + '</span></h2>' +
+      bulletList(m.traps, 'fail');
+  }
 
+  h += '<div class="field pane-notes"><label>Hands-on artefact / notes</label>' +
+    '<textarea data-note="mod-' + m.id + '" placeholder="What you actually built or broke. Not a summary of what you read.">' +
+    esc(state.notes['mod-' + m.id] || '') + '</textarea></div>';
+
+  h += pagerFor('tech');
   $('#view-tech').innerHTML = h;
-  var si = $('#tech-search');
-  if (si) si.oninput = function () {
-    state.ui.techQuery = si.value; var pos = si.selectionStart;
-    renderTech(); var ns = $('#tech-search'); ns.focus(); ns.setSelectionRange(pos, pos);
-  };
 }
 
 /* ---------------------------------------------------------- revision --- */
@@ -816,65 +967,70 @@ function renderCompanies() {
 
 /* --------------------------------------------------------- reference --- */
 function renderReference() {
-  var q = (state.ui.refQuery || '').toLowerCase();
-  var h = '<div class="card"><div class="card-head"><h2>Template library</h2><span class="spacer"></span>' +
-    '<span class="dim">cold, correct, under 3 minutes</span></div>' +
-    '<p class="dim" style="margin-bottom:14px">Bugs in templates cost interviews. A Dijkstra you have to re-derive costs ' +
-    'eight minutes you do not have. Type three cold at the start of a session, then diff.</p>';
-  var lastG = '';
-  PLAN.templates.forEach(function (tp, i) {
-    if (tp.g !== lastG) { lastG = tp.g; h += '<div class="block-lbl">' + esc(tp.g) + '</div>'; }
-    var st = (state.templates[i] || {}).status || '';
-    h += '<div class="tpl"><span class="tpl-n">' + (i + 1) + '</span>' +
-      '<div class="tpl-body"><b>' + esc(tp.n) + '</b><span>' + esc(tp.d) + '</span></div>' +
-      '<div class="tpl-actions">' +
-      '<button class="btn sm bad ' + (st === 'unknown' ? 'on' : '') + '" data-tpl="' + i + ':unknown">shaky</button>' +
-      '<button class="btn sm warn ' + (st === 'learning' ? 'on' : '') + '" data-tpl="' + i + ':learning">slow</button>' +
-      '<button class="btn sm ok ' + (st === 'fast' ? 'on' : '') + '" data-tpl="' + i + ':fast">&lt;3 min</button>' +
-      '</div></div>';
-  });
-  h += '</div>';
+  var id = selected('reference'), h = '';
 
-  h += '<div class="card"><div class="card-head"><h2>All triggers — one searchable index</h2>' +
-    '<span class="spacer"></span><span class="dim">disguise → move, across every track</span></div>' +
-    '<input class="search" id="ref-search" placeholder="Try &quot;exactly K&quot;, &quot;removed over time&quot;, &quot;OOMKilled&quot;, &quot;celebrity&quot;…" value="' +
-    esc(state.ui.refQuery || '') + '">';
-
-  var groups = [];
-  PLAN.sections.forEach(function (s) {
-    groups.push({ g: 'DSA §' + s.n + ' ' + s.name,
-      rows: s.p.map(function (r) { return [r[1], r[0] + ' — ' + r[2], r[3] || '']; }) });
-  });
-  groups.push({ g: 'System design', rows: PLAN.sdTriggers });
-  groups.push({ g: 'LLD', rows: PLAN.lldPatterns });
-  groups.push({ g: 'Tech', rows: PLAN.techTriggers.map(function (r) { return [r[0], r[1], '']; }) });
-
-  var shown = 0;
-  groups.forEach(function (grp) {
-    var rows = grp.rows.filter(function (r) {
-      return !q || (r[0] + ' ' + r[1] + ' ' + (r[2] || '')).toLowerCase().indexOf(q) >= 0;
+  if (id === 'templates') {
+    h += '<div class="pane-head"><div class="eyebrow">Reference</div><h1>Template library</h1>' +
+      '<p class="pane-sub">Cold, correct, under three minutes. A Dijkstra you have to re-derive costs eight minutes ' +
+      'you do not have.</p></div>';
+    var lastG = '';
+    PLAN.templates.forEach(function (tp, i) {
+      if (tp.g !== lastG) { lastG = tp.g; h += '<h2 class="pane-h2">' + esc(tp.g) + '</h2>'; }
+      var st = (state.templates[i] || {}).status || '';
+      h += '<div class="tpl"><span class="tpl-n">' + (i + 1) + '</span>' +
+        '<div class="tpl-body"><b>' + esc(tp.n) + '</b><span>' + esc(tp.d) + '</span></div>' +
+        '<div class="tpl-actions">' +
+        '<button class="btn sm bad ' + (st === 'unknown' ? 'on' : '') + '" data-tpl="' + i + ':unknown">shaky</button>' +
+        '<button class="btn sm warn ' + (st === 'learning' ? 'on' : '') + '" data-tpl="' + i + ':learning">slow</button>' +
+        '<button class="btn sm ok ' + (st === 'fast' ? 'on' : '') + '" data-tpl="' + i + ':fast">&lt;3 min</button>' +
+        '</div></div>';
     });
-    if (!rows.length) return;
-    shown += rows.length;
-    h += '<div class="block-lbl" style="margin-top:20px">' + esc(grp.g) + '</div>' +
-      '<div class="tbl-wrap"><table><thead><tr><th>You hear / see</th><th>Fire this</th><th>Note</th></tr></thead><tbody>';
-    rows.forEach(function (r) {
-      h += '<tr><td class="trig">' + esc(r[0]) + '</td><td class="fire">' + esc(r[1]) + '</td>' +
-        '<td class="canon">' + esc(r[2] || '') + '</td></tr>';
+
+  } else if (id === 'pool') {
+    h += '<div class="pane-head"><div class="eyebrow">Reference</div><h1>Blind hard pool</h1>' +
+      '<p class="pane-sub">Phase 3. Pick without looking, 45 minutes, recorded.</p></div>' +
+      '<p class="mono" style="font-size:13.5px;line-height:2.1;color:var(--accent)">' +
+      PLAN.hardPool.map(function (n) { return 'LC ' + n; }).join(' &nbsp;·&nbsp; ') + '</p>' +
+      '<button class="btn primary" id="pick-random">Pick one at random</button> ' +
+      '<span id="picked" class="mono" style="margin-left:10px"></span>';
+
+  } else {
+    var q = (state.ui.refQuery || '').toLowerCase();
+    h += '<div class="pane-head"><div class="eyebrow">Reference</div><h1>All triggers</h1>' +
+      '<p class="pane-sub">Disguise &rarr; move, across every track, in one searchable index.</p></div>' +
+      '<input class="search" id="ref-search" placeholder="Try &quot;exactly K&quot;, &quot;removed over time&quot;, &quot;OOMKilled&quot;, &quot;celebrity&quot;…" value="' +
+      esc(state.ui.refQuery || '') + '">';
+
+    var groups = [];
+    PLAN.sections.forEach(function (s) {
+      groups.push({ g: 'DSA §' + s.n + ' ' + s.name,
+        rows: s.p.map(function (r) { return [r[1], r[0] + ' — ' + r[2], r[3] || '']; }) });
     });
-    h += '</tbody></table></div>';
-  });
-  if (!shown) h += '<p class="dim" style="margin-top:16px">No trigger matches that.</p>';
-  h += '</div>';
+    groups.push({ g: 'System design', rows: PLAN.sdTriggers });
+    groups.push({ g: 'LLD', rows: PLAN.lldPatterns });
+    groups.push({ g: 'Tech', rows: PLAN.techTriggers.map(function (r) { return [r[0], r[1], '']; }) });
 
-  h += '<div class="card"><div class="card-head"><h2>Blind hard pool</h2><span class="spacer"></span>' +
-    '<span class="dim">Phase 3 · pick without looking</span></div>' +
-    '<p class="mono" style="font-size:13px;line-height:2;color:var(--accent)">' +
-    PLAN.hardPool.map(function (n) { return 'LC ' + n; }).join(' &nbsp;·&nbsp; ') + '</p>' +
-    '<button class="btn primary" id="pick-random">Pick one at random</button> ' +
-    '<span id="picked" class="mono" style="margin-left:10px"></span></div>';
+    var shown = 0;
+    groups.forEach(function (grp) {
+      var rows = grp.rows.filter(function (r) {
+        return !q || (r[0] + ' ' + r[1] + ' ' + (r[2] || '')).toLowerCase().indexOf(q) >= 0;
+      });
+      if (!rows.length) return;
+      shown += rows.length;
+      h += '<h2 class="pane-h2">' + esc(grp.g) + '</h2>' +
+        '<div class="tbl-wrap"><table><thead><tr><th>You hear / see</th><th>Fire this</th><th>Note</th></tr></thead><tbody>';
+      rows.forEach(function (r) {
+        h += '<tr><td class="trig">' + esc(r[0]) + '</td><td class="fire">' + esc(r[1]) + '</td>' +
+          '<td class="canon">' + esc(r[2] || '') + '</td></tr>';
+      });
+      h += '</tbody></table></div>';
+    });
+    if (!shown) h += '<p class="dim" style="margin-top:16px">No trigger matches that.</p>';
+  }
 
+  h += pagerFor('reference');
   $('#view-reference').innerHTML = h;
+
   var si = $('#ref-search');
   if (si) si.oninput = function () {
     state.ui.refQuery = si.value; var pos = si.selectionStart;
@@ -918,10 +1074,12 @@ function renderLog() {
 
 /* ---------------------------------------------------------- strategy --- */
 function renderStrategy() {
-  var h = '';
-  PLAN.strategy.forEach(function (s) {
-    h += '<div class="card"><div class="card-head"><h2>' + esc(s.t) + '</h2></div><div class="prose">' + s.h + '</div></div>';
-  });
+  var id = selected('strategy');
+  var i = parseInt(id, 10); if (isNaN(i) || !PLAN.strategy[i]) i = 0;
+  var s = PLAN.strategy[i];
+  var h = '<div class="pane-head"><div class="eyebrow">Strategy &middot; ' + (i + 1) + ' of ' +
+    PLAN.strategy.length + '</div><h1>' + esc(s.t) + '</h1></div>' +
+    '<div class="prose">' + s.h + '</div>' + pagerFor('strategy');
   $('#view-strategy').innerHTML = h;
 }
 
@@ -1073,12 +1231,15 @@ var RENDER = {
 function renderAll() {
   applyTheme();
   renderHeader();
+  renderSidenav(state.ui.tab);
   var fn = RENDER[state.ui.tab] || renderDashboard;
   fn();
 }
 function switchTab(name) {
   if (!RENDER[name]) name = 'dashboard';
-  state.ui.tab = name; save();
+  state.ui.tab = name;
+  state.ui.navQuery = '';
+  save();
   $$('.tab').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tab') === name); });
   $$('.view').forEach(function (v) { v.classList.toggle('active', v.id === 'view-' + name); });
   renderAll();
@@ -1093,6 +1254,18 @@ document.addEventListener('click', function (e) {
   if (!t || !t.closest) return;
 
   if ((a = t.closest('.tab'))) { switchTab(a.getAttribute('data-tab')); return; }
+
+  if ((a = t.closest('[data-nav]'))) {
+    if (!state.ui.sel) state.ui.sel = {};
+    state.ui.sel[state.ui.tab] = a.getAttribute('data-nav');
+    save();
+    renderSidenav(state.ui.tab);
+    (RENDER[state.ui.tab] || renderDashboard)();
+    var pane = $('#pane');
+    if (pane) pane.scrollTop = 0;
+    window.scrollTo(0, 0);
+    return;
+  }
 
   if ((a = t.closest('[data-check]'))) {
     e.stopPropagation();
