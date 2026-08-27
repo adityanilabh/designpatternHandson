@@ -764,14 +764,14 @@ function weekProgress(week) {
 }
 /* Week 1 is always open. After that: the previous week is complete, or you
    explicitly unlocked it. */
+/* A strict chain: week N opens when week N-1's core is complete, and not
+   before. Checking the immediately previous week (rather than all earlier
+   ones) is what makes the manual override behave predictably - unlock a week,
+   finish it, and the next one opens normally. */
 function weekUnlocked(n) {
   if (n <= 1) return true;
   if (state.unlocked && state.unlocked[n]) return true;
-  var w = buildWeeks();
-  for (var i = 0; i < n - 1; i++) {
-    if (!weekProgress(w[i]).complete) return false;
-  }
-  return true;
+  return weekProgress(buildWeeks()[n - 2]).complete;
 }
 function currentWeek() {
   var w = buildWeeks();
@@ -1562,8 +1562,11 @@ function renderWeekly() {
     '<p class="pane-sub">' + fmtDate(wk.from) + ' → ' + fmtDate(wk.to) + '</p>';
 
   if (!open) {
-    h += '<div class="wk-locked"><b>Locked.</b> Finish the core goals of every earlier week first. ' +
-      'That is the point of this page — one week at a time, no jumping around.' +
+    var blocker = wk.n - 1;
+    var bp = weekProgress(ws[blocker - 1]);
+    h += '<div class="wk-locked"><b>Locked.</b> Finish <b>week ' + blocker + '</b> first — ' +
+      'it is at <b>' + bp.core + '/' + bp.coreTotal + '</b> core goals. ' +
+      'One week at a time, no jumping around: that is the point of this page.' +
       '<div class="btnrow" style="margin-top:14px">' +
       '<button class="btn warn" data-unlock="' + wk.n + '">Unlock anyway</button></div>' +
       '<p class="dim" style="margin-top:10px;font-size:12.5px">The override exists so a week you cannot finish ' +
