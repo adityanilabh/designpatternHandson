@@ -741,3 +741,42 @@ ul.readlist a:hover { text-decoration: underline; }
   color: var(--ink-3); border: 1px solid var(--line); border-radius: 4px;
   padding: 1px 5px; margin-left: 8px; vertical-align: 1px;
 }
+
+/* --- ASCII class diagrams --- */
+.codeblock.diagram pre { padding: 18px 15px; }
+.codeblock.diagram code { font-size: 12px; line-height: 1.45; color: var(--ink); }
+
+/* --- the expandable full-solution bar --- */
+.soln-bar {
+  display: flex; align-items: baseline; gap: 12px; width: 100%;
+  margin-top: 44px; padding: 16px 20px; cursor: pointer;
+  background: var(--accent-soft); color: var(--ink);
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  font: inherit; text-align: left;
+}
+.soln-bar:hover { filter: brightness(1.08); }
+.soln-bar .chev { transition: transform .16s ease; color: var(--accent); font-size: 11px; }
+.soln-bar.open .chev { transform: rotate(90deg); }
+.soln-bar.open { border-radius: var(--radius) var(--radius) 0 0; }
+.soln-t { font-size: 16px; font-weight: 650; }
+.soln-sub { font-size: 12.5px; color: var(--ink-3); }
+.soln-body {
+  border: 1px solid var(--accent); border-top: 0;
+  border-radius: 0 0 var(--radius) var(--radius);
+  padding: 6px 22px 26px;
+}
+.soln-body .pane-h2:first-of-type { margin-top: 20px; }
+.soln-none {
+  margin-top: 44px; padding: 16px 20px; border: 1px dashed var(--line);
+  border-radius: var(--radius); color: var(--ink-3); font-size: 13.5px;
+}
+
+/* --- requirements, two columns --- */
+.req-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+.req-cols h3 {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--ink-3); margin: 0 0 6px;
+}
+@media (max-width: 760px) { .req-cols { grid-template-columns: 1fr; gap: 14px; } }
+
+td.mono-cell { font-family: var(--mono); font-size: 12px; color: var(--accent); }

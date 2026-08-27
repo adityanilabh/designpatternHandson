@@ -78,7 +78,9 @@ No single curve peaks in January. That is why the tech track is front-loaded int
 | Pattern rows (individually drillable) | 176 |
 | DSA questions — block B / block C | 283 / 218 |
 | System design sessions | 22 |
+| Design patterns (intent, UML, runnable code, gotchas) | 13 |
 | LLD problems (entities, code, concurrency, extensions, cross-Q) | 13 |
+| LLD full worked solutions (statement, approach, UML, API, schema, code) | 4 of 13 |
 | LLD code patterns | 33 |
 | LLD rows total | 594 |
 | Tech modules | 13 |
@@ -98,7 +100,7 @@ Weighting is deliberately uneven: Graphs, Trees and DP carry 150 of the 501 DSA 
 - **Dashboard** — current phase, day counter, the split, the interview calendar, this phase's exit criteria
 - **DSA** — 17 sections, blocks A/B/C, searchable across patterns and problems
 - **System design** — the 6-step framework, requirement→block triggers, the six cross-question categories, 22 sessions
-- **LLD** — 13 problems each with entities, patterns, real code, the concurrency races, "now add X" follow-ups and cross-questions; plus a 60-minute script, SOLID as runnable refactors, and the Amazon LP bank
+- **LLD** — a 13-pattern catalogue with class diagrams and runnable code; 13 problems each with entities, the concurrency races, "now add X" follow-ups and cross-questions; and an expandable **Full solution** per problem carrying the statement, requirements, approach, ASCII class diagram, public API, schema and complete code
 - **Tech** — 13 modules with runnable code patterns; every Q&A row is question → answer spine → **the follow-up they will actually ask**
 - **Revision** — the spaced-repetition queue
 - **Ladder** — recorded mocks, then readiness per company grouped by rung

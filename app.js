@@ -382,12 +382,16 @@ function navModel(tab) {
       { id: 'checklist',   n: '', label: 'Class design checklist', sub: PLAN.lldChecklist.length + ' checks' },
       { id: 'rules',       n: '', label: 'Machine-coding rules', sub: 'how to finish' }
     ];
+    var pats = PLAN.patterns.map(function (p) {
+      return { id: 'pat-' + p.id, n: '', label: p.name, sub: p.cat };
+    });
     var pb = [], pc = [];
     PLAN.lldProblems.forEach(function (p) {
       (p.tier === 'b' ? pb : pc).push({ id: p.id, n: '', label: p.name, sub: p.flavour + ' · ' + p.mins + 'm' });
     });
     return [
       { g: 'Reference', items: ref },
+      { g: 'Design patterns', items: pats },
       { g: 'Block B · tier 1–2', items: pb },
       { g: 'Block C · top tier', items: pc },
       { g: 'Amazon', items: [{ id: 'lp', n: '', label: 'Leadership Principles', sub: PLAN.lldLp.length + ' items' }] }
@@ -756,6 +760,90 @@ function renderSd() {
 }
 
 /* --------------------------------------------------------------- LLD --- */
+/* one ASCII diagram block */
+function asciiBlock(lines, title) {
+  if (!lines || !lines.length) return '';
+  return '<div class="codeblock diagram">' +
+    (title ? '<div class="code-t">' + esc(title) + '</div>' : '') +
+    '<pre><code>' + esc(lines.join('\n')) + '</code></pre></div>';
+}
+
+function renderPattern(p) {
+  var h = '<div class="pane-head">' +
+    '<div class="eyebrow">Design pattern &middot; ' + esc(p.cat) + '</div>' +
+    '<h1>' + esc(p.name) + '</h1>' +
+    '<p class="pane-sub">' + esc(p.intent) + '</p></div>';
+
+  h += '<h2 class="pane-h2">When it fires</h2>' + bulletList(p.fires, 'asked');
+  h += '<h2 class="pane-h2">Class diagram</h2>' + asciiBlock(p.uml);
+  h += '<h2 class="pane-h2">Code</h2>' +
+    '<div class="codeblock"><pre><code>' + esc(p.code.join('\n')) + '</code></pre></div>';
+  h += '<h2 class="pane-h2">Where it shows up here</h2><div class="learn">' + esc(p.used) + '</div>';
+  h += '<h2 class="pane-h2">Most often confused with</h2><div class="exit">' + esc(p.vs) + '</div>';
+  h += '<h2 class="pane-h2">How it goes wrong</h2>' + bulletList(p.gotchas, 'fail');
+  return h;
+}
+
+/* the expandable full solution */
+function renderSolution(pid) {
+  var s = (PLAN.lldSolution || {})[pid];
+  if (!s) {
+    return '<div class="soln-none">Full worked solution not written yet for this problem. ' +
+      'The blocks above are complete.</div>';
+  }
+  var open = !!state.ui.open['soln-' + pid];
+  var h = '<button class="soln-bar' + (open ? ' open' : '') + '" data-soln="' + esc(pid) + '">' +
+    '<span class="chev">▶</span>' +
+    '<span class="soln-t">Full solution</span>' +
+    '<span class="soln-sub">approach &middot; class diagram &middot; API' +
+    (s.schema ? ' &middot; schema' : '') + ' &middot; code</span></button>';
+  if (!open) return h;
+
+  h += '<div class="soln-body">';
+
+  h += '<h2 class="pane-h2">Problem statement</h2><div class="learn">' + esc(s.statement) + '</div>';
+
+  h += '<h2 class="pane-h2">Requirements</h2>' +
+    '<div class="req-cols"><div><h3>Functional</h3>' + bulletList(s.req.functional) + '</div>' +
+    '<div><h3>Non-functional</h3>' + bulletList(s.req.nonFunctional) + '</div></div>';
+
+  h += '<h2 class="pane-h2">How to approach it</h2>' +
+    '<div class="tbl-wrap"><table><thead><tr><th>Step</th><th>What you do</th></tr></thead><tbody>';
+  s.approach.forEach(function (r) {
+    h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td></tr>';
+  });
+  h += '</tbody></table></div>';
+
+  h += '<h2 class="pane-h2">Class diagram</h2>' + asciiBlock(s.uml);
+
+  h += '<h2 class="pane-h2">Public API</h2>' +
+    '<div class="tbl-wrap"><table><thead><tr><th>Signature</th><th>Contract</th></tr></thead><tbody>';
+  s.api.forEach(function (r) {
+    h += '<tr><td class="mono-cell">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td></tr>';
+  });
+  h += '</tbody></table></div>';
+
+  if (s.schema && s.schema.length) {
+    h += '<h2 class="pane-h2">Schema, if persistence is in scope</h2>' +
+      '<div class="tbl-wrap"><table><thead><tr><th>Table</th><th>Columns</th><th>Note</th></tr></thead><tbody>';
+    s.schema.forEach(function (r) {
+      h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="mono-cell">' + esc(r[1]) + '</td>' +
+        '<td class="trig">' + esc(r[2]) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+
+  h += '<h2 class="pane-h2">The solution <span class="h2-count">' + s.solution.length + ' parts</span></h2>' +
+    '<p class="pane-p">Interview scope: the core classes and the main flow. Not every getter.</p>';
+  s.solution.forEach(function (c) {
+    h += '<div class="codeblock"><div class="code-t">' + esc(c[0]) + '</div>' +
+      '<pre><code>' + esc(c[1].join('\n')) + '</code></pre>' +
+      (c[2] ? '<div class="code-why">' + esc(c[2]) + '</div>' : '') + '</div>';
+  });
+
+  return h + '</div>';
+}
+
 function codeBlocks(rows, heading, intro) {
   if (!rows || !rows.length) return '';
   var h = '<h2 class="pane-h2">' + esc(heading) + ' <span class="h2-count">' + rows.length + '</span></h2>' +
@@ -851,6 +939,11 @@ function renderLld() {
         '<span class="dot ' + esc(p.status || '') + '"></span></div>';
     });
 
+  } else if (id.indexOf('pat-') === 0) {
+    var pat = null;
+    PLAN.patterns.forEach(function (x) { if ('pat-' + x.id === id) pat = x; });
+    h += renderPattern(pat || PLAN.patterns[0]);
+
   } else {
     var pr = null;
     PLAN.lldProblems.forEach(function (x) { if (x.id === id) pr = x; });
@@ -911,6 +1004,8 @@ function renderLld() {
     if (pr.fail && pr.fail.length) {
       h += '<h2 class="pane-h2">What sinks candidates here</h2>' + bulletList(pr.fail, 'fail');
     }
+
+    h += renderSolution(pr.id);
 
     h += '<div class="field pane-notes"><label>Your design + what you got wrong</label>' +
       '<textarea data-note="' + key + '" placeholder="Every LLD session ends with code that runs.">' +
@@ -1462,6 +1557,12 @@ document.addEventListener('click', function (e) {
     state.templates[tp[0]].status = (state.templates[tp[0]].status === tp[1]) ? '' : tp[1];
     save(); renderReference(); return;
   }
+  if ((a = t.closest('[data-soln]'))) {
+    toggleOpen('soln-' + a.getAttribute('data-soln'));
+    save(); renderLld();
+    return;
+  }
+
   if ((a = t.closest('[data-crit]'))) { toggleOpen('crit-' + a.getAttribute('data-crit')); save(); renderDashboard(); return; }
   if ((a = t.closest('[data-sec]'))) { toggleOpen('sec-' + a.getAttribute('data-sec')); save(); renderDsa(); return; }
   if ((a = t.closest('[data-mod]'))) { toggleOpen('mod-' + a.getAttribute('data-mod')); save(); renderTech(); return; }
