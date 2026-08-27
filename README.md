@@ -113,7 +113,8 @@ No single curve peaks in January. That is why the tech track is front-loaded int
 | Amazon LP — principles, probes, anti-patterns, story bank | 238 rows |
 | Design patterns (intent, UML, runnable code, gotchas) | 13 |
 | LLD problems (entities, code, concurrency, extensions, cross-Q) | 13 |
-| LLD full worked solutions (statement, approach, UML, API, schema, code) | 4 of 13 |
+| LLD full worked solutions (statement, approach, UML, API, schema, code) | 13 of 13 |
+| LLD solution code | 1,924 lines of Java |
 | LLD code patterns | 33 |
 | LLD rows total | 594 |
 | Tech modules | 13 |

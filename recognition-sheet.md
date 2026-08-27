@@ -1595,6 +1595,156 @@ Every design must survive all six. Write the answers; do not just think them.
 - Picking 301 and then claiming per-click analytics.
 - Not noticing that this is a tiny dataset and over-engineering the storage.
 
+#### Worked solution
+
+**Functional requirements**
+
+- Shorten a long URL to a short code, and redirect on access.
+- Optional custom alias.
+- Optional expiry.
+- Click analytics — count, and ideally referrer and geography.
+
+**Non-functional requirements**
+
+- Redirect latency under 100ms at p99 — this is on the critical path of someone else page load.
+- Extremely read-heavy, roughly 100:1.
+- Short codes must never collide.
+- Highly available. A broken redirect breaks every link ever shared.
+
+**Estimation**
+
+| Quantity | Working | Result |
+|---|---|---|
+| **New URLs** | 100M/month | ÷ 2.6M sec/month ≈ 40 writes/sec. Peak maybe 3x = 120/sec. Trivial. |
+| **Redirects** | 100:1 read ratio | ≈ 4,000 reads/sec average, 12,000 peak. Also modest. |
+| **Storage** | 100M × 500 bytes/month | 50 GB/month, 3 TB over five years. Small — say this out loud. |
+| **Code space** | base62, 7 chars | 62^7 ≈ 3.5 trillion. At 100M/month that is 2,900 years of codes. |
+| **The conclusion** | — | This dataset fits on one machine. Sharding is a scale-out STORY, not a day-one need. Saying that shows you did the arithmetic rather than reciting a template. |
+
+**API**
+
+| Endpoint | Request | Response | Note |
+|---|---|---|---|
+| POST /v1/urls | { longUrl, customAlias?, expiresAt? } | 201 { shortUrl, code, expiresAt } | 409 if the alias is taken. Idempotency-Key header so a retry does not mint a second code. |
+| GET /{code} | — | 302 + Location header | 302 not 301 — see the trade-offs. 404 if unknown, 410 if expired. |
+| GET /v1/urls/{code} | — | 200 { longUrl, createdAt, clicks } | Owner-only metadata. |
+| DELETE /v1/urls/{code} | — | 204 | Soft delete so the code is never reissued. |
+
+**Data model**
+
+| Table | Columns | Why |
+|---|---|---|
+| **url** | code PK (7 chars) · long_url · owner_id · created_at · expires_at NULL · deleted bool | Primary access is always by exact code, so a KV store fits perfectly. Code as PK means lookups never scan. |
+| **custom_alias** | alias PK · code FK | A UNIQUE constraint on alias is what makes the concurrent-claim race impossible. Do not check-then-insert. |
+| **click_event (async)** | code · ts · referrer · country · ua | Append-only, written from a stream, never on the redirect path. Partition by day. |
+| **click_agg** | code · day · count | Rolled up from the events. What the dashboard reads. |
+
+**Architecture**
+
+```
+                        ┌──────────────┐
+   create ─────────────▶│  API service │───┐
+                        └──────────────┘   │  counter range
+                                           ▼
+                                  ┌──────────────────┐
+                                  │ Counter / ID svc │  (range-allocated)
+                                  └──────────────────┘
+                                           │
+                                           ▼
+   ┌────────┐   ┌─────┐   ┌──────────────────────────┐
+   │ Client │──▶│ CDN │──▶│    Redirect service      │
+   └────────┘   └─────┘   │   (stateless, many)      │
+     GET /abc123   ▲      └────────┬─────────────────┘
+                   │               │ 1. cache lookup
+                   │               ▼
+                   │      ┌──────────────────┐
+                   │      │  Redis  (hot)    │  ~95% hit
+                   │      └────────┬─────────┘
+                   │               │ miss
+                   │               ▼
+                   │      ┌──────────────────┐
+                   │      │  KV store        │  code -> longUrl
+                   │      │  (sharded by     │
+                   │      │   code hash)     │
+                   │      └──────────────────┘
+                   │
+                   └──── 302 Location ────┘
+
+   redirect ──fire──▶ ┌────────┐ ──▶ ┌──────────┐ ──▶ ┌────────────┐
+   (async, never       │ Kafka  │     │ Analytics│     │ click_agg  │
+    on the path)       └────────┘     │ consumer │     └────────────┘
+                                      └──────────┘
+```
+
+**Write — create a short URL**
+
+- 1. Auth, validate the URL, check it is not a redirect loop back to us.
+- 2. If a custom alias was requested: INSERT into custom_alias. The unique constraint decides the race — no check-then-insert.
+- 3. Otherwise take the next value from the app server pre-allocated counter RANGE (e.g. it owns 1,000,000–1,999,999) and base62-encode it.
+- 4. INSERT the url row.
+- 5. Return the short URL. Do NOT warm the cache — most created links are never clicked.
+
+**Read — the redirect, the hot path**
+
+- 1. GET /{code} hits the nearest edge.
+- 2. Redirect service looks up Redis. ~95% hit.
+- 3. On miss, read the KV store and populate the cache with a TTL.
+- 4. Check expiry and deletion. 410 if expired, 404 if unknown.
+- 5. Return 302 with the Location header. THIS IS THE WHOLE LATENCY BUDGET — nothing else may happen synchronously.
+- 6. Fire a click event onto Kafka, fire-and-forget. If the analytics pipeline is down, redirects still work.
+
+**Deep dive**
+
+*Code generation, and why the counter wins*
+
+Three options. HASH the URL and take the first 7 chars: same URL gives the same code (feature or bug — it leaks that someone else shortened it), and you must handle collisions with a retry loop. RANDOM plus a existence check: a read on every write, and it degrades as the space fills. COUNTER plus base62: no collisions by construction and no coordination on the hot path.
+
+The counter objection is that it is a single point of failure and a bottleneck. Both are solved by RANGE ALLOCATION: each app server claims a block of a million values from the counter service and hands them out locally. The counter service is then touched once per million URLs, so a brief outage does not stop writes.
+
+The remaining objection is real: sequential base62 codes are ENUMERABLE. Anyone can walk /aaaaaa, /aaaaab and harvest every link. If that matters, encrypt the counter with a format-preserving cipher before encoding, which keeps uniqueness while destroying the ordering. Say this unprompted — it is the security follow-up.
+
+*Why the cache carries this design*
+
+The read/write ratio is 100:1 and the working set is tiny: a small fraction of links get almost all the traffic, and link popularity decays fast. A few GB of Redis gets you well above 90% hit rate.
+
+Watch for the stampede: a link goes viral, its cache entry expires, and thousands of requests hit the store at once. Fix with jittered TTLs and single-flight recomputation. And plan for one link being genuinely hot — 50k requests/sec on one key will melt a single Redis node, so replicate the hot key or push it to the CDN with a short TTL.
+
+*Analytics without touching the latency budget*
+
+The redirect must never wait on an analytics write. Fire an event onto Kafka and return. A consumer writes raw events and a rollup job maintains per-day counts.
+
+This also decouples failure: an analytics outage degrades reporting, not redirection. Being explicit that you accepted approximate click counts in exchange for redirect availability is exactly the kind of trade-off statement that scores.
+
+**Scaling**
+
+| Bottleneck | What you do |
+|---|---|
+| **Redirect service CPU** | Stateless — add instances behind the load balancer. This is the easy part. |
+| **Cache node saturation on a viral link** | Replicate the hot key across nodes with a suffix, or serve it from the CDN edge with a 60s TTL. |
+| **KV store read volume** | Read replicas, then shard by hash(code). Because every lookup is by exact key, sharding is clean — no cross-shard queries ever. |
+| **Counter service** | Range allocation means it is already off the hot path. If it still worries you, per-server prefixes remove the shared counter entirely. |
+| **Analytics volume** | This grows faster than anything else. Partition click events by day, roll up hourly, and expire raw events after 30 days. |
+| **Storage growth** | 3 TB over five years is nothing. Expiry sweeps and soft deletes keep it flat. |
+
+**Trade-offs**
+
+| Decision | Chose | Over | Because |
+|---|---|---|---|
+| **Redirect status** | 302 Found | 301 Permanent | 301 is cached by the browser, so you never see the second click and your analytics silently die. 302 costs a request each time and keeps the data. If analytics do not matter, 301 is faster and cheaper — say which you picked and why. |
+| **Code generation** | Counter + base62 + range allocation | Hash, or random-with-check | No collision handling, no coordination per request. Accept enumerability, or encrypt the counter. |
+| **Store** | KV store | Relational | Access is always by exact key. Relational would work at this size; KV is the honest fit and shards trivially. |
+| **Analytics** | Async via a stream | Synchronous counter increment | Protects the latency budget and the availability of the redirect. Costs exact real-time counts. |
+| **Custom alias collisions** | Unique constraint | Check-then-insert | Check-then-insert is a race. The constraint is the only correct answer. |
+
+**What each company pushes on**
+
+| Company | What they push on |
+|---|---|
+| **Amazon** | Will push on the ANALYTICS pipeline and on failure: "the click stream is down, what happens?" and "how do you count clicks exactly once?" Have the at-least-once plus idempotent-rollup answer ready. Also expect "what if one link gets 50,000 requests a second?" |
+| **Microsoft / Adobe** | More likely to probe the code generation itself — collisions, enumerability, and what happens when you exhaust the space. Be able to do the 62^7 arithmetic aloud. |
+| **Uber** | Will ask about the latency budget explicitly and about multi-region: where does the cache live if users are global, and what happens on a cross-region cache miss. |
+| **JPM / Amex** | Least likely to ask this one. If they do, they will care about auditability — who created which link, retention, and whether you can prove a link was not tampered with. |
+
 ---
 
 ### SD 8 · Rate limiter  *(week 8)*
@@ -1656,6 +1806,140 @@ Every design must survive all six. Write the answers; do not just think them.
 - Never addressing what happens when the limiter itself fails.
 - Forgetting to return Retry-After, so well-behaved clients cannot back off correctly.
 
+#### Worked solution
+
+**Functional requirements**
+
+- Limit requests per identity (user, API key, or IP) over a time window.
+- Different limits per endpoint and per customer tier.
+- Return 429 with Retry-After when limited.
+- Operators can raise a specific customer limit without a deploy.
+
+**Non-functional requirements**
+
+- Adds under ~1ms to every request — it is on the hot path of everything.
+- Must not become the reason your API is down. Availability of the limiter matters more than perfect enforcement.
+- Approximate counting is acceptable; exact is usually not worth the cost.
+
+**Estimation**
+
+| Quantity | Working | Result |
+|---|---|---|
+| **Traffic** | 50,000 req/sec | Every one needs a limiter decision. |
+| **Naive Redis round trip** | ~0.5–1ms each | 50,000 extra Redis ops/sec. Feasible, but it is now a hard dependency on your hot path. |
+| **Memory** | 1M active keys × ~100 bytes | 100 MB. Trivial — memory is never the constraint here. |
+| **The conclusion** | — | The design pressure is LATENCY and AVAILABILITY, not storage. That reframing is the point of the estimate. |
+
+**API**
+
+| Endpoint | Request | Response | Note |
+|---|---|---|---|
+| Internal: allow(key, endpoint) → Decision | — | { allowed, remaining, resetAt } | Called by the gateway before routing. |
+| Response headers | — | X-RateLimit-Limit / -Remaining / -Reset | Well-behaved clients back off correctly if you tell them. |
+| 429 response | — | Retry-After: seconds | Without this, clients hammer you harder during an incident. |
+| Admin: PUT /limits/{customer} | { endpoint, limit, window } | 204 | Config lookup, not a code change. Interviewers ask how you raise one customer limit at 2am. |
+
+**Data model**
+
+| Table | Columns | Why |
+|---|---|---|
+| **Redis: rl:{key}:{window}** | counter, TTL = window length | Fixed / sliding counter. TTL means no cleanup job. |
+| **Redis: tb:{key}** | HASH { tokens, lastRefillNanos } | Token bucket state. Updated atomically by a Lua script. |
+| **Config store** | tier → { endpoint, limit, window } | Cached in-process with a short TTL so a config read is not on the hot path. |
+| **No durable storage** | — | Rate limit state is disposable. Losing it means one window of over-permission, which is acceptable. Saying so is the right instinct. |
+
+**Architecture**
+
+```
+   ┌────────┐
+   │ Client │
+   └───┬────┘
+       │
+       ▼
+   ┌──────────────────────────────────────────┐
+   │            API Gateway                   │
+   │  ┌────────────────────────────────────┐  │
+   │  │  Rate limiter middleware           │  │
+   │  │   1. local token bucket (L1)       │  │  ◄── absorbs most decisions,
+   │  │   2. Redis Lua script (L2)         │  │      no network hop
+   │  │   3. fail-open on Redis error      │  │
+   │  └───────────────┬────────────────────┘  │
+   └──────────────────┼───────────────────────┘
+            allow │   │ deny
+                  │   └──────▶ 429 + Retry-After
+                  ▼
+        ┌──────────────────┐        ┌──────────────────┐
+        │  Your services   │        │  Redis cluster   │
+        └──────────────────┘        │  (sharded by key)│
+                                    └──────────────────┘
+                                             ▲
+                                    ┌────────┴─────────┐
+                                    │  Config service  │
+                                    │  tier -> limits  │
+                                    └──────────────────┘
+```
+
+**The decision path**
+
+- 1. Gateway extracts the identity — API key, then user id, then IP as a fallback.
+- 2. Resolve the limit from cached config (tier + endpoint). No network call.
+- 3. L1: check the in-process token bucket for this key. If it is already clearly over, reject immediately without touching Redis.
+- 4. L2: run a Lua script on Redis that refills and takes atomically, returning remaining tokens.
+- 5. Allowed → forward, with rate-limit headers on the response.
+- 6. Denied → 429 with Retry-After computed from the refill rate.
+- 7. Redis error → FAIL OPEN, fall back to the L1 local limit only, and emit a metric.
+
+**Deep dive**
+
+*Why fixed window is wrong, and what to use instead*
+
+Fixed window: count per clock minute. A 100/min limit permits 100 requests at 11:00:59 and 100 more at 11:01:00 — 200 in one second, all legal. That boundary burst is the reason the algorithm is a trap, and interviewers ask about it specifically.
+
+Sliding window LOG stores every timestamp: exact, and memory grows with traffic. Sliding window COUNTER blends the previous and current window by elapsed fraction: nearly exact, constant memory, and usually the right answer for accuracy.
+
+TOKEN BUCKET refills at a fixed rate up to a capacity, which permits controlled bursts. That is what most user-facing APIs actually want, because legitimate clients are bursty. Pick token bucket for public APIs and say why: bursts are legitimate, and smoothing them punishes good clients.
+
+*Making it atomic and distributed*
+
+The naive distributed implementation reads the counter, decides, then writes — a race across gateway instances. Use a Lua script so refill-and-take is one atomic Redis operation. Lua on Redis is single-threaded per key, which is exactly the guarantee you need.
+
+The two-tier design matters more than people expect. A purely central limiter puts a network round trip on every request and makes Redis a hard dependency. A local bucket per gateway instance absorbs the obvious cases with zero latency and degrades to approximate enforcement — you may allow up to N × limit in the worst case, where N is the instance count. State that number; it is the honest cost.
+
+*Failure, which is the real question*
+
+"What if Redis goes down?" FAIL OPEN, with the local L1 bucket as a conservative fallback. A limiter that takes your API down when it fails is worse than no limiter at all.
+
+The counter-argument exists: for a limiter protecting a fragile downstream, or a paid-quota boundary, fail-closed may be correct. The right answer is that it depends on WHAT you are protecting — protecting your own capacity, fail open; enforcing a billing boundary, fail closed. Making that distinction is the senior answer.
+
+**Scaling**
+
+| Bottleneck | What you do |
+|---|---|
+| **Redis round trip on every request** | Two-tier: local bucket first, Redis only when the local view is uncertain. |
+| **One Redis node saturating** | Shard by rate-limit key. Keys are independent, so this shards perfectly. |
+| **A hot key (one huge customer)** | Give them their own shard, or split their bucket into N sub-buckets and pick one at random. |
+| **Config lookups** | Cache in-process with a 30s TTL. Never read config from the network per request. |
+| **Multi-region** | Per-region limits with the global limit divided, or accept N× over-permission globally. Cross-region synchronous counting is not worth the latency — say so. |
+
+**Trade-offs**
+
+| Decision | Chose | Over | Because |
+|---|---|---|---|
+| **Algorithm** | Token bucket | Fixed window | Bursts are legitimate for real clients. Fixed window has the boundary-burst flaw. |
+| **Placement** | Gateway / edge | Per service | Rejects before any work is done. Per-service limiters remain useful as a second layer protecting specific dependencies. |
+| **State** | Central Redis + local L1 | Purely local, or purely central | Local alone is too approximate; central alone is a latency tax and a hard dependency. |
+| **Failure mode** | Fail open | Fail closed | Availability of your API beats perfect enforcement — unless you are enforcing a paid quota. |
+| **Accuracy** | Approximate | Exact | Exactness costs a synchronous round trip per request. Almost nobody needs it. |
+
+**What each company pushes on**
+
+| Company | What they push on |
+|---|---|
+| **Amazon** | "What if Redis goes down?" is close to guaranteed. Also "how do you limit expensive endpoints differently?" — weighted permits, where a heavy call costs 10 tokens. |
+| **Uber** | Will push on latency: what does this add to p99, and how do you avoid the round trip. The two-tier answer is what they want. |
+| **JPM / Amex** | Will ask about fairness and about the paid-quota case, where fail-open is wrong. Also audit: can you prove a customer was throttled? |
+| **Microsoft / Adobe** | More likely to want the algorithm comparison in detail — draw the fixed-window boundary burst on the board. |
+
 ---
 
 ### SD 9 · News feed / timeline  *(week 9)*
@@ -1716,6 +2000,170 @@ Every design must survive all six. Write the answers; do not just think them.
 - Picking pure fan-out on write and not raising the celebrity problem unprompted.
 - Storing whole posts in every feed.
 - Using offset pagination on a live feed.
+
+#### Worked solution
+
+**Functional requirements**
+
+- Post content, and see a feed of posts from accounts you follow.
+- Follow and unfollow.
+- Paginate backwards through the feed.
+- Ranked or chronological — confirm which, it changes the read path completely.
+
+**Non-functional requirements**
+
+- Feed load under 200ms at p99. Nobody waits for a timeline.
+- Read-heavy, roughly 100:1.
+- Eventual consistency is fine — a post appearing a few seconds late is acceptable.
+- Must survive an account with 100 million followers.
+
+**Estimation**
+
+| Quantity | Working | Result |
+|---|---|---|
+| **Users** | 300M DAU, 2 posts/day | 600M posts/day ≈ 7,000 writes/sec. |
+| **Reads** | 300M × 10 refreshes/day | 3B reads/day ≈ 35,000 QPS, peak maybe 100,000. |
+| **Fan-out on write** | 7,000 × 200 avg followers | 1.4M feed-row writes/sec. THIS is the number that decides the design. |
+| **Celebrity** | one post, 100M followers | 100M writes for a single action. Pure fan-out-on-write is impossible here — say so before they ask. |
+| **Feed storage** | 300M users × 500 ids × 8 bytes | ~1.2 TB in Redis if you cap feeds. Cap them; nobody scrolls 10,000 posts. |
+
+**API**
+
+| Endpoint | Request | Response | Note |
+|---|---|---|---|
+| POST /v1/posts | { text, mediaIds[] } | 201 { postId, createdAt } | Write once. Fan-out happens async. |
+| GET /v1/feed?cursor=&limit=20 | — | 200 { items[], nextCursor } | CURSOR, not offset. A feed is prepended constantly. |
+| POST /v1/follow | { targetUserId } | 204 | Triggers an async backfill of that user recent posts. |
+| DELETE /v1/follow/{id} | — | 204 | Lazy removal — filter at read rather than rewriting every feed. |
+| GET /v1/users/{id}/posts | — | 200 { items[], nextCursor } | The profile timeline. Simple, always a pull. |
+
+**Data model**
+
+| Table | Columns | Why |
+|---|---|---|
+| **post** | id (snowflake, time-sortable) PK · author_id · text · media[] · created_at | A time-sortable id means the feed sorts without a secondary index. |
+| **follow** | follower_id + followee_id PK · created_at | Two indexes: by follower (who do I follow) and by followee (fan-out audience). |
+| **user_flags** | user_id PK · follower_count · is_celebrity | is_celebrity is derived from follower_count crossing a threshold. It is the switch between push and pull. |
+| **feed (Redis)** | LIST or ZSET per user, capped at ~500 post IDs | IDs ONLY, never post bodies. Hydrated on read. |
+| **post_cache (Redis)** | post_id → serialized post | What hydration reads. One copy, so edits and deletes work. |
+
+**Architecture**
+
+```
+   write path
+   ┌────────┐   ┌──────────────┐   ┌───────────┐
+   │ Client │──▶│  Post service│──▶│ post store│
+   └────────┘   └──────┬───────┘   └───────────┘
+                       │ outbox
+                       ▼
+                 ┌──────────┐
+                 │  Kafka   │
+                 └────┬─────┘
+                      ▼
+            ┌─────────────────────┐
+            │  Fan-out workers    │
+            │  is_celebrity ?     │
+            └──────┬───────┬──────┘
+           no      │       │   yes
+        ┌──────────┘       └──────────┐
+        ▼                             ▼
+  ┌──────────────┐             ┌──────────────┐
+  │ push id into │             │ DO NOTHING   │  ◄── the celebrity answer
+  │ each follower│             │ (pull later) │
+  │ feed (Redis) │             └──────────────┘
+  └──────────────┘
+
+   read path
+   ┌────────┐   ┌────────────────────────────────────┐
+   │ Client │──▶│         Feed service               │
+   └────────┘   │  1. read precomputed feed (Redis)  │
+                │  2. pull recent posts from the few │
+                │     celebrities this user follows  │
+                │  3. merge by time, take top N      │
+                │  4. hydrate ids from post_cache    │
+                │  5. filter deleted / blocked       │
+                └────────────────────────────────────┘
+```
+
+**Post — the write path**
+
+- 1. Write the post row with a snowflake id. Return immediately.
+- 2. Emit PostCreated via the outbox.
+- 3. Fan-out worker reads the author follower count.
+- 4. NOT a celebrity: push the post id onto each follower feed list, trimming to 500.
+- 5. IS a celebrity: do nothing. Their posts are pulled at read time.
+- 6. Prioritise ACTIVE followers. Someone who has not opened the app in a month does not need their feed updated in the next second — backfill them lazily on their next read.
+
+**Read — the feed**
+
+- 1. Read the precomputed feed list from Redis (ids only).
+- 2. Fetch recent posts from the handful of celebrities this user follows — usually a few, never thousands.
+- 3. Merge both by timestamp, take the top N.
+- 4. Hydrate ids from the post cache in one batch call.
+- 5. Filter at read: deleted posts, blocked authors, unfollowed-since. This is why you store IDs, not copies.
+- 6. Return with a cursor of (timestamp, post_id).
+
+**Deep dive**
+
+*The celebrity problem, which is the whole question*
+
+Pure fan-out on WRITE gives instant reads and dies on a 100M-follower account: one post becomes 100 million writes, the queue backs up for hours, and everyone else feed is delayed behind it.
+
+Pure fan-out on READ is the mirror: writes are free, but a user following 2,000 accounts triggers 2,000 queries per refresh at 100k QPS.
+
+HYBRID is what every real system does. Push for normal accounts, pull for celebrities, merge at read. The threshold is a tunable — say 10,000 followers — and stating that it is tunable rather than a constant is part of the answer.
+
+The merge is cheap because a user follows very few celebrities. Fetching 5 celebrity timelines and merging with a precomputed list is a small, bounded operation.
+
+*Why the feed stores IDs and not posts*
+
+Storing whole posts in every follower feed is enormous duplication — one post copied 200 times on average — and it makes edits and deletes impossible, because you would have to find and rewrite 200 million rows.
+
+With IDs, deletion is a read-time filter: hydrate, find the post is gone, drop it. Edits are automatic because there is one copy. The cost is a hydration round trip, which is a single batched cache read.
+
+Cap the feed at ~500 ids. Nobody scrolls past that, and older content falls back to a pull query against the accounts you follow.
+
+*Cursor pagination, and why offset breaks*
+
+A feed is prepended constantly. With OFFSET, by the time the user asks for page 2, five new posts have arrived and shifted everything — so page 2 repeats items from page 1 and skips others. Users see duplicates and gaps.
+
+A cursor of (created_at, post_id) is stable: "give me items strictly older than this exact point". New posts arriving above do not affect it. The post_id tiebreaker matters because two posts can share a timestamp.
+
+*Ranking, without wrecking the latency budget*
+
+If the feed is ranked rather than chronological, do NOT rank at retrieval. Retrieve a cheap candidate set — the precomputed feed plus celebrity pulls, a few hundred items — then score only those with a model at request time.
+
+Ranking the whole corpus per request is the mistake. Candidate generation then re-ranking is the standard two-stage shape, and naming it that way signals you have seen a real ranking system.
+
+**Scaling**
+
+| Bottleneck | What you do |
+|---|---|
+| **Fan-out worker throughput** | Partition Kafka by author_id, scale consumers. Prioritise active followers; backfill inactive ones lazily. |
+| **Redis feed storage** | Shard by user_id. Feeds are per-user and never queried across users, so this shards perfectly. |
+| **Hydration read volume** | Batch the id → post lookups. One MGET, not N gets. |
+| **A viral post** | Hot key in the post cache. Replicate it, or serve from a local in-process cache with a short TTL. |
+| **New user with an empty feed** | Backfill asynchronously from the accounts they just followed; serve a pull-based feed until it completes. |
+| **Follower-count skew** | The is_celebrity flag IS the mitigation. Recompute it on a schedule, not per post. |
+
+**Trade-offs**
+
+| Decision | Chose | Over | Because |
+|---|---|---|---|
+| **Fan-out** | Hybrid | Pure write, or pure read | Write dies on celebrities; read dies on users who follow thousands. Hybrid costs you a merge step. |
+| **Feed contents** | Post IDs | Full posts | Deletes and edits become possible, and storage drops by ~200x. Costs a hydration round trip. |
+| **Pagination** | Cursor | Offset | A prepended feed makes offset show duplicates and skip items. |
+| **Consistency** | Eventual | Strong | A post appearing two seconds late is invisible to users. Strong consistency here would cost enormously for no benefit. |
+| **Feed length** | Capped at ~500 | Unbounded | Nobody scrolls further, and the cap bounds memory. Older content falls back to a pull. |
+
+**What each company pushes on**
+
+| Company | What they push on |
+|---|---|
+| **Amazon** | Will ask the celebrity question directly and expect you to raise it unprompted. Then "what happens when the fan-out workers fall behind?" — the answer is prioritise active users, backfill the rest. Also expect deletion: "you deleted a post already in 200M feeds." |
+| **Microsoft / Adobe** | More likely to focus on the pagination correctness and the data model. Be ready to draw why offset produces duplicates. |
+| **Uber** | Will push on the latency budget and on the ranking split — candidate generation versus scoring — and on what you cache where. |
+| **Meta-style** | If asked, expect much deeper ranking discussion. For your ladder, the hybrid fan-out plus cursor pagination is the depth that matters. |
 
 ---
 
@@ -1779,6 +2227,173 @@ Every design must survive all six. Write the answers; do not just think them.
 - Not having an answer for cross-node delivery. It is the whole question.
 - Using timestamps for ordering.
 - Treating presence as trivially real-time.
+
+#### Worked solution
+
+**Functional requirements**
+
+- One-to-one and group messaging.
+- Delivery states: sent, delivered, read.
+- Message history, retrievable on a new device.
+- Online / last-seen presence.
+- Deliver to a recipient who is currently offline.
+
+**Non-functional requirements**
+
+- Message delivery under 500ms when both parties are online.
+- Ordered per conversation. Global ordering is neither needed nor achievable.
+- No message ever silently lost.
+- Millions of concurrent persistent connections.
+
+**Estimation**
+
+| Quantity | Working | Result |
+|---|---|---|
+| **Users** | 50M DAU, 40 messages/day | 2B messages/day ≈ 23,000 writes/sec. |
+| **Connections** | 10M concurrent WebSockets | At ~10k connections per gateway node that is ~1,000 nodes. Connections, not messages, are the real cost. |
+| **Storage** | 2B × 300 bytes | ~600 GB/day. Retention policy is a product decision worth asking about. |
+| **Fan-out** | a 1,000-member group | One write, 1,000 deliveries. Groups are a feed problem in miniature. |
+
+**API**
+
+| Endpoint | Request | Response | Note |
+|---|---|---|---|
+| WS connect | auth token | — | Registers (user, device) → gateway node in the connection registry. |
+| WS send | { convId, clientMsgId, body } | ack { serverMsgId, seq } | clientMsgId makes send idempotent across reconnects. |
+| WS receive | — | { convId, seq, from, body, sentAt } | Pushed by the server. |
+| POST /v1/conversations/{id}/read | { upToSeq } | 204 | Read receipts are just another message type. |
+| GET /v1/conversations/{id}/messages?before=seq | — | 200 { items[], prevCursor } | History fetch on a new device or a scroll-back. |
+
+**Data model**
+
+| Table | Columns | Why |
+|---|---|---|
+| **conversation** | id PK · type (dm/group) · created_at | A DM is a group of two. Modelling them the same avoids two code paths. |
+| **participant** | conv_id + user_id PK · joined_at · last_read_seq | last_read_seq is what powers unread counts and read receipts. |
+| **message** | conv_id + seq PK · sender_id · body · created_at | PARTITION BY conv_id, CLUSTER BY seq. A wide-column store is the natural fit — append-heavy with range reads inside one partition. |
+| **conv_seq** | conv_id PK · last_seq | Atomic increment gives a per-conversation monotonic sequence. Do NOT use wall-clock time for ordering. |
+| **connection registry (Redis)** | user:device → gateway_node, TTL | Refreshed by heartbeat. Expiry means offline. |
+| **offline_queue** | user_id + device_id → pending message ids | Drained on reconnect. Per DEVICE, not per user. |
+
+**Architecture**
+
+```
+   ┌──────────┐                              ┌──────────┐
+   │ Device A │                              │ Device B │
+   └────┬─────┘                              └────▲─────┘
+        │ WebSocket                               │ WebSocket
+        ▼                                         │
+   ┌─────────────┐                          ┌─────┴───────┐
+   │ Gateway N1  │                          │ Gateway N3  │
+   └──────┬──────┘                          └─────▲───────┘
+          │  2. lookup B in registry              │
+          │  ┌──────────────────────┐             │
+          ├─▶│ Connection registry  │             │
+          │  │ user:dev → node, TTL │             │
+          │  └──────────────────────┘             │
+          │  3. forward to N3 ────────────────────┘
+          │
+          │  1. persist FIRST
+          ▼
+   ┌──────────────┐      ┌───────────────────┐
+   │ Message svc  │─────▶│ conv_seq (atomic) │
+   └──────┬───────┘      └───────────────────┘
+          ▼
+   ┌──────────────────────────┐     ┌──────────────────┐
+   │ Wide-column store        │     │  Offline queue   │
+   │ part: conv_id  clus: seq │     │  (B not present) │
+   └──────────────────────────┘     └──────────────────┘
+```
+
+**A sends to B, both online**
+
+- 1. A sends over its WebSocket with a clientMsgId.
+- 2. Gateway N1 calls the message service.
+- 3. Atomically increment conv_seq to get the next sequence number.
+- 4. PERSIST the message. Only then acknowledge to A — an ack before persistence is a lie.
+- 5. Look up B in the connection registry: found on gateway N3.
+- 6. Forward to N3 over an internal RPC; N3 pushes down B socket.
+- 7. B device sends a delivered receipt, which is itself a message.
+
+**B is offline**
+
+- 1. Registry lookup misses, or the TTL has expired.
+- 2. Write the message id into B offline queue, per device.
+- 3. Optionally trigger a mobile push notification.
+- 4. On reconnect, B sends its last-seen seq; the server streams everything after it, in order.
+- 5. B dedups on serverMsgId in case of overlap.
+
+**A group of 1,000**
+
+- 1. ONE message row, in the conversation partition. Never 1,000 copies of the body.
+- 2. Per-participant delivery state, which is cheap.
+- 3. Deliver to the members currently connected; queue for the rest.
+- 4. For very large groups, stop pushing entirely and let clients pull on open — the same hybrid argument as a news feed.
+
+**Deep dive**
+
+*Cross-node delivery, which is the actual question*
+
+A is on gateway 1, B is on gateway 3. Neither node knows about the other connection. This is the problem the design exists to solve.
+
+The answer is a CONNECTION REGISTRY: a Redis map from (user, device) to gateway node, written on connect, refreshed by heartbeat, expiring on disconnect. Sending means looking up the recipient node and forwarding over an internal RPC or a per-node pub/sub channel.
+
+The naive alternative — broadcast every message to every gateway and let the right one deliver it — works at ten nodes and collapses at a thousand, because every node processes every message. Say why you rejected it.
+
+*Ordering, and why timestamps are wrong*
+
+Ordering matters PER CONVERSATION, not globally. Nobody cares whether your message to Alice preceded someone else message to Bob.
+
+Use a per-conversation monotonic SEQUENCE from an atomic increment. Wall-clock timestamps fail because gateway clocks drift by milliseconds and two messages can share one — you then have no deterministic order and different devices render the conversation differently.
+
+The client buffers on a gap: if it holds seq 5 and 7, it waits briefly for 6 before rendering. That is what makes out-of-order network delivery invisible.
+
+*Multi-device, which people forget*
+
+A user has a phone, a laptop and a tablet. The registry key must be (user, DEVICE), not user — otherwise you deliver to one device and the others never see it.
+
+Each device tracks its own last-read sequence, so history sync on a new device is "give me everything after seq 0" and reconnect is "give me everything after seq N". Same mechanism, different starting point.
+
+Read receipts get interesting: if you read on your phone, is it read on your laptop? That is a product decision. Say so rather than assuming.
+
+*Presence, the classic scaling trap*
+
+Naive presence is a write per user per state change broadcast to every contact. At 50M users that is catastrophic and buys almost nothing.
+
+Do it with heartbeats: the client pings every ~30 seconds, the registry entry carries a TTL, and absence of a heartbeat means offline. Push presence changes ONLY to users currently viewing that contact, not to everyone who has ever messaged them.
+
+And accept staleness: last seen being 30 seconds out of date is invisible. Real-time global presence is the trap.
+
+**Scaling**
+
+| Bottleneck | What you do |
+|---|---|
+| **Connection count** | Horizontal gateway nodes, ~10k connections each. This is the dominant cost, not message volume. |
+| **A gateway dying with 10k connections** | Clients reconnect with jittered backoff — without jitter you get a thundering herd. The offline queue covers the gap. |
+| **Message store writes** | Wide-column, partitioned by conv_id. Append-heavy with range reads is the ideal LSM workload. |
+| **Very large groups** | Stop pushing past a threshold and let clients pull on open. |
+| **Registry load** | Shard by user id; it is a simple KV workload with TTLs. |
+| **History reads** | Bounded by partition and cursor. Never scan a conversation from the beginning. |
+
+**Trade-offs**
+
+| Decision | Chose | Over | Because |
+|---|---|---|---|
+| **Transport** | WebSocket | Long polling | Bidirectional and low latency. Mention long polling as the fallback for hostile networks. |
+| **Store** | Wide-column | Relational | Partition by conversation, cluster by sequence. Append-heavy with in-partition range reads. |
+| **Routing** | Registry + direct forward | Broadcast to all gateways | Broadcast makes every node process every message. |
+| **Ordering** | Per-conversation sequence | Server timestamp | Clock skew across gateways gives no deterministic order. |
+| **Presence** | Heartbeat + TTL, scoped push | Real-time global broadcast | Global presence is enormously expensive for a feature nobody checks precisely. |
+| **E2E encryption** | Ask whether it is in scope | Assume it | It removes server-side search, spam filtering, and makes multi-device sync a key-management problem. Naming that trade-off is the point. |
+
+**What each company pushes on**
+
+| Company | What they push on |
+|---|---|
+| **Amazon** | "User A is on one server, user B on another — how does the message get there?" is close to guaranteed. Then the offline case, then multi-device. |
+| **Microsoft** | Teams-flavoured: large groups, threading, and history sync across devices. Expect a push on the group fan-out threshold. |
+| **Uber** | Rider–driver chat is bounded and short-lived, so they will care about connection lifecycle and what happens when a driver loses signal in a tunnel. |
+| **Adobe** | Less likely. If asked, expect focus on the data model and the ordering guarantee. |
 
 ---
 
@@ -1845,6 +2460,181 @@ Every design must survive all six. Write the answers; do not just think them.
 - Proposing 2PC without acknowledging its availability cost.
 - A mutable balance column with no audit trail.
 
+#### Worked solution
+
+**Functional requirements**
+
+- Charge a customer for an order, and record it immutably.
+- Refund fully or partially.
+- Show a customer their balance and transaction history.
+- Reconcile against the payment provider daily and explain every difference.
+- Support multiple currencies with the rate captured at transaction time.
+
+**Non-functional requirements**
+
+- A customer must NEVER be double-charged, including under client retries.
+- Every number must be explainable: why is this balance what it is?
+- Strong consistency within the ledger. Money is the canonical case for not being eventually consistent.
+- Auditable and immutable — corrections are new entries, never updates.
+- Minimise PCI scope: your services should never see a raw card number.
+
+**Estimation**
+
+| Quantity | Working | Result |
+|---|---|---|
+| **Transactions** | 1M/day | ≈ 12 TPS average, maybe 50 TPS peak. LOW. |
+| **Ledger rows** | 2 entries per transaction (double-entry) | 2M rows/day, 730M/year. Large but ordinary. |
+| **Storage** | ~500 bytes/entry | ~1 GB/day, 365 GB/year. Retention is usually 7+ years by regulation. |
+| **The conclusion** | — | This is NOT a throughput problem. Say that in the first two minutes. It is a CORRECTNESS problem under partial failure, and reframing it that way changes the entire conversation in your favour. |
+
+**API**
+
+| Endpoint | Request | Response | Note |
+|---|---|---|---|
+| POST /v1/payments | Idempotency-Key hdr + { orderId, amount, currency, paymentMethodToken } | 201 { paymentId, status } | The idempotency key is the single most important element of this API. |
+| GET /v1/payments/{id} | — | 200 { status, amount, events[] } | Status is derived from the ledger, never a mutable field. |
+| POST /v1/payments/{id}/refunds | Idempotency-Key + { amount, reason } | 201 { refundId, status } | Partial refunds allowed; sum of refunds must not exceed the capture. |
+| GET /v1/accounts/{id}/balance | — | 200 { balance, asOf } | Derived from entries, cached as a snapshot. |
+| POST /webhooks/psp | provider payload | 200 | MUST be idempotent — providers retry, sometimes for days. |
+
+**Data model**
+
+| Table | Columns | Why |
+|---|---|---|
+| **idempotency_key** | key PK · request_hash · response_json · status · created_at · expires_at | UNIQUE on key. This table is what makes double-charging impossible. request_hash catches a client reusing a key with a different body. |
+| **payment** | id PK · order_id · customer_id · amount_minor · currency · status · psp_ref · created_at | amount in MINOR UNITS as an integer. Never a float, never a decimal string. |
+| **ledger_entry** | id PK · txn_id · account_id · direction (DR/CR) · amount_minor · currency · created_at | APPEND ONLY. No UPDATE, no DELETE, ever. Index (account_id, created_at). |
+| **transaction** | id PK · type · reference · created_at | Groups the entries. The invariant: SUM(debits) = SUM(credits) for every txn_id. |
+| **balance_snapshot** | account_id · as_of · balance_minor | A cache. Rebuildable by replaying entries — which is the point. |
+| **fx_rate** | from · to · rate · captured_at | Stored ON the transaction. Never recompute a historic amount at today rate. |
+
+**Architecture**
+
+```
+   ┌────────┐        ┌───────────────────┐
+   │ Client │───────▶│   Payment API     │
+   └────────┘        │  (idempotency     │
+                     │   check FIRST)    │
+                     └─────────┬─────────┘
+                               │
+        ┌──────────────────────┼──────────────────────┐
+        ▼                      ▼                      ▼
+  ┌───────────┐        ┌──────────────┐       ┌──────────────┐
+  │idempotency│        │   Ledger     │       │  PSP client  │
+  │  table    │        │ (append-only)│       │ (Stripe/…)   │
+  │ UNIQUE key│        │  DR   +  CR  │       └──────┬───────┘
+  └───────────┘        └──────┬───────┘              │
+                              │                      │ tokenised card
+                              │ outbox               │ (PCI stays outside)
+                              ▼                      ▼
+                     ┌─────────────────┐      ┌──────────────┐
+                     │  Outbox relay   │      │   Provider   │
+                     └────────┬────────┘      └──────┬───────┘
+                              ▼                      │ webhook
+                        ┌──────────┐                 │ (retried, must
+                        │  Kafka   │◄────────────────┘  be idempotent)
+                        └────┬─────┘
+          ┌──────────────────┼──────────────────┐
+          ▼                  ▼                  ▼
+   ┌────────────┐    ┌──────────────┐   ┌──────────────┐
+   │ Notifier   │    │ Balance      │   │ Reconciler   │
+   │            │    │ projector    │   │  (nightly)   │
+   └────────────┘    └──────────────┘   └──────────────┘
+```
+
+**Charge — the happy path**
+
+- 1. Client sends POST /payments with an Idempotency-Key it generated.
+- 2. INSERT the key row. If the unique constraint fires, this is a retry: return the stored response. STOP HERE.
+- 3. Begin a transaction: write the payment row as PENDING, write the ledger entries, write an outbox row. One local transaction, all or nothing.
+- 4. Commit.
+- 5. Call the PSP with the SAME idempotency key, so their retry protection aligns with yours.
+- 6. On success: write a new transaction moving PENDING to CAPTURED, plus its ledger entries. Never UPDATE the old ones.
+- 7. Store the response against the idempotency key.
+- 8. The outbox relay publishes events; consumers notify, project balances, and feed reconciliation.
+
+**The retry that would double-charge**
+
+- 1. Client times out waiting, does not know whether it succeeded, and retries with the SAME key.
+- 2. INSERT hits the unique constraint.
+- 3. Read the stored response and return it. The customer is charged exactly once.
+- 4. TWO CONCURRENT retries: one INSERT wins, the other blocks or fails. The loser reads the winner result, or returns 409 and the client retries once more. Either is correct; state which you chose.
+
+**Refund**
+
+- 1. Idempotency-Key again — refunds are just as retryable.
+- 2. Validate: sum of existing refunds + this one must not exceed the captured amount.
+- 3. New transaction, REVERSING entries. The original entries stay untouched forever.
+- 4. Call the PSP refund API. Reconcile the result via webhook.
+
+**Deep dive**
+
+*Double-entry, and why the balance is not a column*
+
+Every transaction writes at least two entries that sum to zero: debit one account, credit another. The invariant SUM(DR) = SUM(CR) per transaction is checkable by a query, which means corruption is detectable rather than silent.
+
+The balance is DERIVED — SUM of entries for an account — and cached as a snapshot for speed. That is the whole argument: with a mutable balance column, when a customer says "my balance is wrong", you have nothing to investigate. With entries, you replay them and find the exact transaction that caused it.
+
+Corrections are new REVERSING entries, never updates. "How do you fix a mistake?" is asked in almost every payments interview and "I would update the row" is the wrong answer — it destroys the audit trail that is the reason the system exists.
+
+*Idempotency, in detail*
+
+The client generates a UUID per payment ATTEMPT — not per retry — and sends it as a header. The server inserts it under a unique constraint before doing anything else.
+
+Three subtleties interviewers probe. First, store the RESPONSE, not just the key, so the retry returns the same body rather than a bare 409. Second, hash the request body and compare — a client reusing a key with different content is a bug you should reject loudly, not silently return the old answer to. Third, TTL: keys cannot live forever, and 24 hours is typical; after that a retry becomes a new payment, which is a documented risk.
+
+And propagate the same key DOWN to the PSP. Stripe and Adyen both accept one. That way your retry protection and theirs are aligned rather than independent.
+
+*The states you do not control*
+
+The hard part of payments is that the PSP is a separate system and the network between you can fail at any point. Four bad cases:
+
+(a) You called, it succeeded, your process died before recording it. Reconciliation catches this — poll the PSP for every PENDING payment older than N minutes.
+(b) You called, it timed out, you do not know the outcome. Do NOT retry blindly; query by your idempotency key first.
+(c) The webhook arrives twice. Make webhook handling idempotent, keyed on the provider event id.
+(d) The webhook arrives before your own commit finishes. Handle out-of-order: the webhook handler must tolerate a payment it has not seen yet, usually by parking it briefly and retrying.
+
+Having all four ready is what separates someone who has run a payment system from someone who has read about one.
+
+*Sagas, because money crosses services*
+
+Placing an order touches inventory, payment and fulfilment. Two-phase commit would hold locks across services for the duration of network calls, and its coordinator is a single point of failure — unacceptable for availability.
+
+Use a saga: reserve inventory, charge payment, confirm order, with a compensating action for each step. Compensations are business-level undos — a refund, not a rollback — and they must themselves be idempotent and retryable.
+
+Order the steps so IRREVERSIBLE actions come last. Sending a confirmation email should be the final step, after everything reversible has already succeeded.
+
+**Scaling**
+
+| Bottleneck | What you do |
+|---|---|
+| **Ledger write volume** | Partition by account_id. Entries for one account stay together, which is also what the balance query needs. |
+| **Balance queries** | Snapshot per account per day; sum only the entries since the snapshot. Rebuildable by replay at any time. |
+| **Idempotency table growth** | TTL and archive. It only needs to cover the retry window. |
+| **Reconciliation over 7 years of data** | Run it incrementally over a daily window, never over the full history. |
+| **Hot account (a marketplace platform account)** | Sub-accounts that roll up, or accept contention on that one row and serialise it. |
+| **Multi-region** | Money usually does NOT go active-active. Pin an account to a home region and accept cross-region latency for the rare foreign access. Say this — casually distributing a ledger is a red flag. |
+
+**Trade-offs**
+
+| Decision | Chose | Over | Because |
+|---|---|---|---|
+| **Balance** | Derived from entries + snapshot | A mutable balance column | Auditability. You can always answer "why is this number what it is". |
+| **Consistency** | Strong within the ledger | Eventual | Money is the canonical exception. Across services, saga with compensations. |
+| **Distributed txn** | Saga | Two-phase commit | 2PC holds locks across network calls and its coordinator is a SPOF. |
+| **Event publishing** | Outbox | Publish after commit | The dual-write problem. If the publish fails post-commit, the systems silently diverge. |
+| **Card data** | Tokenised at the edge | Stored by us | Keeps almost your entire estate out of PCI scope. This alone is worth saying. |
+| **Amount type** | Integer minor units | Decimal or float | Floats cannot represent 0.1. Integers in cents remove a whole class of bug. |
+
+**What each company pushes on**
+
+| Company | What they push on |
+|---|---|
+| **JP MORGAN / AMEX** | This is their home turf and the depth will be real. Expect: "walk me through every way a customer could be double-charged", "how do you correct a mistaken transaction" (reversing entry, and if you say UPDATE you are done), "what is your reconciliation process", and multi-region DR with an explicit RPO. Failing to raise idempotency unprompted is close to disqualifying. |
+| **Amazon** | Will come at it through ORDERS — see session 12 — and push on the saga: what happens when payment succeeds but inventory reservation has expired. Also "how do you handle a partial refund with a marketplace fee?", which is really a business-rules question, and saying so is a good answer. |
+| **Uber** | Driver payouts rather than customer charges. Same ledger, different direction, plus scheduled batch payouts and the question of what happens when a payout fails. |
+| **Microsoft / Adobe** | Subscription billing flavour: proration, mid-cycle upgrades, dunning when a card fails. The ledger design is identical; the state machine is richer. |
+
 ---
 
 ### SD 12 · Orders, inventory & reservations  *(week 12)*
@@ -1908,6 +2698,173 @@ Every design must survive all six. Write the answers; do not just think them.
 - No answer for what happens when payment fails after the hold.
 - Ignoring the hot-SKU case and only discussing aggregate QPS.
 
+#### Worked solution
+
+**Functional requirements**
+
+- Add items to a cart and place an order.
+- Reserve inventory so it cannot be sold twice.
+- Take payment, then confirm and fulfil.
+- Cancel and refund, including partial cancellation of one line.
+- Show accurate-enough stock on the product page.
+
+**Non-functional requirements**
+
+- NEVER oversell a physical item.
+- Placing an order must be idempotent — a double-click must not create two orders.
+- Survive a flash sale where one SKU takes enormous concurrent load.
+- Order state transitions must be legal and auditable.
+
+**Estimation**
+
+| Quantity | Working | Result |
+|---|---|---|
+| **Orders** | 10M/day | ≈ 115/sec average. |
+| **Peak** | Prime Day / flash sale | 20–50x. Say 5,000 orders/sec, and on ONE SKU possibly 50,000 attempts/sec. |
+| **The real number** | — | That single-SKU figure is the whole design. Aggregate QPS is easy; one contended row is not. Lead with this. |
+| **Storage** | 10M orders × 2 KB | 20 GB/day of orders, plus the inventory table which is small and extremely hot. |
+
+**API**
+
+| Endpoint | Request | Response | Note |
+|---|---|---|---|
+| POST /v1/orders | Idempotency-Key + { cartId, addressId, paymentMethodId } | 201 { orderId, status } | Idempotent. A double-click returns the same order. |
+| GET /v1/orders/{id} | — | 200 { status, lines[], total, timeline[] } | Timeline is derived from the state-transition log. |
+| POST /v1/orders/{id}/cancel | Idempotency-Key + { lineIds? } | 200 | Legal only from certain states. Partial cancel needs line-level status. |
+| GET /v1/products/{sku}/availability | — | 200 { available, asOf } | Explicitly allowed to be slightly stale. Say so in the contract. |
+| Internal: reserve(sku, qty, orderId, ttl) | — | { reserved: bool } | The atomic operation everything hinges on. |
+
+**Data model**
+
+| Table | Columns | Why |
+|---|---|---|
+| **inventory** | sku PK · warehouse_id · available INT · reserved INT · version | The contended row. UPDATE ... WHERE available >= qty is the whole correctness story. |
+| **reservation** | id PK · sku · qty · order_id · expires_at · status | TTL-based. Index on expires_at for the sweeper. |
+| **order** | id PK · customer_id · status · total_minor · currency · idempotency_key UNIQUE · created_at | The unique key gives idempotent placement for free. |
+| **order_line** | id PK · order_id · sku · qty · unit_price_minor · status | Line-level status is what makes partial cancellation possible. Add it now, not later. |
+| **order_event** | id PK · order_id · from_status · to_status · reason · at | Append-only. This is the timeline and the audit trail. |
+| **Note on price** | — | Store unit_price AT ORDER TIME on the line. Never join to the current price — the customer paid what they paid. |
+
+**Architecture**
+
+```
+   ┌────────┐     ┌──────────────┐
+   │ Client │────▶│  Order API   │  (idempotency key)
+   └────────┘     └──────┬───────┘
+                         │
+                         ▼
+              ┌────────────────────────┐
+              │   Order orchestrator   │  ← the saga lives here
+              │   (state machine)      │
+              └───┬────────┬────────┬──┘
+     1. reserve   │        │        │  3. confirm
+                  ▼        │        ▼
+        ┌──────────────┐   │   ┌──────────────┐
+        │  Inventory   │   │   │ Fulfilment   │
+        │              │   │   └──────────────┘
+        │ UPDATE ...   │   │ 2. charge
+        │  WHERE       │   ▼
+        │  available   │  ┌──────────────┐
+        │  >= qty      │  │   Payment    │  (see session 11)
+        └──────┬───────┘  └──────────────┘
+               │
+               │ outbox
+               ▼
+         ┌──────────┐
+         │  Kafka   │──▶ availability projector ──▶ ┌─────────────┐
+         └──────────┘    (stale is FINE for         │ Read model  │
+                          the product page)         │  (cache)    │
+                                                    └─────────────┘
+
+   ┌────────────────────┐
+   │ Reservation sweeper│  every 30s: release expired holds
+   └────────────────────┘
+```
+
+**Place an order — the saga**
+
+- 1. INSERT order with the idempotency key. Constraint violation means a retry: return the existing order.
+- 2. RESERVE inventory for every line: UPDATE inventory SET available = available - :qty WHERE sku = :sku AND available >= :qty. Require rowsAffected = 1.
+- 3. If any line fails, RELEASE everything already reserved and fail the order cleanly.
+- 4. CHARGE payment, passing the same idempotency key downstream.
+- 5. If payment fails: compensate by releasing the reservations, transition the order to CANCELLED.
+- 6. CONFIRM: reservation becomes a committed decrement, order moves to CONFIRMED.
+- 7. Emit OrderConfirmed via the outbox. Fulfilment, notification and analytics consume it.
+
+**Read the product page**
+
+- 1. Read availability from the CACHED read model, not the inventory table.
+- 2. This is deliberately stale by up to a few seconds. "Only 3 left" being slightly wrong is acceptable; a wrong RESERVATION is not.
+- 3. Separating those two is the mature answer and interviewers listen for it.
+
+**Deep dive**
+
+*The oversell race — the reason this question exists*
+
+The wrong version: read available, check it is greater than zero, write available minus one. Two threads both pass the check and you have sold the same item twice.
+
+The right version is a single conditional statement:
+
+  UPDATE inventory SET available = available - :qty
+   WHERE sku = :sku AND available >= :qty
+
+Then require rowsAffected = 1. One caller succeeds, the other affects zero rows and gets a clean out-of-stock. There is no window between check and decrement because there is no separate check.
+
+In memory, the same shape is a compareAndSet loop or an AtomicInteger. The point is identical: the check and the decrement must be one operation.
+
+*The flash sale, which is a different problem*
+
+Aggregate QPS is easy. 50,000 attempts per second on ONE ROW is not — that row becomes a serialisation point and everything queues behind its lock.
+
+Three real answers. SHARD THE STOCK: split 1,000 units into 10 buckets of 100 and have each request decrement a random bucket, falling back to scanning buckets when one is empty. Contention drops 10x, at the cost of slightly awkward "is anything left" logic. QUEUE IT: accept requests into a queue and process serially against the row — throughput is capped but nobody is oversold and latency becomes predictable. WAITING ROOM: admit users in batches, which is what ticketing sites do, and is as much a product decision as a technical one.
+
+Say which you would choose and why. There is no universally right answer, and knowing that is the signal.
+
+*Reservations and the payment-failure window*
+
+A reservation is inventory held with a TTL, typically 10–15 minutes. Two mechanisms, and you need both: a background SWEEPER releasing expired holds, and a LAZY check when someone tries to reserve — otherwise an abandoned hold blocks a live sale until the sweeper next runs.
+
+The question everyone gets asked: what if the hold expires while the customer is on the payment page? You must have a stated policy. Either refuse the payment with a clear message, or extend the hold once when payment begins. Silently taking payment for released stock is the failure that actually ships to production, and saying that out loud demonstrates you have thought past the happy path.
+
+*Multi-warehouse allocation*
+
+Do NOT sum stock across three warehouses and then decrement one — that is the same race with extra steps.
+
+Two correct shapes. One LOGICAL counter for the SKU, with warehouse allocation decided after the reservation succeeds. Or PER-WAREHOUSE reservation where the request names the warehouse, chosen by proximity before the atomic decrement.
+
+The first is simpler and usually right for a customer-facing flow; the second matters when shipping cost or delivery promise depends on which warehouse serves it.
+
+**Scaling**
+
+| Bottleneck | What you do |
+|---|---|
+| **One contended SKU row** | Bucket the stock, or serialise through a queue. This bites long before anything else. |
+| **Order write volume** | Shard orders by customer_id. Orders are never queried across customers on the hot path. |
+| **Product page reads** | Cached read model fed by the event stream. Never read the inventory table for display. |
+| **Reservation sweeper** | Index on expires_at, process in batches, and keep the lazy check so the sweeper is not on the critical path. |
+| **Order history queries** | Separate read model. Do not run reporting queries against the transactional store. |
+| **Peak traffic** | Autoscale the stateless order API. The inventory row does not autoscale — that is the real ceiling and you should say so. |
+
+**Trade-offs**
+
+| Decision | Chose | Over | Because |
+|---|---|---|---|
+| **Concurrency control** | Atomic conditional UPDATE | Read-then-write, or a lock | No window, no lock held across a network call. The correct default. |
+| **Display availability** | Eventually consistent read model | Read the live table | Protects the hot row and is honest about what "only 3 left" means. |
+| **Reservation expiry** | Lazy check + sweeper | Sweeper alone | A sweeper alone leaves a window where a dead hold blocks a real sale. |
+| **Cross-service consistency** | Saga with compensations | 2PC | Availability, and no locks held across service calls. |
+| **Order status** | Explicit state machine | A status string | Illegal transitions become impossible. "Can a DELIVERED order be cancelled?" is asked constantly — the answer is that it becomes a RETURN, a different flow. |
+| **Line-level status** | Yes, from the start | Order-level only | Partial cancellation and partial shipment are always the follow-up. Retrofitting this is painful. |
+
+**What each company pushes on**
+
+| Company | What they push on |
+|---|---|
+| **AMAZON** | Their own domain, so expect precision. Guaranteed: "two customers buy the last item at the same instant — walk me through exactly what happens." Then the flash sale. Then "is eventual consistency ever OK for inventory?" — the answer is yes for display, never for reservation, and that distinction IS the question. Also expect the state machine probe about cancelling a delivered order. |
+| **Flipkart / Expedia** | Same machine, different nouns — seats, rooms, slots. Expedia will push on the hold TTL and what happens when a hotel changes availability underneath you. |
+| **Uber** | Closest analogue is surge capacity and driver allocation rather than stock, but the atomic-assignment argument transfers directly. |
+| **JPM / Amex** | Less likely to ask this design, but if they do they will focus on the money half: the saga, the compensations, and what happens when the refund itself fails. |
+
 ---
 
 ### SD 13 · Search, typeahead & notifications  *(week 13)*
@@ -1970,6 +2927,182 @@ Every design must survive all six. Write the answers; do not just think them.
 - Doing ranking at query time and blowing the latency budget.
 - One queue for all notification channels.
 - No user preference or throttling model — the interviewer will ask about spam.
+
+#### Worked solution
+
+**Functional requirements**
+
+- Search products or content by free text, with relevance ranking.
+- Typeahead suggestions as the user types.
+- Filters and facets — category, price, rating.
+- Send notifications across email, push and SMS.
+- Per-user notification preferences and quiet hours.
+
+**Non-functional requirements**
+
+- Typeahead under 100ms or it feels broken — this is the hardest constraint here.
+- Search under 300ms including ranking.
+- Index freshness of minutes is acceptable; instant is not required.
+- Notification delivery is at-least-once, so consumers must be idempotent.
+
+**Estimation**
+
+| Quantity | Working | Result |
+|---|---|---|
+| **Searches** | 10M/day | ≈ 115/sec average, maybe 500 peak. Modest. |
+| **Typeahead** | 10M searches × ~20 keystrokes | 200M requests/day ≈ 2,300/sec average. 20x the search volume — debouncing on the client is not optional. |
+| **Catalogue** | 50M products | Index maybe 200 GB. Fits comfortably on a small Elasticsearch cluster. |
+| **Notifications** | 50M users × 2/day | 100M/day ≈ 1,200/sec, spiky around campaigns. |
+| **The conclusion** | — | Typeahead volume dominates everything. Design the read path for it first and the rest follows. |
+
+**API**
+
+| Endpoint | Request | Response | Note |
+|---|---|---|---|
+| GET /v1/search?q=&filters=&cursor= | — | 200 { items[], facets{}, nextCursor } | Cursor pagination; search results shift as the index updates. |
+| GET /v1/suggest?q= | — | 200 { suggestions[] } | Must be under 100ms. No ranking at request time. |
+| POST /v1/notifications | { userId, category, templateId, payload, priority } | 202 { notificationId } | 202 — accepted, not delivered. Be honest in the contract. |
+| GET /v1/preferences | — | 200 { perCategory{}, quietHours, channels[] } | Read by the pre-send pipeline. |
+| PUT /v1/preferences | { ... } | 204 | Unsubscribe path. A notification system without one is a product bug. |
+
+**Data model**
+
+| Table | Columns | Why |
+|---|---|---|
+| **product (source of truth)** | id PK · title · description · category · price · rating · updated_at | Relational. The index is DERIVED from this and will drift — plan the rebuild. |
+| **search index (Elasticsearch)** | inverted index: term → doc ids, plus stored fields for facets | Not a system of record. Rebuildable from the product table. |
+| **suggest trie (in memory)** | prefix node → precomputed top-k completions | The top-k is PRECOMPUTED. That is what buys the 100ms. |
+| **notification** | id PK · user_id · category · channel · status · dedupe_key · created_at | dedupe_key UNIQUE gives idempotent delivery. |
+| **user_preferences** | user_id PK · category → channels[] · quiet_hours · global_cap | Cached in-process; never a network read per notification. |
+| **delivery_attempt** | notification_id + attempt · channel · result · at | Append-only. Answers "did they actually get it?" |
+
+**Architecture**
+
+```
+   SEARCH
+   ┌────────┐   ┌───────────────┐   ┌──────────────────┐
+   │ Client │──▶│ Search service│──▶│  Elasticsearch   │
+   └───┬────┘   └───────────────┘   └────────▲─────────┘
+       │                                     │ near-real-time
+       │ /suggest (debounced 150ms)          │ indexer
+       ▼                                     │
+   ┌────────────────────┐            ┌───────┴────────┐
+   │ Suggest service    │            │  Kafka (CDC)   │
+   │ in-memory trie,    │            └───────▲────────┘
+   │ top-k PRECOMPUTED  │                    │
+   └────────────────────┘            ┌───────┴────────┐
+            ▲                        │ product store  │ ◄── source of truth
+            │ rebuilt every few min  └────────────────┘
+   ┌────────┴─────────┐
+   │  Batch trie build│
+   └──────────────────┘
+
+   NOTIFICATIONS
+   ┌────────────┐   ┌────────────────────────────────┐
+   │  Producer  │──▶│  Pre-send pipeline (chain)     │
+   └────────────┘   │  opt-out → quiet hours →       │
+                    │  rate limit → dedup            │
+                    └───────────────┬────────────────┘
+                                    ▼
+              ┌─────────────────────────────────────────┐
+              │  SEPARATE queue + pool PER CHANNEL       │ ◄── bulkhead
+              │  ┌────────┐ ┌────────┐ ┌──────────────┐ │
+              │  │ email  │ │  push  │ │     sms      │ │
+              │  └───┬────┘ └───┬────┘ └──────┬───────┘ │
+              └──────┼──────────┼─────────────┼─────────┘
+                     ▼          ▼             ▼
+                  provider   provider      provider
+                     │          │             │  failure
+                     └──────────┴─────────────┴────▶ DLQ
+```
+
+**Typeahead — the 100ms path**
+
+- 1. Client DEBOUNCES ~150ms of no typing before firing. This alone removes most of the 2,300/sec.
+- 2. Request hits the edge cache — common prefixes repeat enormously across users.
+- 3. On miss, the suggest service walks the in-memory trie to the prefix node.
+- 4. Return the PRECOMPUTED top-k stored on that node. No ranking, no scoring, no database.
+- 5. Personalisation, if any, re-ranks only those ~20 results — never the retrieval.
+
+**Search**
+
+- 1. Parse the query, apply filters as Elasticsearch filter clauses (cacheable, not scored).
+- 2. Retrieve a candidate set with BM25 relevance.
+- 3. Re-rank the top ~100 with business signals — popularity, margin, availability.
+- 4. Compute facet counts from the same query.
+- 5. Return with a cursor.
+
+**Send a notification**
+
+- 1. Producer posts; return 202 immediately.
+- 2. Pre-send chain: opted out? in quiet hours (unless CRITICAL)? over the rate limit? a duplicate within the aggregation window?
+- 3. Any filter rejecting means SUPPRESSED, with the reason recorded — suppression is not failure and should be visible.
+- 4. Enqueue onto the channel-specific queue.
+- 5. Worker sends via the provider with a dedupe key.
+- 6. Retry with backoff on transient failure; DLQ after N attempts.
+
+**Deep dive**
+
+*How typeahead stays under 100ms*
+
+The rule is that NO ranking happens at request time. A trie node stores its top-k completions already sorted, computed by a batch job from search logs and product popularity. A lookup is O(length of prefix) plus reading a small precomputed list.
+
+The cost is freshness: a newly trending term does not suggest until the next rebuild. Say the number — "suggestions lag reality by about five minutes". If that is unacceptable, maintain a small real-time overlay index merged at query time, and be explicit that you are adding complexity to buy freshness.
+
+Memory is fine: a few million prefixes with top-10 each fits in a couple of GB, and the whole structure is read-only between rebuilds so it needs no locking.
+
+*The index is derived, and it WILL drift*
+
+Elasticsearch is not a system of record. The product table is. The index is fed by change data capture into Kafka, and consumers apply updates near-real-time.
+
+Two things follow. You must own a REBUILD path — reindex from the source into a new index and swap an alias atomically — because drift is inevitable and eventually you will need to fix it wholesale. And you must accept lag: a price change takes seconds to appear in search. For a price that is usually fine; for stock availability it may not be, which is why the product page reads stock from a different source.
+
+*Bulkheads in the notification pipeline*
+
+One shared queue for all channels means a slow SMS provider stalls email too. Separate queue and thread pool per channel is the bulkhead pattern applied at the system level, and it is the specific failure interviewers probe.
+
+Add a circuit breaker per provider: when SMS is failing consistently, stop trying, fail fast, and let the DLQ collect. Retrying into a dead provider consumes workers that email needs.
+
+And priority: an OTP must not queue behind a marketing campaign. Either a separate high-priority queue per channel, or a priority queue with strict ordering. Say which.
+
+*Preventing notification spam, which is a product problem*
+
+"A user gets 200 notifications in a minute" is a design failure, not a load problem. Four controls, all of them cheap.
+
+PER-USER RATE LIMIT across all producers — the global cap matters more than any single producer limit. AGGREGATION: buffer per user per category for a window and send one digest instead of fifty. QUIET HOURS with an explicit CRITICAL override, because an OTP at 2am is correct and a marketing push is not. And an UNSUBSCRIBE path that actually works.
+
+Raising the global cap unprompted is a strong signal, because it is the control that requires thinking across producers rather than within one.
+
+**Scaling**
+
+| Bottleneck | What you do |
+|---|---|
+| **Typeahead QPS** | Client debounce, then edge cache, then in-memory trie. Three layers before anything expensive. |
+| **Search index size** | Shard by document; Elasticsearch does this natively. Replicas for read throughput. |
+| **Reindexing 50M products** | Build into a new index, swap the alias atomically. Never reindex in place. |
+| **Notification bursts** | Queue absorbs them. Scale workers up to the partition count; beyond that, add partitions. |
+| **A failing provider** | Circuit breaker plus DLQ. Do not let it consume the worker pool. |
+| **Preference lookups** | In-process cache with a short TTL. Never a network read per notification. |
+
+**Trade-offs**
+
+| Decision | Chose | Over | Because |
+|---|---|---|---|
+| **Typeahead** | Precomputed top-k trie | Rank at query time | 100ms is unachievable with request-time ranking. Costs freshness. |
+| **Index freshness** | Near-real-time (minutes) | Synchronous indexing | Synchronous indexing couples the write path to the search cluster availability. |
+| **Search store** | Elasticsearch, derived | Relational full-text | Relevance ranking and faceting are what it is for. Accept it is not a system of record. |
+| **Notification queues** | One per channel | One shared | Bulkhead. A slow SMS provider must not stall email. |
+| **Delivery guarantee** | At-least-once + dedupe key | Exactly-once | Exactly-once across an external provider does not exist. Idempotency at the consumer does. |
+| **Spam control** | Global per-user cap | Per-producer limits only | Producers do not know about each other. Only a global cap actually protects the user. |
+
+**What each company pushes on**
+
+| Company | What they push on |
+|---|---|
+| **Amazon** | Search suggestions is a favourite — expect the 100ms budget and "how does a new product appear in suggestions?". On notifications: "a user got 200 in a minute, fix it", and the aggregation answer. |
+| **Microsoft / Adobe** | More likely to probe the index rebuild and the relevance model. Have the alias-swap answer. |
+| **Uber** | Notification flavour: trip updates with strict ordering and priority. "The push provider is down — does the rider still get told their driver arrived?" |
+| **JPM / Amex** | Would care about the audit trail: can you prove a customer was notified, and when. |
 
 ---
 
@@ -2037,6 +3170,173 @@ Every design must survive all six. Write the answers; do not just think them.
 - Storing every location ping durably.
 - No answer for the double-assignment race.
 
+#### Worked solution
+
+**Functional requirements**
+
+- Rider requests a ride from A to B.
+- Match a nearby available driver.
+- Driver accepts or declines; on decline or timeout, offer the next.
+- Track the trip through its lifecycle and price it.
+- Drivers report location continuously.
+
+**Non-functional requirements**
+
+- Matching within a few seconds.
+- Two riders must NEVER be matched to the same driver.
+- Handle enormous location write volume.
+- Degrade sensibly when a whole city loses connectivity.
+
+**Estimation**
+
+| Quantity | Working | Result |
+|---|---|---|
+| **Active drivers** | 1M, reporting every 4 seconds | 250,000 location writes/sec. THIS is the number that shapes the design. |
+| **Ride requests** | 20M rides/day | ≈ 230/sec average, several thousand at peak in a dense city. |
+| **Nearby query** | per request, ~2km radius | Must not scan 1M drivers. Geo index, always. |
+| **Location durability** | — | Do NOT persist every ping. It is high-churn, low-value, disposable data. Saying that early is a strong signal. |
+
+**API**
+
+| Endpoint | Request | Response | Note |
+|---|---|---|---|
+| POST /v1/rides | Idempotency-Key + { pickup, dropoff } | 201 { rideId, status: SEARCHING } | Returns immediately; matching is async. |
+| GET /v1/rides/{id} | — | 200 { status, driver?, eta? } | Client polls or holds a socket. |
+| POST /v1/drivers/location | { lat, lng, heading } | 204 | Fire and forget. Never blocks on durability. |
+| POST /v1/offers/{id}/accept | — | 200 { rideId } | Atomic. Exactly one driver can win an offer. |
+| POST /v1/offers/{id}/decline | — | 204 | Returns the driver to the pool and offers the next candidate. |
+
+**Data model**
+
+| Table | Columns | Why |
+|---|---|---|
+| **driver_state (Redis)** | driver_id → { status, cellId, lat, lng, updatedAt } TTL ~60s | In memory, TTL-expiring. A driver who stops reporting simply vanishes from matching, which is correct. |
+| **geo_index (Redis)** | cellId → SET of driver_ids | H3 or a grid cell. Query own cell plus neighbours, never a scan. |
+| **ride** | id PK · rider_id · driver_id NULL · status · pickup · dropoff · fare_minor · created_at | The durable record. Partition by ride id or city. |
+| **offer** | id PK · ride_id · driver_id · expires_at · status | Short-lived. The offer loop lives here. |
+| **trip_event** | ride_id + seq · type · at · location | Append-only lifecycle log. This is the audit trail and the source of disputes. |
+| **Sampled location history** | ride_id + ts → point, every ~5s during a trip | For the route map and disputes. A tiny fraction of the raw ping volume. |
+
+**Architecture**
+
+```
+   ┌────────┐                        ┌─────────┐
+   │ Rider  │                        │ Driver  │
+   └───┬────┘                        └────┬────┘
+       │ request                          │ location every 4s
+       ▼                                  ▼
+  ┌─────────────────┐            ┌────────────────────┐
+  │  Ride service   │            │ Location ingest    │
+  └────────┬────────┘            │ (fire and forget)  │
+           │                     └─────────┬──────────┘
+           │ 1. find candidates             │
+           ▼                                ▼
+  ┌──────────────────────────────────────────────────┐
+  │      Geo index  (Redis, H3 cells)                │
+  │      cell → {drivers}    driver → {status,pos}   │
+  │      TTL ~60s: stale drivers disappear           │
+  └────────────────────┬─────────────────────────────┘
+                       │ 2. nearest suitable
+                       ▼
+           ┌────────────────────────┐
+           │   Matching / offer     │
+           │   CAS driver status:   │  ◄── the correctness core
+           │   AVAILABLE → OFFERED  │
+           └───────┬────────────────┘
+            accept │        │ decline / 15s timeout
+                   ▼        └──────▶ next candidate
+           ┌────────────────┐
+           │  Trip service  │──▶ trip_event log ──▶ Kafka ──▶ pricing,
+           └────────────────┘                              analytics, payouts
+```
+
+**Request a ride**
+
+- 1. POST /rides with an idempotency key. Persist the ride as SEARCHING, return immediately.
+- 2. Matching service queries the geo index: the pickup cell plus its neighbours.
+- 3. Filter to AVAILABLE drivers, rank by ETA (not straight-line distance — a river changes the answer).
+- 4. Take the top candidate and compareAndSet their status AVAILABLE → OFFERED. If it fails, someone else won: take the next.
+- 5. Push the offer to the driver with a 15-second expiry.
+- 6. Accept: CAS OFFERED → ON_TRIP, assign to the ride, notify the rider.
+- 7. Decline or timeout: CAS OFFERED → AVAILABLE and offer the next candidate. Track decline rate.
+- 8. Radius exhausted: widen it, then eventually tell the rider no cars are available.
+
+**Location updates — the high-volume path**
+
+- 1. Driver posts location every 4 seconds.
+- 2. Ingest updates the in-memory driver record and moves them between geo cells if needed.
+- 3. Refresh the TTL. No durable write on this path at all.
+- 4. During an active trip only, sample every ~5 seconds into durable storage for the route map.
+
+**Deep dive**
+
+*Geo indexing, and why H3*
+
+A bounding-box SQL query scans a million rows per request. Unusable.
+
+Bucket drivers into CELLS and query the pickup cell plus its neighbours. Four options: GEOHASH is simple, string-prefix based, and has awkward boundary behaviour where adjacent cells share no prefix. QUADTREE adapts to density, which matters when a city centre is a thousand times denser than the suburbs. S2 uses Hilbert-curve ordering on a sphere. H3 is Uber own hexagonal grid.
+
+Hexagons matter because all six neighbours are EQUIDISTANT. With squares you have four edge neighbours and four diagonal ones at 1.41x the distance, so "adjacent" is ambiguous and radius queries are lopsided. Naming H3 and that reason in an Uber interview is exactly the expected answer.
+
+Always query neighbours too: the nearest driver is frequently just over a cell boundary.
+
+*The double-assignment race*
+
+Two riders request simultaneously and the same driver is nearest to both. If both offers go out, one driver gets two rides.
+
+The fix is an atomic state transition on the DRIVER: compareAndSet AVAILABLE → OFFERED. Exactly one caller wins; the loser moves to the next candidate. In a database this is UPDATE driver SET status = OFFERED WHERE id = ? AND status = AVAILABLE, checking rows-affected.
+
+This is the correctness core of the whole design. Raise it before being asked.
+
+*Matching is an offer LOOP, not a decision*
+
+The common mistake is modelling matching as one decision: find the nearest driver, assign, done. Real systems offer, wait, and move on.
+
+Offer with a timeout (~15s). On decline or expiry, return the driver to the pool and offer the next. Track decline rates, because a driver declining everything is a product problem.
+
+The optimisation worth naming: BATCH matching. Instead of greedily matching each request as it arrives, collect requests over a few seconds and solve the assignment across the batch. It produces measurably better global matches than greedy — a rider slightly further away may free a driver who is much better for someone else.
+
+*Location volume, and what you refuse to store*
+
+250,000 writes per second of location data. The instinct to put it in the primary database is the failure.
+
+Location is high-churn, low-value and disposable. It lives in memory with a TTL. A driver who stops reporting simply expires out of the index, which is exactly the behaviour you want — no separate liveness check needed.
+
+If you need history, SAMPLE it: every fifth ping during an active trip, written asynchronously. That is a tiny fraction of the raw volume and it is enough for the route map and for disputes.
+
+And when a city loses connectivity, TTLs expire and drivers vanish from the index. That is correct, but riders then see no availability — so you need a degraded-mode message rather than an infinite spinner. Mentioning that unprompted lands well.
+
+**Scaling**
+
+| Bottleneck | What you do |
+|---|---|
+| **250k location writes/sec** | In-memory geo store, sharded by cell. No durable write on the hot path. |
+| **Matching throughput** | Shard by city or region. Matching is inherently local — a London request never touches Manchester data. |
+| **Hot cell (a stadium emptying)** | Cell subdivision, or cap candidates per query and rank a sample. |
+| **Ride store** | Partition by city and time. Historical rides are cold and can move to cheaper storage. |
+| **Surge computation** | Supply/demand ratio per cell on a rolling window, computed by a stream job, SMOOTHED — instant surge changes flap and riders revolt. |
+| **Multi-region** | Naturally partitioned by geography. This is one of the few designs where multi-region is easy — say so. |
+
+**Trade-offs**
+
+| Decision | Chose | Over | Because |
+|---|---|---|---|
+| **Geo index** | H3 hexagons | Geohash, quadtree, S2 | Uniform neighbour distance and no diagonal ambiguity. Geohash is acceptable if you name the boundary problem. |
+| **Location storage** | In-memory, TTL | Durable per ping | Disposable data. Durability here buys nothing and costs enormously. |
+| **Matching** | Offer loop with timeout | Single assignment | Drivers decline. A single assignment cannot model that. |
+| **Ranking** | ETA | Straight-line distance | A river or a motorway makes straight-line distance wrong. ETA needs the road graph. |
+| **Optimisation** | Batch matching | Greedy per request | Better global assignment. Costs a few seconds of added latency — a real trade-off worth stating. |
+| **Driver assignment** | CAS on driver status | Lock the driver row | Same guarantee, no lock held across a network call to the driver app. |
+
+**What each company pushes on**
+
+| Company | What they push on |
+|---|---|
+| **UBER** | Their own domain and they will go deep. Guaranteed: "how do you find nearby drivers without scanning" (H3, and say why hexagons), "two riders, one driver" (CAS), and "the driver does not respond" (offer loop with timeout). Batch matching as the optimisation is a strong extra. Expect surge and the smoothing question. |
+| **Amazon** | Delivery-partner assignment is the same machine — orders instead of riders, agents instead of drivers, plus CAPACITY: one agent carrying several orders turns matching into batching with constraints. |
+| **Flipkart / Swiggy** | Food delivery flavour. Adds pickup-time prediction and multi-order batching, which is the genuinely harder variant. |
+| **Google** | Unlikely to ask this as system design at L4. If it comes up it will be the geo-indexing algorithm rather than the architecture. |
+
 ---
 
 ### SD 15 · Metrics & observability at scale  *(week 15)*
@@ -2098,6 +3398,184 @@ Every design must survive all six. Write the answers; do not just think them.
 - Not raising cardinality unprompted — it is the defining failure of this domain.
 - Conflating metrics and logs into one storage design.
 - Alerting on causes instead of symptoms.
+
+#### Worked solution
+
+**Functional requirements**
+
+- Ingest metrics from thousands of hosts and services.
+- Query them for dashboards and alerts.
+- Alert when an SLO is at risk.
+- Retain high resolution briefly and low resolution for a long time.
+- Distributed tracing across services.
+
+**Non-functional requirements**
+
+- Ingest must not lose data during a spike — that is exactly when you need it.
+- Dashboard queries in a couple of seconds.
+- The monitoring system must not depend on the systems it monitors.
+- Cost-efficient: observability commonly costs more than the workload it watches.
+
+**Estimation**
+
+| Quantity | Working | Result |
+|---|---|---|
+| **Series** | 10,000 hosts × 1,000 metrics | 10M active time series. |
+| **Sample rate** | every 10 seconds | 1M samples/sec. |
+| **Raw size** | 16 bytes/sample | 16 MB/sec = 1.4 TB/day. Unaffordable at that rate. |
+| **Compressed** | Gorilla-style delta-of-delta ≈ 1.4 bytes | ~120 GB/day. That compression is why time-series databases exist — say it. |
+| **Cardinality** | — | The real limit is not volume, it is DISTINCT SERIES. Add user_id as a label and 10M becomes 10 billion. This is the number that kills these systems. |
+
+**API**
+
+| Endpoint | Request | Response | Note |
+|---|---|---|---|
+| POST /api/v1/write | Prometheus remote-write protobuf | 204 | Or scraped rather than pushed — see the trade-off. |
+| GET /api/v1/query?query=&time= | PromQL | 200 { result[] } | Instant query for a single point in time. |
+| GET /api/v1/query_range?query=&start=&end=&step= | PromQL | 200 { matrix[] } | What a dashboard actually calls. |
+| POST /api/v1/alerts | { expr, for, labels, annotations } | 201 | Alert rule definition, version-controlled alongside code. |
+| GET /api/v1/traces/{traceId} | — | 200 { spans[] } | Trace lookup by id propagated in headers. |
+
+**Data model**
+
+| Table | Columns | Why |
+|---|---|---|
+| **series** | series_id PK · metric_name · labels (sorted, hashed) | The label set IS the identity. Sorting before hashing means the same set always yields the same id. |
+| **samples** | series_id + timestamp → value | Columnar, chunked by time window. Delta-of-delta on timestamps, XOR on values. |
+| **index** | label pair → posting list of series_ids | An inverted index over labels. This is what a PromQL selector queries. |
+| **downsampled** | series_id + bucket → { min, max, avg, count } | 5m and 1h rollups. Dashboards over a month read these, never raw. |
+| **spans** | trace_id + span_id · parent · service · op · start · duration | Partition by trace_id so one trace is one partition read. |
+| **Retention** | raw 24h · 5m for 30d · 1h for 1y | State the tiers. Retention is a cost decision, not a technical one. |
+
+**Architecture**
+
+```
+   ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+   │  Service A   │ │  Service B   │ │   Host N     │
+   │  /metrics    │ │  /metrics    │ │  exporter    │
+   └──────▲───────┘ └──────▲───────┘ └──────▲───────┘
+          │ scrape 10s     │                │
+          └────────────────┴────────────────┘
+                           │
+                  ┌────────┴─────────┐
+                  │  Collector /     │  (per region, sharded
+                  │  scraper fleet   │   by target hash)
+                  └────────┬─────────┘
+                           │ remote write
+                           ▼
+                  ┌──────────────────┐
+                  │  Ingest + WAL    │ ◄── WAL first, so a crash
+                  └────────┬─────────┘     loses nothing
+                           ▼
+        ┌──────────────────────────────────────┐
+        │  TSDB  ── head block (memory, 2h)    │
+        │        └▶ compacted blocks (disk)    │
+        │        └▶ downsampled 5m / 1h        │
+        │        └▶ object store (cold, 1y)    │
+        └───────────────┬──────────────────────┘
+                        │
+        ┌───────────────┼───────────────┐
+        ▼               ▼               ▼
+  ┌──────────┐   ┌────────────┐   ┌──────────────┐
+  │ Dashboard│   │ Alert eval │   │  Trace store │
+  └──────────┘   └─────┬──────┘   └──────────────┘
+                       ▼
+                 ┌────────────┐
+                 │  Pager     │ ◄── plus a DEAD MAN switch:
+                 └────────────┘     alert when the heartbeat STOPS
+```
+
+**Ingest**
+
+- 1. Collector scrapes each target every 10 seconds (pull), or receives a push for short-lived jobs.
+- 2. Append to a write-ahead log FIRST — a crash must not lose the last two hours.
+- 3. Write into the in-memory head block, which holds the current 2-hour window.
+- 4. Every 2 hours, compact the head to an immutable on-disk block with the compressed encoding.
+- 5. A background job produces 5m and 1h rollups from compacted blocks.
+- 6. Blocks past the local retention move to object storage.
+
+**Query a dashboard panel**
+
+- 1. Parse the PromQL selector.
+- 2. Resolve matching series from the label inverted index.
+- 3. Choose the resolution from the time range: last hour reads raw, last month reads the 1h rollup. Never scan raw for a month.
+- 4. Read the relevant chunks, decompress, apply the aggregation.
+- 5. Return the matrix.
+
+**Alerting**
+
+- 1. Evaluate each rule on a schedule against the TSDB.
+- 2. A rule must be firing for its "for" duration before it alerts — this is what suppresses flapping.
+- 3. Group and deduplicate related alerts so one incident is one page, not forty.
+- 4. Route by severity; respect silences during known maintenance.
+- 5. Separately, a DEAD MAN switch alerts when the heartbeat stops — otherwise a dead monitoring system looks like perfect health.
+
+**Deep dive**
+
+*Cardinality, which is the defining failure of this domain*
+
+A time series is identified by its metric name plus its full label set. Every distinct combination is a separate series with its own index entry and its own in-memory chunk.
+
+So http_requests{method, status, endpoint} with 4 methods, 5 statuses and 100 endpoints is 2,000 series — fine. Add user_id and it becomes 2,000 × the number of users. Memory and the index explode and the system falls over.
+
+The rule: labels must be LOW cardinality and BOUNDED. High-cardinality dimensions — user id, request id, trace id, full URL with parameters — belong in logs or traces, never in metrics.
+
+Raising this unprompted is the single strongest signal in this design. In practice you also enforce it: per-metric series limits, and rejecting writes that would breach them, so one bad deploy cannot take down monitoring for everyone.
+
+*Why a purpose-built TSDB and not Postgres*
+
+Time series have properties you can exploit. Timestamps arrive at regular intervals, so DELTA-OF-DELTA encoding stores almost nothing — the change in the interval, which is usually zero. Values change slowly, so XOR against the previous value leaves mostly zero bits. Together these take 16 bytes per sample down to roughly 1.4.
+
+That is a 10x storage difference, and it is the whole reason these databases exist. A relational store gives you none of it, and its per-row index overhead on 1M inserts/sec is fatal.
+
+Writes are also append-only and almost always for "now", so the head block can live in memory and be compacted in bulk — no random writes at all.
+
+*Alert on symptoms, not causes*
+
+"CPU above 80%" is a bad alert. It is a cause, it is frequently fine, and it fires when nothing is wrong. Alerts that fire without user impact get ignored, and then the real one is ignored too.
+
+Alert on SLO burn rate: you have an error budget, and the alert asks how fast you are consuming it. Burning a month of budget in an hour is a page; burning it slowly over a week is a ticket. That framing gives you severity for free.
+
+And the dead man switch. If your monitoring dies, every metric looks healthy because none are arriving. An alert that fires when the heartbeat STOPS, monitored externally, is the only thing that catches it.
+
+*Metrics, logs and traces are three different systems*
+
+Metrics are cheap aggregates that answer IS IT BROKEN. Logs are expensive detailed events that answer WHAT EXACTLY HAPPENED. Traces are sampled causal paths that answer WHERE DID THE TIME GO.
+
+The order of use matters and interviewers ask it: metrics to confirm and localise (which service, which endpoint, p99 versus p50), traces to find where the latency lives, logs last for the specific failing request. Cheapest to most expensive.
+
+For traces, sampling is unavoidable at volume. HEAD-based sampling decides at the start and throws away the interesting ones. TAIL-based decides after seeing the whole trace, so you keep the slow and failed ones — far more useful, and more expensive because you must buffer. Name the trade-off.
+
+**Scaling**
+
+| Bottleneck | What you do |
+|---|---|
+| **1M samples/sec ingest** | Shard the collector fleet by target hash; each shard owns a disjoint set of series. |
+| **Query over a month** | Downsampled tiers. Reading raw for a month is the mistake that makes dashboards time out. |
+| **Cardinality growth** | Per-metric series limits, enforced at ingest. Reject rather than degrade. |
+| **Long retention cost** | Tier to object storage and drop raw after the high-resolution window. |
+| **Alert evaluation load** | Alerts are just queries. Stagger evaluation and cache subexpressions. |
+| **Trace volume** | Tail-based sampling with a keep-all rule for errors and slow traces. |
+
+**Trade-offs**
+
+| Decision | Chose | Over | Because |
+|---|---|---|---|
+| **Storage** | Purpose-built TSDB | Relational | 10x compression from delta-of-delta plus XOR, and no per-row index overhead. |
+| **Collection** | Pull (scrape) | Push | Pull gives you target liveness for free — a target that cannot be scraped is itself a signal. Push is needed for short-lived jobs, so support both. |
+| **Retention** | Tiered with downsampling | Uniform | Nobody needs 10-second resolution from six months ago. Tiering is the main cost lever. |
+| **Trace sampling** | Tail-based | Head-based | Keeps the slow and failed traces, which are the ones you want. Costs buffering. |
+| **Alerting** | SLO burn rate | Threshold on resources | Symptoms over causes. Threshold alerts train people to ignore alerts. |
+| **Cardinality** | Hard limits at ingest | Best-effort guidance | Guidance does not survive a bad deploy at 3am. |
+
+**What each company pushes on**
+
+| Company | What they push on |
+|---|---|
+| **Uber / Apple** | Most likely to ask this. Expect cardinality directly, and the metrics-vs-logs-vs-traces distinction. |
+| **Amazon** | Will frame it as "how would you know this design you just built is broken?" — which is really asking for SLOs, symptom alerts and the dead man switch. |
+| **JPM / Amex** | Care about audit and retention: how long, provable, and who can query it. |
+| **Any interviewer** | If you have run production, lead with a real alert that woke you and what you changed. Concrete beats architectural here. |
 
 ---
 
@@ -2162,6 +3640,176 @@ Every design must survive all six. Write the answers; do not just think them.
 - Proxying uploads and downloads through application servers.
 - Making transcoding synchronous.
 - Not separating blob storage from metadata storage.
+
+#### Worked solution
+
+**Functional requirements**
+
+- Upload a video, possibly several GB.
+- Transcode into multiple resolutions and bitrates.
+- Stream with adaptive quality.
+- Search and browse the catalogue.
+- Resume an interrupted upload.
+
+**Non-functional requirements**
+
+- Playback starts within about 2 seconds.
+- No rebuffering on a variable connection.
+- Uploads survive a dropped connection.
+- Cost-controlled — video egress is usually the largest line item in the business.
+
+**Estimation**
+
+| Quantity | Working | Result |
+|---|---|---|
+| **Uploads** | 500 hours/minute (YouTube scale) | Pick your own scale and say it. At 1 hour ≈ 3 GB source, that is 1.5 TB/minute inbound. |
+| **Transcoding** | 5 renditions per source | Roughly 5x the source in CPU, and ~15 GB stored per source hour. Transcoding, not storage, is the expensive part. |
+| **Viewing** | 100M concurrent at 5 Mbps | 500 Tbps aggregate. This CANNOT come from your origin — it is the reason the CDN exists. |
+| **Cache hit ratio** | 95% at the edge | Origin then serves 5%. The economics of the whole system live in that number. |
+
+**API**
+
+| Endpoint | Request | Response | Note |
+|---|---|---|---|
+| POST /v1/uploads | { filename, sizeBytes, contentType } | 201 { uploadId, partUrls[] } | Returns PRESIGNED URLs. The bytes never touch your servers. |
+| PUT {presignedPartUrl} | part bytes | 200 { etag } | Direct to object storage. Retry a single part on failure. |
+| POST /v1/uploads/{id}/complete | { parts[] } | 202 { videoId, status: PROCESSING } | 202 — transcoding has not happened yet. |
+| GET /v1/videos/{id}/manifest.m3u8 | — | 200 HLS manifest | Lists renditions and segments. The client picks based on bandwidth. |
+| GET /v1/videos/{id} | — | 200 { title, status, renditions[] } | status tells the client which qualities exist yet. |
+
+**Data model**
+
+| Table | Columns | Why |
+|---|---|---|
+| **video** | id PK · owner_id · title · status · duration · created_at | status: UPLOADING, PROCESSING, READY, FAILED. |
+| **rendition** | video_id + profile PK · bitrate · resolution · manifest_path · status | Rows appear as each transcode completes, which is what lets playback start early. |
+| **segment (object store)** | videos/{id}/{profile}/seg-00001.ts | Content-addressed paths so the CDN caches cleanly. |
+| **upload_session** | id PK · video_id · parts[] · expires_at | Tracks which parts landed, for resume. |
+| **view_event (stream)** | video_id · user · ts · position · quality | Async. Never on the playback path. |
+| **Metadata store** | relational | Small. The blobs are in object storage; separating the two is the core structural decision. |
+
+**Architecture**
+
+```
+   UPLOAD
+   ┌────────┐   1. request presigned URLs   ┌──────────────┐
+   │ Client │──────────────────────────────▶│  Upload API  │
+   └───┬────┘                               └──────────────┘
+       │ 2. PUT parts DIRECTLY (bytes never touch your servers)
+       ▼
+   ┌──────────────────┐
+   │  Object store    │
+   └────────┬─────────┘
+            │ 3. complete → event
+            ▼
+     ┌────────────┐      ┌──────────────────────────┐
+     │   Queue    │─────▶│  Transcoding workers     │
+     └────────────┘      │  (GPU/CPU, autoscaled)   │
+                         │  240p 480p 720p 1080p 4K │
+                         └────────────┬─────────────┘
+                                      │ segments + manifest
+                                      ▼
+                            ┌──────────────────┐
+                            │  Object store    │
+                            └────────┬─────────┘
+   PLAYBACK                          │ origin
+   ┌────────┐   ┌──────────┐   ┌─────▼──────┐
+   │ Viewer │──▶│   CDN    │──▶│  Origin    │
+   └───▲────┘   │  edge    │   │  shield    │ ◄── absorbs edge misses
+       │        └──────────┘   └────────────┘
+       │  adaptive bitrate: client measures bandwidth,
+       └─ switches rendition at the next segment boundary
+```
+
+**Upload a 5 GB file**
+
+- 1. Client asks for an upload session; server returns presigned URLs for each ~10 MB part.
+- 2. Client PUTs parts directly to object storage, in parallel. Your servers never see the bytes.
+- 3. A part fails? Retry only that part. This is why a dropped connection at 90% does not restart the upload.
+- 4. Client calls complete with the part etags; storage assembles the object.
+- 5. Emit VideoUploaded onto the queue.
+
+**Transcode**
+
+- 1. Worker picks up the job and probes the source.
+- 2. Transcode the LOWEST rendition first and publish it — playback can begin while higher qualities are still processing.
+- 3. Segment each rendition into ~4-6 second chunks and write an HLS manifest.
+- 4. Update the rendition row as each completes; the master manifest grows.
+- 5. Idempotency matters: at-least-once delivery means a job can run twice. Key output paths by (video, profile) so a rerun overwrites rather than duplicates.
+
+**Playback**
+
+- 1. Client fetches the master manifest listing available renditions.
+- 2. Starts at a conservative bitrate for fast startup.
+- 3. Measures throughput while downloading each segment.
+- 4. Switches rendition at the next SEGMENT BOUNDARY — that is why segments are short.
+- 5. Segments come from the CDN edge; a miss goes to the origin shield, and only then to origin.
+- 6. Fire view events asynchronously. Playback never waits on analytics.
+
+**Deep dive**
+
+*Never proxy the bytes*
+
+The single most important decision in this design: uploads and downloads must not pass through your application servers. A 5 GB upload through your API means holding a connection for minutes, buffering gigabytes, and scaling your fleet to bandwidth rather than to requests.
+
+Presigned URLs let the client talk directly to object storage with a time-limited, scope-limited credential. Your service does authorisation ONCE, when it issues the URL, and then gets out of the way.
+
+The same applies to playback: the CDN serves segments, and your service only issues signed manifest URLs. If a candidate routes video bytes through their service, that is the thing to correct first.
+
+*Chunked, resumable uploads*
+
+A single PUT of 5 GB fails at 90% and the user starts over. They will not try twice.
+
+Split into parts of roughly 10 MB, upload them independently and in parallel, and track which have landed. A failure retries ONE part. A closed laptop resumes from the parts already stored.
+
+The session needs an expiry and a cleanup job, or abandoned multipart uploads accumulate and cost real money — a detail worth mentioning because it is the kind of thing that shows operational experience.
+
+*Adaptive bitrate, and why segments are short*
+
+The video is encoded at several bitrates and each is cut into 4-6 second segments. The manifest lists them. The client measures its own throughput and picks the next segment from whichever rendition it can sustain.
+
+Segment length is the trade-off. Short segments mean the client can adapt quickly and startup is fast, but there are more requests and more per-request overhead. Long segments are efficient and adapt sluggishly, so a bandwidth drop causes a visible stall. Four to six seconds is the usual compromise, and being able to explain WHY is the point.
+
+Starting at a low bitrate and stepping up gives fast startup — users tolerate a moment of soft video far better than three seconds of spinner.
+
+*The CDN economics, and the cold viral video*
+
+At 500 Tbps aggregate, origin cannot serve viewers. A 95% edge hit ratio means origin handles 5%, and that ratio is the difference between a viable business and an impossible one. Netflix went further and put caches inside ISP networks — that is what Open Connect is.
+
+The failure case: a video goes viral and is in NO edge cache. Every request misses through to origin simultaneously — a stampede at CDN scale. Mitigations: ORIGIN SHIELDING, a mid-tier cache that absorbs misses from many edges so origin sees one request instead of hundreds; and pre-warming for predictable launches.
+
+And authorisation: the CDN does not check permissions. Signed URLs with short expiry are the permission. Signing only the manifest is not enough if the segments are publicly addressable — sign the segments too, or an unauthorised viewer just reads the manifest and fetches them directly.
+
+**Scaling**
+
+| Bottleneck | What you do |
+|---|---|
+| **Upload bandwidth** | Direct to object storage. Your fleet scales with requests, not bytes. |
+| **Transcoding cost** | The dominant compute cost. Autoscale workers on queue depth, use spot capacity, and transcode lazily for content nobody watches. |
+| **Playback egress** | CDN, then ISP-embedded caches at extreme scale. This is the largest cost line. |
+| **Cold viral content** | Origin shielding plus pre-warming. |
+| **Storage growth** | Tier old renditions to colder storage; delete the highest bitrates for content nobody watches. |
+| **Metadata queries** | Small relational store with a cache. Never the bottleneck. |
+
+**Trade-offs**
+
+| Decision | Chose | Over | Because |
+|---|---|---|---|
+| **Upload path** | Presigned direct-to-storage | Through your service | Your servers would scale with bandwidth rather than requests. |
+| **Upload shape** | Chunked, resumable | Single PUT | A 5 GB upload failing at 90% is a lost user. |
+| **Transcoding** | Async, lowest rendition first | Synchronous | Playback can start in minutes rather than after every rendition completes. |
+| **Delivery** | CDN with origin shield | Direct from origin | Origin cannot serve the aggregate bandwidth. The shield handles the stampede. |
+| **Segment length** | 4–6 seconds | 1s or 30s | Balances adaptation speed against request overhead. |
+| **Authorisation** | Signed URLs, manifest AND segments | Check at delivery | The CDN never checks permissions — the signature IS the permission. |
+
+**What each company pushes on**
+
+| Company | What they push on |
+|---|---|
+| **Amazon** | Prime Video flavour. Expect the upload path first, then "how does playback start before transcoding finishes", then DRM if they go deep. |
+| **Adobe** | Media is their domain — expect real depth on the transcoding pipeline, codecs and rendition ladders. |
+| **Uber / Apple** | Less likely, but the CDN and cold-cache-stampede discussion transfers to any large static asset. |
+| **If you got this and it went quiet** | This is the design where a non-interactive interviewer is common — there is a lot of expected surface and candidates recite it. Differentiate on the WRITE path under load, the transcoding cost, and the cold viral case, which most people skip. |
 
 ---
 
@@ -2754,6 +4402,312 @@ public class ParkingSpot {
 - Modelling Ticket as mutable everywhere, so the entry time can be changed after the fact.
 - Spending 30 minutes on class diagrams and never writing an allocation method.
 
+#### Worked solution
+
+Design a parking lot for a shopping mall. The lot has multiple floors. Each floor has spots of different sizes. Vehicles of different types arrive at an entrance, are issued a ticket, park in a suitable spot, and pay on exit based on how long they stayed. The system must tell a driver when the lot is full, and must never assign one spot to two vehicles.
+
+**Functional requirements**
+
+- Park a vehicle: find a suitable free spot, issue a ticket.
+- Unpark: compute the fee from the duration, free the spot, produce a receipt.
+- Report availability per floor and per spot size.
+- Support multiple vehicle types mapping to allowed spot sizes.
+- Reject cleanly when no suitable spot exists.
+
+**Non-functional requirements**
+
+- Two vehicles must never receive the same spot, under concurrent entry.
+- Allocation should not serialise the whole lot — a thousand spots means a thousand independent units.
+- Pricing must be replaceable without editing the lot.
+- In-memory. A repository interface marks where persistence would go.
+
+**How to approach it**
+
+| Step | What you do |
+|---|---|
+| **1. Fix the scope** | Confirm floors, sizes, whether a small vehicle may take a large spot, and whether payment is in scope. Write the answers down. |
+| **2. Extract the nouns** | Lot, Floor, Spot, Vehicle, Ticket. Two enums immediately: VehicleType and SpotSize. |
+| **3. Find the axes of change** | Pricing changes constantly. Allocation changes (nearest, first-free, reserved). Those two become interfaces before anything else. |
+| **4. Decide the unit of contention** | The SPOT, not the lot. This decides your whole concurrency story, so decide it now rather than retrofitting a lock later. |
+| **5. Write park() and the atomic occupy** | This is the core flow. Everything else is supporting cast. |
+| **6. Then unpark and pricing** | Fee computation delegates to the strategy; the lot never knows the formula. |
+| **7. Show the extension** | "A new vehicle type is one enum value plus one strategy entry." Say it before they ask. |
+
+**Class diagram**
+
+```
+  ┌────────────────────────────┐        ┌───────────────────────────┐
+  │       ParkingLot           │        │      «interface»          │
+  │        (facade)            │───────▶│    PricingStrategy        │
+  ├────────────────────────────┤        ├───────────────────────────┤
+  │ -floors : List<Floor>      │        │ +fee(Ticket) : BigDecimal │
+  │ -pricing : PricingStrategy │        └─────────────△─────────────┘
+  │ -allocator : Allocation    │              ┌───────┴───────┐
+  │ +park(Vehicle) : Ticket    │        ┌─────┴─────┐  ┌──────┴──────┐
+  │ +unpark(Ticket) : Receipt  │        │  Hourly   │  │  Weekend    │
+  │ +availability() : Map      │        └───────────┘  └─────────────┘
+  └─────────────┬──────────────┘
+                │ 1..*                  ┌───────────────────────────┐
+                ▼                       │       «interface»         │
+  ┌────────────────────────────┐        │  SpotAllocationStrategy   │
+  │      ParkingFloor          │◄───────├───────────────────────────┤
+  ├────────────────────────────┤ scans  │ +candidates(VehicleType)  │
+  │ -number : int              │        └───────────────────────────┘
+  │ -spots : List<ParkingSpot> │
+  └─────────────┬──────────────┘
+                │ 1..*
+                ▼
+  ┌────────────────────────────┐        ┌──────────────────────────┐
+  │      ParkingSpot           │        │       «abstract»         │
+  ├────────────────────────────┤  0..1  │        Vehicle           │
+  │ -id : String               │───────▶├──────────────────────────┤
+  │ -size : SpotSize           │ holds  │ -plate : String          │
+  │ -occupant : AtomicRef<V>   │        │ +type() : VehicleType    │
+  │ +tryOccupy(Vehicle):bool   │        └────────────△─────────────┘
+  │ +release()                 │           ┌─────────┼─────────┐
+  └────────────────────────────┘      ┌────┴───┐ ┌───┴──┐ ┌────┴───┐
+                                      │  Car   │ │ Bike │ │ Truck  │
+  ┌────────────────────────────┐      └────────┘ └──────┘ └────────┘
+  │        Ticket              │
+  ├────────────────────────────┤
+  │ -id, -spot, -vehicle       │
+  │ -entry : Instant           │
+  │ -exit  : Instant           │
+  └────────────────────────────┘
+```
+
+**Public API**
+
+| Signature | Contract |
+|---|---|
+| Ticket park(Vehicle v) | Allocates a spot and issues a ticket. Throws LotFullException if none is suitable. |
+| Receipt unpark(String ticketId) | Stamps the exit time, frees the spot, prices the stay. |
+| Map<SpotSize,Integer> availability() | Free count per size, for the display board. |
+| Map<SpotSize,Integer> availability(int floor) | Same, scoped to one floor. |
+| void addFloor(ParkingFloor f) | Configuration, used at construction. |
+
+**Schema**
+
+| Table | Columns | Note |
+|---|---|---|
+| **parking_spot** | id PK · floor_no · size · status · vehicle_plate NULL · version | status + version give you the same atomicity as compareAndSet: UPDATE ... WHERE status = FREE. |
+| **ticket** | id PK · spot_id FK · vehicle_plate · entry_at · exit_at NULL · fee NULL | exit_at NULL means still parked. Index (spot_id, exit_at) for the active lookup. |
+| **vehicle** | plate PK · type | Optional — you may not need to persist vehicles at all. |
+| **Note** | — | If asked to persist: the concurrency argument transfers unchanged. compareAndSet becomes a conditional UPDATE, and you check rowsAffected == 1. |
+
+**The solution**
+
+**Enums and the vehicle hierarchy**
+
+```java
+public enum SpotSize { SMALL, MEDIUM, LARGE }
+
+public enum VehicleType {
+    BIKE(EnumSet.of(SpotSize.SMALL, SpotSize.MEDIUM, SpotSize.LARGE)),
+    CAR(EnumSet.of(SpotSize.MEDIUM, SpotSize.LARGE)),
+    TRUCK(EnumSet.of(SpotSize.LARGE));
+
+    private final Set<SpotSize> allowed;
+    VehicleType(Set<SpotSize> allowed) { this.allowed = allowed; }
+
+    /** Smallest-first, so a bike does not consume a truck bay. */
+    public List<SpotSize> preferredSizes() {
+        return allowed.stream().sorted().toList();
+    }
+    public boolean fitsIn(SpotSize s) { return allowed.contains(s); }
+}
+
+public abstract class Vehicle {
+    private final String plate;
+    protected Vehicle(String plate) { this.plate = Objects.requireNonNull(plate); }
+    public String plate()            { return plate; }
+    public abstract VehicleType type();
+}
+
+public class Car   extends Vehicle { public Car(String p){super(p);}   public VehicleType type(){return VehicleType.CAR;} }
+public class Bike  extends Vehicle { public Bike(String p){super(p);}  public VehicleType type(){return VehicleType.BIKE;} }
+public class Truck extends Vehicle { public Truck(String p){super(p);} public VehicleType type(){return VehicleType.TRUCK;} }
+```
+
+> Putting the allowed sizes ON the enum keeps the fitting rule in one place instead of an if-chain in the allocator. preferredSizes() smallest-first is a real product decision worth stating.
+
+**ParkingSpot — the unit of contention**
+
+```java
+public class ParkingSpot {
+    private final String id;
+    private final int floorNumber;
+    private final SpotSize size;
+    private final AtomicReference<Vehicle> occupant = new AtomicReference<>();
+
+    public ParkingSpot(String id, int floorNumber, SpotSize size) {
+        this.id = id; this.floorNumber = floorNumber; this.size = size;
+    }
+
+    /** Atomic. Exactly one caller can win. */
+    public boolean tryOccupy(Vehicle v) {
+        if (!v.type().fitsIn(size)) return false;
+        return occupant.compareAndSet(null, v);
+    }
+
+    public void release() { occupant.set(null); }
+
+    public boolean isFree()   { return occupant.get() == null; }
+    public SpotSize size()    { return size; }
+    public String id()        { return id; }
+    public int floorNumber()  { return floorNumber; }
+}
+```
+
+> No synchronized anywhere. compareAndSet(null, v) is the entire concurrency story, and it scales to as many spots as the lot has.
+
+**Ticket and Receipt**
+
+```java
+public class Ticket {
+    private final String id = UUID.randomUUID().toString();
+    private final ParkingSpot spot;
+    private final Vehicle vehicle;
+    private final Instant entry;
+    private Instant exit;                 // the only mutable field
+
+    public Ticket(ParkingSpot spot, Vehicle vehicle, Instant entry) {
+        this.spot = spot; this.vehicle = vehicle; this.entry = entry;
+    }
+
+    void markExit(Instant when) {
+        if (exit != null) throw new IllegalStateException("already exited: " + id);
+        this.exit = when;
+    }
+
+    public String id()          { return id; }
+    public ParkingSpot spot()   { return spot; }
+    public Vehicle vehicle()    { return vehicle; }
+    public Instant entry()      { return entry; }
+    public Instant exit()       { return exit; }
+}
+
+public record Receipt(Ticket ticket, BigDecimal fee, Instant paidAt) { }
+```
+
+> Guarding markExit against a double exit is a small thing interviewers notice — it closes the "what if someone scans the ticket twice" question before it is asked.
+
+**The two strategies**
+
+```java
+public interface PricingStrategy {
+    BigDecimal fee(Ticket ticket);
+}
+
+public class HourlyPricing implements PricingStrategy {
+    private final Map<VehicleType, BigDecimal> ratePerHour;
+
+    public HourlyPricing(Map<VehicleType, BigDecimal> rates) {
+        this.ratePerHour = Map.copyOf(rates);
+    }
+
+    @Override public BigDecimal fee(Ticket t) {
+        Duration stay = Duration.between(t.entry(), t.exit());
+        long hours = Math.max(1, (long) Math.ceil(stay.toMinutes() / 60.0));
+        return ratePerHour.get(t.vehicle().type())
+                          .multiply(BigDecimal.valueOf(hours))
+                          .setScale(2, RoundingMode.HALF_UP);
+    }
+}
+
+public interface SpotAllocationStrategy {
+    /** Ordered candidates. The lot walks them until one is won. */
+    List<ParkingSpot> candidates(VehicleType type, List<ParkingFloor> floors);
+}
+
+public class NearestFirstAllocation implements SpotAllocationStrategy {
+    @Override
+    public List<ParkingSpot> candidates(VehicleType type, List<ParkingFloor> floors) {
+        return floors.stream()
+                .sorted(Comparator.comparingInt(ParkingFloor::number))
+                .flatMap(f -> f.spots().stream())
+                .filter(s -> type.fitsIn(s.size()) && s.isFree())   // a HINT, not a guarantee
+                .sorted(Comparator.comparing(ParkingSpot::size))    // smallest that fits
+                .toList();
+    }
+}
+```
+
+> Note the comment: isFree() here is only a filter to avoid pointless attempts. The real guarantee is tryOccupy. Never treat a pre-check as the lock.
+
+**ParkingLot — the facade and the core flow**
+
+```java
+public class ParkingLot {
+    private final List<ParkingFloor> floors;
+    private final PricingStrategy pricing;
+    private final SpotAllocationStrategy allocator;
+    private final Map<String, Ticket> active = new ConcurrentHashMap<>();
+
+    public ParkingLot(List<ParkingFloor> floors,
+                      PricingStrategy pricing,
+                      SpotAllocationStrategy allocator) {
+        this.floors = List.copyOf(floors);
+        this.pricing = pricing;
+        this.allocator = allocator;
+    }
+
+    public Ticket park(Vehicle vehicle) {
+        for (ParkingSpot spot : allocator.candidates(vehicle.type(), floors)) {
+            if (spot.tryOccupy(vehicle)) {              // atomic; loser just moves on
+                Ticket ticket = new Ticket(spot, vehicle, Instant.now());
+                active.put(ticket.id(), ticket);
+                return ticket;
+            }
+        }
+        throw new LotFullException(vehicle.type());
+    }
+
+    public Receipt unpark(String ticketId) {
+        Ticket ticket = active.remove(ticketId);
+        if (ticket == null) throw new UnknownTicketException(ticketId);
+
+        ticket.markExit(Instant.now());
+        ticket.spot().release();
+        return new Receipt(ticket, pricing.fee(ticket), Instant.now());
+    }
+
+    public Map<SpotSize, Long> availability() {
+        return floors.stream()
+                .flatMap(f -> f.spots().stream())
+                .filter(ParkingSpot::isFree)
+                .collect(Collectors.groupingBy(ParkingSpot::size, Collectors.counting()));
+    }
+}
+```
+
+> active.remove() is itself atomic, so a double unpark is impossible: the second call finds nothing and throws. That is a second race closed for free by choosing the right collection.
+
+**A demo main() — always write one**
+
+```java
+public static void main(String[] args) {
+    ParkingFloor f1 = new ParkingFloor(1, List.of(
+            new ParkingSpot("1-S1", 1, SpotSize.SMALL),
+            new ParkingSpot("1-M1", 1, SpotSize.MEDIUM),
+            new ParkingSpot("1-L1", 1, SpotSize.LARGE)));
+
+    ParkingLot lot = new ParkingLot(List.of(f1),
+            new HourlyPricing(Map.of(
+                    VehicleType.BIKE,  new BigDecimal("10"),
+                    VehicleType.CAR,   new BigDecimal("20"),
+                    VehicleType.TRUCK, new BigDecimal("40"))),
+            new NearestFirstAllocation());
+
+    Ticket t = lot.park(new Car("KA-01-1234"));
+    System.out.println("parked at " + t.spot().id());   // 1-M1, smallest that fits
+    System.out.println(lot.availability());             // {SMALL=1, LARGE=1}
+    System.out.println(lot.unpark(t.id()).fee());       // 20.00
+}
+```
+
+> In a machine-coding round this is not optional — it is the proof it works. In a whiteboard round, saying "and here is how I would exercise it" is nearly as good.
+
 ---
 
 ### Elevator System  *(OOD, 50 min)*
@@ -2880,6 +4834,259 @@ public boolean canServe(Request r) {
 - No answer for direction-mismatched requests.
 - Ignoring starvation entirely.
 
+#### Worked solution
+
+Design the control system for a bank of elevators in a tall building. Passengers press a button on a floor to request travel in a direction, and press a floor button inside the car once aboard. The system decides which car serves which request, and each car must move sensibly rather than serving requests in the order they arrive.
+
+**Functional requirements**
+
+- External (hall) request: floor plus direction.
+- Internal (car) request: destination floor.
+- Dispatch a request to one of N cars.
+- A car moves, stops, opens and closes doors, and serves floors on its path.
+- Report car position and direction to floor displays.
+
+**Non-functional requirements**
+
+- Illegal transitions must be impossible — doors cannot open while moving.
+- The scheduling algorithm must be replaceable without touching the Elevator class.
+- No request may starve indefinitely.
+- Testable without real time: the clock is injected and the system steps.
+
+**How to approach it**
+
+| Step | What you do |
+|---|---|
+| **1. Separate the two request types** | External requests carry a DIRECTION and can be served by any car. Internal requests carry only a floor and belong to one car. Conflating them is the most common modelling error here. |
+| **2. Write the states before any class** | Idle, Moving, DoorsOpen, Maintenance. Then write the action set — move, openDoors, addTarget — and make every state answer every action. |
+| **3. Put scheduling behind an interface immediately** | They WILL ask you to swap it. If the algorithm is inside Elevator, that request is a rewrite. |
+| **4. Model the sweep, not a queue** | A sorted target set plus a direction is what produces LOOK/SCAN behaviour. A FIFO queue makes the lift bounce between floors and is the answer that fails. |
+| **5. Answer canServe** | "Press 5 while going from 2 to 8" is answered by one predicate: is the request on my path and in my direction? |
+| **6. Say the concurrency model** | One thread per car consuming commands from a queue removes most locking questions at a stroke. |
+| **7. Show the extension** | A different objective — minimise wait instead of maximise throughput — is a new strategy and nothing else moves. |
+
+**Class diagram**
+
+```
+  ┌──────────────────────────────┐      ┌────────────────────────────┐
+  │      ElevatorSystem          │─────▶│      «interface»           │
+  │        (facade)              │      │   SchedulingStrategy       │
+  ├──────────────────────────────┤      ├────────────────────────────┤
+  │ -cars : List<Elevator>       │      │ +choose(req, cars):Elevator│
+  │ -strategy : Scheduling       │      └─────────────△──────────────┘
+  │ +requestFrom(floor, dir)     │         ┌──────────┴──────────┐
+  │ +step()                      │   ┌─────┴──────┐      ┌───────┴──────┐
+  └───────────┬──────────────────┘   │ LookSched  │      │ NearestCar   │
+              │ 1..*                 └────────────┘      └──────────────┘
+              ▼
+  ┌──────────────────────────────┐      ┌────────────────────────────┐
+  │        Elevator              │─────▶│      «interface»           │
+  ├──────────────────────────────┤      │      ElevatorState         │
+  │ -id : int                    │      ├────────────────────────────┤
+  │ -currentFloor : int          │      │ +move(Elevator)            │
+  │ -direction : Direction       │      │ +openDoors(Elevator)       │
+  │ -targets : NavigableSet<Int> │      └─────────────△──────────────┘
+  │ -state : ElevatorState       │      ┌─────┬───────┴────┬──────────┐
+  │ +canServe(Request) : boolean │  ┌───┴──┐ ┌┴─────────┐ ┌┴─────────┐
+  │ +addTarget(int)              │  │ Idle │ │  Moving  │ │DoorsOpen │
+  │ +step()                      │  └──────┘ └──────────┘ └──────────┘
+  └──────────────────────────────┘
+
+  ┌──────────────────┐         ┌──────────────────────┐
+  │  «abstract»      │         │      Direction       │
+  │    Request       │         │   UP · DOWN · IDLE   │
+  ├──────────────────┤         └──────────────────────┘
+  │ -floor : int     │
+  └────────△─────────┘
+     ┌─────┴──────────────┐
+  ┌──┴──────────────┐ ┌───┴─────────────┐
+  │ ExternalRequest │ │ InternalRequest │
+  │  + direction    │ │  + carId        │
+  └─────────────────┘ └─────────────────┘
+```
+
+**Public API**
+
+| Signature | Contract |
+|---|---|
+| void requestFrom(int floor, Direction dir) | A hall call. The system picks a car. |
+| void requestTo(int carId, int floor) | A car call. Goes straight to that car target set. |
+| void step() | Advance the simulation one tick. Injected clock, so tests do not sleep. |
+| List<CarStatus> status() | Position, direction and state of every car, for the displays. |
+| void setMaintenance(int carId, boolean on) | Removes a car from dispatch without stopping the others. |
+
+**Schema**
+
+| Table | Columns | Note |
+|---|---|---|
+| **Note** | — | An elevator controller is an embedded single-process system with no persistence. If asked, you would log trip events for maintenance analytics — but say clearly that the control loop itself holds no database. |
+
+**The solution**
+
+**Direction, requests and the state interface**
+
+```java
+public enum Direction { UP, DOWN, IDLE }
+
+public abstract class Request {
+    protected final int floor;
+    protected final long at;
+    protected Request(int floor, long at) { this.floor = floor; this.at = at; }
+    public int floor() { return floor; }
+    public long at()   { return at; }        // used for anti-starvation ageing
+}
+
+public class ExternalRequest extends Request {   // hall call: any car may take it
+    private final Direction direction;
+    public ExternalRequest(int floor, Direction d, long at) { super(floor, at); this.direction = d; }
+    public Direction direction() { return direction; }
+}
+
+public class InternalRequest extends Request {   // car call: belongs to one car
+    private final int carId;
+    public InternalRequest(int carId, int floor, long at) { super(floor, at); this.carId = carId; }
+    public int carId() { return carId; }
+}
+
+public interface ElevatorState {
+    void move(Elevator e);
+    void openDoors(Elevator e);
+    String name();
+}
+```
+
+> Two request types with different rules is the modelling decision that makes canServe possible. A single Request class forces direction to be nullable and the logic gets muddy.
+
+**The states — illegal transitions become impossible**
+
+```java
+public class MovingState implements ElevatorState {
+    public void openDoors(Elevator e) {
+        throw new IllegalStateException("cannot open doors while moving");
+    }
+    public void move(Elevator e) { e.advanceOneFloor(); }
+    public String name() { return "MOVING"; }
+}
+
+public class DoorsOpenState implements ElevatorState {
+    public void openDoors(Elevator e) { /* already open - idempotent */ }
+    public void move(Elevator e) {
+        e.setState(new MovingState());       // close, then move
+        e.advanceOneFloor();
+    }
+    public String name() { return "DOORS_OPEN"; }
+}
+
+public class IdleState implements ElevatorState {
+    public void openDoors(Elevator e) { e.setState(new DoorsOpenState()); }
+    public void move(Elevator e) {
+        if (e.hasTargets()) { e.setState(new MovingState()); e.advanceOneFloor(); }
+    }
+    public String name() { return "IDLE"; }
+}
+```
+
+> When the interviewer asks "what if the doors are told to open mid-travel", the answer is already structural. With a status enum and a switch, you rely on remembering to write that check.
+
+**Elevator: the sweep, and canServe**
+
+```java
+public class Elevator {
+    private final int id;
+    private int currentFloor = 0;
+    private Direction direction = Direction.IDLE;
+    private ElevatorState state = new IdleState();
+    // sorted, so the sweep serves floors in order - NOT a FIFO queue
+    private final NavigableSet<Integer> targets = new TreeSet<>();
+
+    /** The "press 5 while going 2 to 8" question, answered in one predicate. */
+    public boolean canServe(ExternalRequest r) {
+        if (direction == Direction.IDLE) return true;
+        if (direction == Direction.UP)
+            return r.floor() >= currentFloor && r.direction() == Direction.UP;
+        return r.floor() <= currentFloor && r.direction() == Direction.DOWN;
+    }
+
+    public void addTarget(int floor) { targets.add(floor); }   // idempotent
+
+    public void step() { state.move(this); }
+
+    void advanceOneFloor() {
+        Integer next = nextTargetInDirection();
+        if (next == null) {                       // nothing ahead: reverse or idle
+            direction = targets.isEmpty() ? Direction.IDLE
+                      : (direction == Direction.UP ? Direction.DOWN : Direction.UP);
+            if (direction == Direction.IDLE) { setState(new IdleState()); return; }
+            next = nextTargetInDirection();
+        }
+        currentFloor += (next > currentFloor) ? 1 : -1;
+        if (targets.remove(currentFloor)) {       // arrived at a target
+            setState(new DoorsOpenState());
+        }
+    }
+
+    private Integer nextTargetInDirection() {
+        return direction == Direction.DOWN ? targets.floor(currentFloor - 1)
+                                           : targets.ceiling(currentFloor + 1);
+    }
+
+    void setState(ElevatorState s) { this.state = s; }
+    public boolean hasTargets()    { return !targets.isEmpty(); }
+    public int currentFloor()      { return currentFloor; }
+    public Direction direction()   { return direction; }
+    public int id()                { return id; }
+}
+```
+
+> A TreeSet plus floor()/ceiling() IS the LOOK algorithm — you serve everything ahead of you in the current direction, then reverse. A FIFO queue would send the car from 2 to 8 to 5, which is the answer that fails the round.
+
+**Scheduling behind an interface, with anti-starvation**
+
+```java
+public interface SchedulingStrategy {
+    Optional<Elevator> choose(ExternalRequest r, List<Elevator> cars);
+}
+
+public class LookScheduling implements SchedulingStrategy {
+    public Optional<Elevator> choose(ExternalRequest r, List<Elevator> cars) {
+        return cars.stream()
+            .filter(e -> e.canServe(r))
+            .min(Comparator.comparingInt(e -> Math.abs(e.currentFloor() - r.floor())))
+            .or(() -> cars.stream()          // nobody on-path: give it to the least busy
+                 .min(Comparator.comparingInt(Elevator::targetCount)));
+    }
+}
+
+public class ElevatorSystem {
+    private final List<Elevator> cars;
+    private final SchedulingStrategy strategy;
+    private final Deque<ExternalRequest> pending = new ArrayDeque<>();
+    private final Clock clock;                     // INJECTED - testable
+
+    public void requestFrom(int floor, Direction dir) {
+        pending.add(new ExternalRequest(floor, dir, clock.millis()));
+    }
+
+    public synchronized void step() {
+        // 1. dispatch, oldest first, so nothing starves
+        Iterator<ExternalRequest> it = pending.iterator();
+        while (it.hasNext()) {
+            ExternalRequest r = it.next();
+            boolean aged = clock.millis() - r.at() > STARVATION_MS;
+            Optional<Elevator> car = strategy.choose(r, cars);
+            if (car.isPresent() && (aged || car.get().canServe(r))) {
+                car.get().addTarget(r.floor());
+                it.remove();
+            }
+        }
+        // 2. advance every car one tick
+        cars.forEach(Elevator::step);
+    }
+}
+```
+
+> Three things interviewers look for here: the strategy is injected, dispatch-and-assign is atomic (synchronized on the system) so one car is never double-assigned, and ageing prevents a down-request on floor 5 waiting forever while traffic flows upward.
+
 ---
 
 ### Vending Machine  *(OOD, 40 min)*
@@ -3000,6 +5207,293 @@ public class GreedyChange implements ChangeStrategy {
 - Claiming greedy change is universally correct.
 - No cancel or refund path.
 - Prices stored on the slot AND the item, so they can disagree.
+
+#### Worked solution
+
+Design a vending machine. It holds items in slots, each with a price and a stock count. A user inserts coins, selects an item by code, and the machine dispenses the item plus any change. It must handle: selecting before paying, insufficient funds, out-of-stock items, cancellation with refund, and being unable to make change.
+
+**Functional requirements**
+
+- Insert coins of fixed denominations, accumulating a balance.
+- Select an item by code; validate stock and funds.
+- Dispense the item and the correct change.
+- Cancel at any point and refund the full balance.
+- Restock and collect cash (an operator mode).
+
+**Non-functional requirements**
+
+- Illegal actions for the current mode must be rejected, not silently ignored.
+- Never dispense if change cannot be made — check before, not after.
+- Adding a payment method must not change the state machine.
+
+**How to approach it**
+
+| Step | What you do |
+|---|---|
+| **1. Enumerate the states first** | Idle, HasMoney, Dispensing, OutOfService. Write them on the board before any class. |
+| **2. Write the action set** | insertCoin, selectItem, dispense, cancel. Every state must answer all four — that is what stops a forgotten transition. |
+| **3. Make the machine thin** | The context holds balance, inventory and current state, and delegates every action. No business rules in it. |
+| **4. Get the ordering right** | Check stock, check funds, check change is makeable, THEN dispense. Interviewers probe this order specifically. |
+| **5. Handle change honestly** | Greedy, and say out loud that greedy is only correct for canonical denominations. |
+| **6. Show the extension** | "Card payment is a PaymentMethod; the states are untouched." |
+
+**Class diagram**
+
+```
+  ┌───────────────────────────────┐         ┌────────────────────────────┐
+  │       VendingMachine          │         │       «interface»          │
+  │         (context)             │────────▶│       VendingState         │
+  ├───────────────────────────────┤delegates├────────────────────────────┤
+  │ -state : VendingState         │         │ +insertCoin(m, coin)       │
+  │ -balance : int                │◄────────│ +selectItem(m, code)       │
+  │ -inventory : Inventory        │ setState│ +dispense(m)               │
+  │ -register : CashRegister      │         │ +cancel(m)                 │
+  │ +insertCoin(Coin)             │         └─────────────△──────────────┘
+  │ +selectItem(String)           │        ┌──────────────┼──────────────┐
+  │ +cancel()                     │  ┌─────┴─────┐ ┌──────┴──────┐ ┌─────┴──────┐
+  └───────┬───────────────┬───────┘  │ IdleState │ │HasMoneyState│ │Dispensing  │
+          │               │          └───────────┘ └─────────────┘ └────────────┘
+          ▼               ▼
+  ┌───────────────┐ ┌──────────────────────┐     ┌──────────────────────────┐
+  │   Inventory   │ │    CashRegister      │────▶│     «interface»          │
+  ├───────────────┤ ├──────────────────────┤     │    ChangeStrategy        │
+  │ -slots : Map  │ │ -notes : Map<Coin,n> │     ├──────────────────────────┤
+  │ +find(code)   │ │ +canMake(int) : bool │     │ +make(amt, avail)        │
+  │ +decrement()  │ │ +take(int) : List    │     └──────────────────────────┘
+  └───────────────┘ └──────────────────────┘
+```
+
+**Public API**
+
+| Signature | Contract |
+|---|---|
+| void insertCoin(Coin c) | Adds to balance. Legal in Idle and HasMoney. |
+| void selectItem(String code) | Validates stock, funds and change availability. Illegal in Idle. |
+| Dispensed dispense() | Returns item plus change. Only legal after a successful selection. |
+| int cancel() | Refunds the balance and returns to Idle. Legal in every state. |
+| void restock(String code, int qty) | Operator mode. |
+
+**Schema**
+
+| Table | Columns | Note |
+|---|---|---|
+| **Note** | — | A vending machine is a single-process embedded system. If asked to persist, you would store slot inventory and a transaction log; the design does not otherwise change. |
+
+**The solution**
+
+**Coins and inventory**
+
+```java
+public enum Coin {
+    FIVE(5), TEN(10), TWENTY(20), FIFTY(50);
+
+    private final int value;
+    Coin(int value) { this.value = value; }
+    public int value() { return value; }
+
+    /** Largest first — the order greedy change-making needs. */
+    public static List<Coin> descending() {
+        return Arrays.stream(values())
+                .sorted(Comparator.comparingInt(Coin::value).reversed())
+                .toList();
+    }
+}
+
+public record Item(String code, String name, int price) { }
+
+public class Inventory {
+    private final Map<String, Item> items = new HashMap<>();
+    private final Map<String, Integer> counts = new HashMap<>();
+
+    public void load(Item item, int qty) {
+        items.put(item.code(), item);
+        counts.merge(item.code(), qty, Integer::sum);
+    }
+
+    public Optional<Item> find(String code) { return Optional.ofNullable(items.get(code)); }
+    public int countOf(String code)         { return counts.getOrDefault(code, 0); }
+
+    public void decrement(String code) {
+        counts.computeIfPresent(code, (k, v) -> v > 0 ? v - 1 : v);
+    }
+}
+```
+
+> Prices live on Item only, never duplicated on the slot — otherwise the two can disagree, which is a classic review comment.
+
+**The cash register and change-making**
+
+```java
+public interface ChangeStrategy {
+    Optional<List<Coin>> make(int amount, Map<Coin, Integer> available);
+}
+
+public class GreedyChange implements ChangeStrategy {
+    @Override
+    public Optional<List<Coin>> make(int amount, Map<Coin, Integer> available) {
+        List<Coin> out = new ArrayList<>();
+        Map<Coin, Integer> remaining = new EnumMap<>(available);
+
+        for (Coin c : Coin.descending()) {
+            while (amount >= c.value() && remaining.getOrDefault(c, 0) > 0) {
+                out.add(c);
+                amount -= c.value();
+                remaining.merge(c, -1, Integer::sum);
+            }
+        }
+        // GREEDY IS ONLY CORRECT FOR CANONICAL DENOMINATIONS.
+        // With coins {1,3,4}, making 6 greedily gives 4+1+1 instead of 3+3.
+        return amount == 0 ? Optional.of(out) : Optional.empty();
+    }
+}
+
+public class CashRegister {
+    private final Map<Coin, Integer> holdings = new EnumMap<>(Coin.class);
+    private final ChangeStrategy strategy;
+
+    public CashRegister(ChangeStrategy strategy) { this.strategy = strategy; }
+
+    public void accept(Coin c) { holdings.merge(c, 1, Integer::sum); }
+
+    /** Check BEFORE dispensing. This is the ordering that matters. */
+    public boolean canMakeChange(int amount) {
+        return amount == 0 || strategy.make(amount, holdings).isPresent();
+    }
+
+    public List<Coin> dispenseChange(int amount) {
+        List<Coin> coins = strategy.make(amount, holdings)
+                .orElseThrow(() -> new CannotMakeChangeException(amount));
+        coins.forEach(c -> holdings.merge(c, -1, Integer::sum));
+        return coins;
+    }
+}
+```
+
+> canMakeChange and dispenseChange are deliberately separate. Planning without mutating lets you refuse the sale cleanly instead of discovering the problem after the item has dropped.
+
+**The states**
+
+```java
+public interface VendingState {
+    void insertCoin(VendingMachine m, Coin c);
+    void selectItem(VendingMachine m, String code);
+    Dispensed dispense(VendingMachine m);
+    int cancel(VendingMachine m);
+}
+
+public class IdleState implements VendingState {
+    public void insertCoin(VendingMachine m, Coin c) {
+        m.credit(c);
+        m.setState(new HasMoneyState());
+    }
+    public void selectItem(VendingMachine m, String code) {
+        throw new IllegalStateException("insert money first");
+    }
+    public Dispensed dispense(VendingMachine m) {
+        throw new IllegalStateException("nothing selected");
+    }
+    public int cancel(VendingMachine m) { return 0; }
+}
+
+public class HasMoneyState implements VendingState {
+    public void insertCoin(VendingMachine m, Coin c) { m.credit(c); }
+
+    public void selectItem(VendingMachine m, String code) {
+        Item item = m.inventory().find(code)
+                .orElseThrow(() -> new UnknownItemException(code));
+        if (m.inventory().countOf(code) == 0)
+            throw new OutOfStockException(code);
+        if (m.balance() < item.price())
+            throw new InsufficientFundsException(item.price() - m.balance());
+        if (!m.register().canMakeChange(m.balance() - item.price()))
+            throw new CannotMakeChangeException(m.balance() - item.price());
+
+        m.select(item);                       // all four checks passed
+        m.setState(new DispensingState());
+    }
+
+    public Dispensed dispense(VendingMachine m) {
+        throw new IllegalStateException("select an item first");
+    }
+    public int cancel(VendingMachine m) {
+        int refund = m.drainBalance();
+        m.setState(new IdleState());
+        return refund;
+    }
+}
+
+public class DispensingState implements VendingState {
+    public void insertCoin(VendingMachine m, Coin c) {
+        throw new IllegalStateException("dispensing in progress");
+    }
+    public void selectItem(VendingMachine m, String code) {
+        throw new IllegalStateException("dispensing in progress");
+    }
+    public Dispensed dispense(VendingMachine m) {
+        Item item = m.selected();
+        int change = m.balance() - item.price();
+        m.inventory().decrement(item.code());
+        List<Coin> coins = m.register().dispenseChange(change);
+        m.drainBalance();
+        m.setState(new IdleState());
+        return new Dispensed(item, coins);
+    }
+    public int cancel(VendingMachine m) {
+        throw new IllegalStateException("too late to cancel");
+    }
+}
+```
+
+> Four checks in selectItem, in that exact order, all before any state change. And note DispensingState refuses cancel — "too late" is a real product rule and encoding it in the state is the whole argument for the pattern.
+
+**The machine, and a demo**
+
+```java
+public class VendingMachine {
+    private VendingState state = new IdleState();
+    private final Inventory inventory;
+    private final CashRegister register;
+    private int balance;
+    private Item selected;
+
+    public VendingMachine(Inventory inv, CashRegister reg) {
+        this.inventory = inv; this.register = reg;
+    }
+
+    // public API - pure delegation
+    public void insertCoin(Coin c)      { state.insertCoin(this, c); }
+    public void selectItem(String code) { state.selectItem(this, code); }
+    public Dispensed dispense()         { return state.dispense(this); }
+    public int cancel()                 { return state.cancel(this); }
+
+    // package-private hooks the states use
+    void setState(VendingState s) { this.state = s; }
+    void credit(Coin c)           { balance += c.value(); register.accept(c); }
+    void select(Item item)        { this.selected = item; }
+    int drainBalance()            { int b = balance; balance = 0; return b; }
+
+    int balance()               { return balance; }
+    Item selected()             { return selected; }
+    Inventory inventory()       { return inventory; }
+    CashRegister register()     { return register; }
+}
+
+public record Dispensed(Item item, List<Coin> change) { }
+
+// --- demo ---
+Inventory inv = new Inventory();
+inv.load(new Item("A1", "Water", 25), 3);
+CashRegister reg = new CashRegister(new GreedyChange());
+VendingMachine m = new VendingMachine(inv, reg);
+
+m.selectItem("A1");                    // IllegalStateException: insert money first
+m.insertCoin(Coin.TWENTY);
+m.insertCoin(Coin.TEN);                // balance 30
+m.selectItem("A1");
+Dispensed d = m.dispense();            // Water + [FIVE]
+```
+
+> The states are stateless, so in production they would be singletons or enum constants rather than a new object per transition. Worth mentioning; not worth spending interview time on.
 
 ---
 
@@ -3153,6 +5647,312 @@ public void sweepExpiredHolds() { ... }
 - No answer for payment failing after the hold.
 - A global lock on the show, which serialises every booking in the cinema.
 
+#### Worked solution
+
+Design a movie ticket booking system. A cinema has several screens; each screen runs several shows a day; each show has a seat map. A user browses shows, selects seats, holds them while paying, and confirms. Two users must never be sold the same seat. If a user abandons payment, the seats must return to the pool.
+
+**Functional requirements**
+
+- Browse cinemas, shows and the seat map for a show.
+- Hold one or more seats for a limited window.
+- Confirm a hold into a booking after successful payment.
+- Release a hold on cancellation or expiry.
+- Price seats by category.
+
+**Non-functional requirements**
+
+- No double-booking, ever, under concurrent load on the same seat.
+- A multi-seat request is all-or-nothing — never leave stranded holds.
+- No global lock on a show: 300 seats should mean 300 independent units.
+- Expired holds must free up without waiting for a sweeper to run.
+
+**How to approach it**
+
+| Step | What you do |
+|---|---|
+| **1. Ask the hold question first** | "Can a user hold seats before paying, and for how long?" The answer defines the entire design. If there is no hold, this is a much simpler problem — say so. |
+| **2. Get the key modelling decision right** | Availability belongs to (seat, show), not to seat. State this out loud; it is the thing most candidates get wrong and it is invisible until show two. |
+| **3. Draw the seat state machine** | AVAILABLE → HELD → BOOKED, with HELD → AVAILABLE on expiry or cancel. Three states, four transitions. |
+| **4. Make the transition atomic** | compareAndSet on ShowSeat status. Then handle the multi-seat case: sorted acquisition plus rollback. |
+| **5. Decide expiry policy** | Lazy check on access AND a background sweeper. Explain why you need both. |
+| **6. State the payment-failure policy** | What happens when the hold expires mid-payment. Have an answer; there is no free lunch here. |
+| **7. Show the extension** | Dynamic pricing is a new strategy; nothing else moves. |
+
+**Class diagram**
+
+```
+  ┌──────────────┐ 1..*  ┌──────────────┐ 1..*  ┌────────────────────┐
+  │    Cinema    │──────▶│    Screen    │──────▶│       Show         │
+  ├──────────────┤       ├──────────────┤       ├────────────────────┤
+  │ -name, -city │       │ -seats:List  │       │ -movie : Movie     │
+  └──────────────┘       └──────┬───────┘       │ -startTime         │
+                                │ 1..*          │ -showSeats : Map   │
+                                ▼               └─────────┬──────────┘
+                         ┌──────────────┐                 │ 1..*
+                         │     Seat     │                 ▼
+                         ├──────────────┤       ┌────────────────────────┐
+                         │ -row, -number│◄──────│      ShowSeat          │
+                         │ -category    │ 1     ├────────────────────────┤
+                         └──────────────┘       │ -status : AtomicRef    │  ◄── THE unit
+                                                │ -heldBy, -holdExpiry   │      of contention
+                                                │ +tryHold(user, ttl)    │
+                                                │ +confirm() +release()  │
+                                                └────────────────────────┘
+  ┌──────────────────────────────┐                        ▲
+  │      BookingService          │                        │ holds
+  │        (facade)              │────────────────────────┘
+  ├──────────────────────────────┤       ┌──────────────────────────┐
+  │ +hold(show, seats, user)     │──────▶│      «interface»         │
+  │ +confirm(holdId, payment)    │       │    PricingStrategy       │
+  │ +release(holdId)             │       └──────────────────────────┘
+  │ +sweepExpired()              │
+  └──────────────┬───────────────┘       ┌──────────────────────────┐
+                 │ creates               │        SeatHold          │
+                 └──────────────────────▶│ -id, -seats, -expiresAt  │
+                                         └──────────────────────────┘
+
+  ShowSeat state machine:
+     AVAILABLE ──tryHold()──▶ HELD ──confirm()──▶ BOOKED
+         ▲                     │
+         └──release()/expiry───┘
+```
+
+**Public API**
+
+| Signature | Contract |
+|---|---|
+| SeatHold hold(String showId, List<String> seatIds, String userId) | All-or-nothing. Throws SeatsUnavailableException naming which seats failed. |
+| Booking confirm(String holdId, PaymentRef payment) | Converts HELD to BOOKED. Idempotent on holdId. |
+| void release(String holdId) | Explicit cancel. Also called by the sweeper. |
+| SeatMap seatMap(String showId) | Current status of every seat, for display. |
+| int sweepExpired() | Background job. Returns how many holds it released. |
+
+**Schema**
+
+| Table | Columns | Note |
+|---|---|---|
+| **show** | id PK · movie_id · screen_id · start_time | Index (screen_id, start_time). |
+| **show_seat** | id PK · show_id FK · seat_id FK · status · held_by NULL · hold_expiry NULL · version | UNIQUE (show_id, seat_id) is the constraint that makes double-booking structurally impossible. |
+| **seat_hold** | id PK · user_id · expires_at · status | Index on expires_at for the sweeper. |
+| **booking** | id PK · hold_id FK · user_id · amount · status · created_at | hold_id UNIQUE gives you idempotent confirm for free. |
+| **The atomic write** | — | UPDATE show_seat SET status=HELD, held_by=?, hold_expiry=? WHERE id=? AND status=AVAILABLE — then require rowsAffected == 1. Identical shape to compareAndSet. |
+
+**The solution**
+
+**ShowSeat — availability belongs to (seat, show)**
+
+```java
+public enum SeatStatus { AVAILABLE, HELD, BOOKED }
+
+public class ShowSeat {
+    private final String id;              // showId + ":" + seatId
+    private final Seat seat;
+    private final Show show;
+    private final AtomicReference<SeatStatus> status =
+            new AtomicReference<>(SeatStatus.AVAILABLE);
+    private volatile String heldBy;
+    private volatile Instant holdExpiry;
+
+    public ShowSeat(Seat seat, Show show) {
+        this.seat = seat; this.show = show;
+        this.id = show.id() + ":" + seat.id();
+    }
+
+    /** Atomic. Exactly one caller wins. Reclaims an expired hold first. */
+    public boolean tryHold(String userId, Duration ttl) {
+        if (status.compareAndSet(SeatStatus.AVAILABLE, SeatStatus.HELD)) {
+            heldBy = userId;
+            holdExpiry = Instant.now().plus(ttl);
+            return true;
+        }
+        // LAZY EXPIRY: an abandoned hold must not block a live sale
+        if (status.get() == SeatStatus.HELD
+                && holdExpiry != null && Instant.now().isAfter(holdExpiry)
+                && status.compareAndSet(SeatStatus.HELD, SeatStatus.AVAILABLE)) {
+            return tryHold(userId, ttl);      // one retry, now that it is free
+        }
+        return false;
+    }
+
+    public boolean confirm(String userId) {
+        if (!userId.equals(heldBy)) return false;      // not your hold
+        return status.compareAndSet(SeatStatus.HELD, SeatStatus.BOOKED);
+    }
+
+    public void release() {
+        if (status.compareAndSet(SeatStatus.HELD, SeatStatus.AVAILABLE)) {
+            heldBy = null; holdExpiry = null;
+        }
+    }
+
+    public boolean isExpiredHold() {
+        return status.get() == SeatStatus.HELD
+                && holdExpiry != null && Instant.now().isAfter(holdExpiry);
+    }
+
+    public String id()          { return id; }
+    public Seat seat()          { return seat; }
+    public SeatStatus status()  { return status.get(); }
+}
+```
+
+> Three things at once: the (seat, show) identity, the atomic transition, and lazy expiry reclaiming a dead hold rather than waiting for a sweeper. The confirm() ownership check stops user B confirming user A hold.
+
+**SeatHold and the all-or-nothing acquisition**
+
+```java
+public class SeatHold {
+    private final String id = UUID.randomUUID().toString();
+    private final List<ShowSeat> seats;
+    private final String userId;
+    private final Instant expiresAt;
+    private volatile boolean settled;      // confirmed or released
+
+    SeatHold(List<ShowSeat> seats, String userId, Instant expiresAt) {
+        this.seats = List.copyOf(seats);
+        this.userId = userId;
+        this.expiresAt = expiresAt;
+    }
+
+    public boolean isExpired() { return Instant.now().isAfter(expiresAt); }
+
+    public String id()             { return id; }
+    public List<ShowSeat> seats()  { return seats; }
+    public String userId()         { return userId; }
+    public Instant expiresAt()     { return expiresAt; }
+    boolean markSettled()          { 
+        synchronized (this) {
+            if (settled) return false;
+            settled = true; return true;   // idempotency for confirm/release
+        }
+    }
+}
+```
+
+> markSettled is a small guard that makes confirm and release idempotent — a retried payment callback cannot double-confirm.
+
+**BookingService — the core flow**
+
+```java
+public class BookingService {
+    private static final Duration HOLD_TTL = Duration.ofMinutes(8);
+
+    private final Map<String, Show> shows = new ConcurrentHashMap<>();
+    private final Map<String, SeatHold> holds = new ConcurrentHashMap<>();
+    private final Map<String, Booking> bookings = new ConcurrentHashMap<>();
+    private final PricingStrategy pricing;
+
+    public BookingService(PricingStrategy pricing) { this.pricing = pricing; }
+
+    /** All-or-nothing. Deterministic order prevents deadlock between
+     *  two users requesting overlapping seat sets. */
+    public SeatHold hold(String showId, List<String> seatIds, String userId) {
+        Show show = shows.get(showId);
+        if (show == null) throw new UnknownShowException(showId);
+
+        List<ShowSeat> requested = seatIds.stream()
+                .map(show::showSeat)
+                .sorted(Comparator.comparing(ShowSeat::id))    // <-- deadlock guard
+                .toList();
+
+        List<ShowSeat> acquired = new ArrayList<>();
+        for (ShowSeat s : requested) {
+            if (s.tryHold(userId, HOLD_TTL)) {
+                acquired.add(s);
+            } else {
+                acquired.forEach(ShowSeat::release);           // <-- rollback
+                throw new SeatsUnavailableException(s.seat().id());
+            }
+        }
+
+        SeatHold h = new SeatHold(acquired, userId, Instant.now().plus(HOLD_TTL));
+        holds.put(h.id(), h);
+        return h;
+    }
+
+    public Booking confirm(String holdId, PaymentRef payment) {
+        SeatHold h = holds.get(holdId);
+        if (h == null) throw new UnknownHoldException(holdId);
+
+        // idempotent: a retried callback returns the existing booking
+        Booking existing = bookings.get(holdId);
+        if (existing != null) return existing;
+
+        if (h.isExpired()) {
+            release(holdId);
+            throw new HoldExpiredException(holdId);   // POLICY: refuse, do not charge
+        }
+        if (!h.markSettled()) return bookings.get(holdId);
+
+        for (ShowSeat s : h.seats()) {
+            if (!s.confirm(h.userId()))
+                throw new IllegalStateException("seat lost during confirm: " + s.id());
+        }
+
+        BigDecimal amount = h.seats().stream()
+                .map(pricing::price)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Booking b = new Booking(holdId, h.userId(), h.seats(), amount, payment);
+        bookings.put(holdId, b);
+        holds.remove(holdId);
+        return b;
+    }
+
+    public void release(String holdId) {
+        SeatHold h = holds.remove(holdId);
+        if (h != null && h.markSettled()) h.seats().forEach(ShowSeat::release);
+    }
+
+    /** Background sweeper. Lazy expiry handles the contended case;
+     *  this one frees seats for people merely BROWSING. */
+    public int sweepExpired() {
+        List<String> dead = holds.values().stream()
+                .filter(SeatHold::isExpired)
+                .map(SeatHold::id)
+                .toList();
+        dead.forEach(this::release);
+        return dead.size();
+    }
+}
+```
+
+> Read the confirm() path carefully: idempotency check, expiry policy, settle-once guard, then the seat transitions. The stated policy on an expired hold is REFUSE — silently charging for a released seat is the failure that actually ships to production.
+
+**A test that proves the race is closed**
+
+```java
+@Test
+void onlyOneOfTwoConcurrentUsersGetsTheSeat() throws Exception {
+    BookingService svc = new BookingService(new CategoryPricing());
+    svc.addShow(showWithSeats("SHOW1", "A1"));
+
+    int threads = 50;
+    var latch = new CountDownLatch(1);
+    var pool  = Executors.newFixedThreadPool(threads);
+    var wins  = new AtomicInteger();
+
+    for (int i = 0; i < threads; i++) {
+        int user = i;
+        pool.submit(() -> {
+            latch.await();                       // fire all at once
+            try {
+                svc.hold("SHOW1", List.of("A1"), "user" + user);
+                wins.incrementAndGet();
+            } catch (SeatsUnavailableException expected) { }
+            return null;
+        });
+    }
+    latch.countDown();
+    pool.shutdown();
+    pool.awaitTermination(5, TimeUnit.SECONDS);
+
+    assertEquals(1, wins.get());                 // exactly one winner
+}
+```
+
+> Writing this test in a machine-coding round is worth more than another feature. It is the difference between claiming the design is correct and demonstrating it.
+
 ---
 
 ### Splitwise  *(OOD + algorithm, 45 min)*
@@ -3300,6 +6100,258 @@ public List<Transaction> simplify(Map<User, BigDecimal> net) {
 - Claiming greedy settlement is optimal.
 - A single balance field per user instead of pairwise balances, losing who owes whom.
 - Validation logic duplicated across split types instead of living in each strategy.
+
+#### Worked solution
+
+Design an expense-sharing application. Users record expenses paid by one person on behalf of several, split equally, by exact amounts, or by percentage. The app shows who owes whom, and can simplify a group of debts into the fewest transactions needed to settle.
+
+**Functional requirements**
+
+- Add an expense: payer, amount, participants, split type.
+- Support equal, exact and percentage splits.
+- Show a balance sheet — who owes whom, and how much.
+- Settle up: record a payment between two users.
+- Simplify a group so fewer transfers are needed.
+
+**Non-functional requirements**
+
+- Money must reconcile exactly. Totals cannot drift by a cent.
+- Adding a split type must not change existing code.
+- Balances must be correct under concurrent expense entry.
+- Balances must be recomputable from the expense log.
+
+**How to approach it**
+
+| Step | What you do |
+|---|---|
+| **1. Pin down the split types** | Equal, exact, percentage, shares. Each has a DIFFERENT validity rule, which is the argument for a strategy per type rather than a flag. |
+| **2. Choose the money type first** | BigDecimal in minor units, never double. Say it before writing any arithmetic — it pre-empts the question. |
+| **3. Model pairwise balances** | A single net figure per user loses who owes whom. balances[a][b] is the structure the product actually needs. |
+| **4. Handle the rounding remainder explicitly** | 100 split three ways is 33.33 x 3 = 99.99. Decide who gets the extra cent and apply it deterministically. |
+| **5. Keep expenses as the source of truth** | Balances are derived and cached. A bug in balance maintenance is then recoverable by recomputation. |
+| **6. Then the algorithm** | Greedy heap netting for simplification, and be honest that true minimum is NP-hard. |
+
+**Class diagram**
+
+```
+  ┌────────────────────────────┐        ┌───────────────────────────────┐
+  │      ExpenseService        │───────▶│        «interface»            │
+  │        (facade)            │        │       SplitStrategy           │
+  ├────────────────────────────┤        ├───────────────────────────────┤
+  │ -balances : BalanceSheet   │        │ +split(total, users, args)    │
+  │ -expenses : List<Expense>  │        │        : List<Split>          │
+  │ +addExpense(...)           │        └──────────────△────────────────┘
+  │ +settleUp(from, to, amt)   │       ┌───────────────┼───────────────┐
+  │ +balancesFor(user)         │ ┌─────┴──────┐ ┌──────┴─────┐ ┌───────┴────┐
+  │ +simplify(group)           │ │EqualSplit  │ │ExactSplit  │ │PercentSplit│
+  └──────┬─────────────┬───────┘ └────────────┘ └────────────┘ └────────────┘
+         │             │
+         ▼             ▼
+  ┌──────────────┐  ┌───────────────────────────┐
+  │   Expense    │  │      BalanceSheet         │
+  ├──────────────┤  ├───────────────────────────┤
+  │ -paidBy      │  │ -net : Map<User,          │
+  │ -amount      │  │         Map<User, Money>> │  ◄── PAIRWISE, not a
+  │ -splits[]    │  │ +record(from,to,amount)   │      single net figure
+  │ -group       │  │ +owes(a, b) : Money       │
+  └──────┬───────┘  └───────────────────────────┘
+         │ 1..*
+         ▼                        ┌──────────────────────────┐
+  ┌──────────────┐                │      «interface»         │
+  │    Split     │                │   SettlementStrategy     │
+  ├──────────────┤                ├──────────────────────────┤
+  │ -user        │                │ +simplify(net) :         │
+  │ -amount      │                │      List<Transaction>   │
+  └──────────────┘                └──────────────────────────┘
+```
+
+**Public API**
+
+| Signature | Contract |
+|---|---|
+| Expense addExpense(User payer, Money total, List<User> participants, SplitType type, List<BigDecimal> args) | Validates via the strategy, updates pairwise balances. |
+| void settleUp(User from, User to, Money amount) | Records a real payment. Reduces the pairwise balance. |
+| Map<User,Money> balancesFor(User u) | Who this user owes and who owes them. |
+| List<Transaction> simplify(Group g) | Greedy netting to at most n-1 transfers. |
+| Money totalOwedBy(User u) | Net position across everyone. |
+
+**Schema**
+
+| Table | Columns | Note |
+|---|---|---|
+| **user** | id PK · name · email |  |
+| **expense** | id PK · group_id · paid_by · amount_minor · currency · split_type · created_at | Source of truth. Append-only in practice — edits become a reversal plus a new expense. |
+| **expense_split** | expense_id + user_id PK · amount_minor | One row per participant. SUM must equal the expense amount — checkable by query. |
+| **balance (cache)** | user_a + user_b PK · amount_minor | Derived. Rebuildable by replaying expense_split. Store a < b to avoid two rows per pair. |
+| **settlement** | id PK · from_user · to_user · amount_minor · created_at | A payment is just another balance-affecting event. |
+
+**The solution**
+
+**Money as a value object — the decision that prevents a class of bugs**
+
+```java
+public record Money(long minorUnits, Currency currency) implements Comparable<Money> {
+
+    public static Money of(String amount, Currency c) {
+        return new Money(new BigDecimal(amount).movePointRight(2).longValueExact(), c);
+    }
+
+    public Money plus(Money o)  { check(o); return new Money(minorUnits + o.minorUnits, currency); }
+    public Money minus(Money o) { check(o); return new Money(minorUnits - o.minorUnits, currency); }
+    public boolean isZero()     { return minorUnits == 0; }
+
+    private void check(Money o) {
+        if (!currency.equals(o.currency))
+            throw new IllegalArgumentException("cannot mix " + currency + " and " + o.currency);
+    }
+
+    @Override public int compareTo(Money o) { check(o); return Long.compare(minorUnits, o.minorUnits); }
+}
+```
+
+> Long minor units rather than double or BigDecimal arithmetic scattered about. The currency check in one place means mixing GBP and USD is impossible by construction rather than by convention.
+
+**Split strategies, each with its own validity rule**
+
+```java
+public interface SplitStrategy {
+    List<Split> split(Money total, List<User> users, List<BigDecimal> args);
+}
+
+public class ExactSplit implements SplitStrategy {
+    public List<Split> split(Money total, List<User> users, List<BigDecimal> amounts) {
+        long sum = amounts.stream().mapToLong(a -> a.movePointRight(2).longValueExact()).sum();
+        if (sum != total.minorUnits())
+            throw new IllegalArgumentException("splits total " + sum + ", expected " + total.minorUnits());
+        List<Split> out = new ArrayList<>();
+        for (int i = 0; i < users.size(); i++)
+            out.add(new Split(users.get(i), new Money(
+                    amounts.get(i).movePointRight(2).longValueExact(), total.currency())));
+        return out;
+    }
+}
+
+public class PercentSplit implements SplitStrategy {
+    public List<Split> split(Money total, List<User> users, List<BigDecimal> pct) {
+        BigDecimal sum = pct.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (sum.compareTo(new BigDecimal("100")) != 0)
+            throw new IllegalArgumentException("percentages total " + sum + ", expected 100");
+        long assigned = 0;
+        List<Split> out = new ArrayList<>();
+        for (int i = 0; i < users.size(); i++) {
+            long amt = (i == users.size() - 1)
+                ? total.minorUnits() - assigned            // last one absorbs the remainder
+                : total.minorUnits() * pct.get(i).longValue() / 100;
+            assigned += amt;
+            out.add(new Split(users.get(i), new Money(amt, total.currency())));
+        }
+        return out;
+    }
+}
+```
+
+> Validation lives in the strategy because each type has a different invariant. Note the last-participant-absorbs-remainder trick in the percentage case — it guarantees the splits sum exactly to the total.
+
+**Equal split and the rounding remainder**
+
+```java
+public class EqualSplit implements SplitStrategy {
+    public List<Split> split(Money total, List<User> users, List<BigDecimal> ignored) {
+        int n = users.size();
+        long base = total.minorUnits() / n;
+        long remainder = total.minorUnits() % n;    // 10000 / 3 -> base 3333, remainder 1
+
+        List<Split> out = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            // distribute the odd pennies deterministically to the FIRST participants,
+            // so 100.00 three ways is 33.34 / 33.33 / 33.33 and totals exactly 100.00
+            long amt = base + (i < remainder ? 1 : 0);
+            out.add(new Split(users.get(i), new Money(amt, total.currency())));
+        }
+        return out;
+    }
+}
+```
+
+> Raising this unprompted is a genuine differentiator. The naive version rounds each share to 33.33 and loses a penny; over thousands of expenses the balance sheet stops reconciling and nobody can explain why.
+
+**Pairwise balances, kept consistent**
+
+```java
+public class BalanceSheet {
+    // net.get(a).get(b) > 0  means  a owes b
+    private final Map<User, Map<User, Money>> net = new ConcurrentHashMap<>();
+
+    public synchronized void record(User debtor, User creditor, Money amount) {
+        if (debtor.equals(creditor)) return;               // paying yourself is a no-op
+        adjust(debtor, creditor, amount);
+        adjust(creditor, debtor, negate(amount));          // keep both directions in step
+    }
+
+    private void adjust(User from, User to, Money delta) {
+        net.computeIfAbsent(from, k -> new ConcurrentHashMap<>())
+           .merge(to, delta, Money::plus);
+    }
+
+    public Money owes(User a, User b) {
+        return net.getOrDefault(a, Map.of()).getOrDefault(b, Money.zero());
+    }
+
+    public Map<User, Money> netPositions() {              // for simplification
+        Map<User, Money> out = new HashMap<>();
+        net.forEach((a, m) -> m.forEach((b, amt) ->
+            out.merge(a, negate(amt), Money::plus)));
+        return out;
+    }
+}
+
+// ExpenseService
+public Expense addExpense(User payer, Money total, List<User> parts,
+                          SplitType type, List<BigDecimal> args) {
+    List<Split> splits = strategies.get(type).split(total, parts, args);
+    Expense e = new Expense(payer, total, splits);
+    expenses.add(e);                                      // source of truth FIRST
+    splits.forEach(s -> balances.record(s.user(), payer, s.amount()));
+    return e;
+}
+```
+
+> Both directions are updated together inside one synchronized block, so a concurrent read never sees a half-applied expense. And the expense list is appended before balances change, so a crash mid-update leaves the log correct and the cache rebuildable.
+
+**Debt simplification — the algorithmic core**
+
+```java
+public class GreedySettlement implements SettlementStrategy {
+
+    public List<Transaction> simplify(Map<User, Money> netPositions) {
+        // positive = is owed money (creditor), negative = owes money (debtor)
+        PriorityQueue<Entry> creditors = new PriorityQueue<>(
+                Comparator.comparingLong((Entry e) -> e.amount).reversed());
+        PriorityQueue<Entry> debtors = new PriorityQueue<>(
+                Comparator.comparingLong((Entry e) -> e.amount).reversed());
+
+        netPositions.forEach((u, m) -> {
+            if (m.minorUnits() > 0)      creditors.add(new Entry(u, m.minorUnits()));
+            else if (m.minorUnits() < 0) debtors.add(new Entry(u, -m.minorUnits()));
+        });
+
+        List<Transaction> out = new ArrayList<>();
+        while (!creditors.isEmpty() && !debtors.isEmpty()) {
+            Entry c = creditors.poll(), d = debtors.poll();
+            long settled = Math.min(c.amount, d.amount);
+            out.add(new Transaction(d.user, c.user, settled));
+            if (c.amount > settled) creditors.add(new Entry(c.user, c.amount - settled));
+            if (d.amount > settled) debtors.add(new Entry(d.user, d.amount - settled));
+        }
+        return out;                       // at most n-1 transactions
+    }
+}
+
+// A owes B 10, B owes C 10, C owes A 10  ->  all net to zero  ->  ZERO transactions.
+// Removing the cycle entirely is the whole value of the feature.
+```
+
+> Greedy heap matching gives at most n-1 transfers and runs in O(n log n). Be explicit that MINIMUM transactions is NP-hard — it is LeetCode 465, solved with bitmask DP for small n. Knowing the distinction is the differentiator; claiming greedy is optimal is the mistake.
 
 ---
 
@@ -3449,6 +6501,233 @@ public class Rook extends Piece {
 - A Move that stores only from and to, so undo cannot restore a capture.
 - Claiming the O(1) counter trick works for arbitrary k-in-a-row.
 - No turn validation.
+
+#### Worked solution
+
+Design a tic-tac-toe game, then generalise it. Two players alternate placing marks on an n-by-n board; the first to fill a row, column or diagonal wins. Then extend the design to chess, add undo and redo, and make the win check O(1) per move rather than scanning the board.
+
+**Functional requirements**
+
+- Two players alternate; illegal moves are rejected.
+- Detect win and draw.
+- Configurable board size.
+- Undo and redo.
+- Extend to chess: different piece types with different movement rules.
+
+**Non-functional requirements**
+
+- Win detection O(1) per move, not O(n^2).
+- Adding a piece type must not modify the Board class.
+- Move history must be replayable.
+- Turn order enforced by the model, not by the caller.
+
+**How to approach it**
+
+| Step | What you do |
+|---|---|
+| **1. Ask about the board size first** | Fixed 3x3 or n-by-n with k-in-a-row? The counter trick works for k == n and NOT for k < n, so the answer changes your algorithm. |
+| **2. Write the naive win check, then improve it** | Say "the obvious version scans O(n^2) after each move — let me do better" and then do better. Showing the improvement is worth more than arriving at it silently. |
+| **3. Model the move as an object** | Not a pair of coordinates. A Move that remembers what it captured is what makes undo possible, and undo is always the follow-up. |
+| **4. Put piece movement on the piece** | The moment chess appears, a switch inside Board is the Open/Closed violation being tested. |
+| **5. Enforce turns in the model** | Turn validation IS the concurrency control for a turn-based game. Say that. |
+| **6. Show the extension** | A new piece is a new class. A new win condition is a new strategy. |
+
+**Class diagram**
+
+```
+  ┌────────────────────────────┐        ┌────────────────────────────┐
+  │        GameEngine          │───────▶│      «interface»           │
+  │         (invoker)          │        │      GameCommand           │
+  ├────────────────────────────┤        ├────────────────────────────┤
+  │ -undoStack : Deque<Cmd>    │        │ +execute(Board)            │
+  │ -redoStack : Deque<Cmd>    │        │ +undo(Board)               │
+  │ +play(Move)                │        └─────────────△──────────────┘
+  │ +undo()  +redo()           │           ┌──────────┴──────────┐
+  └───────────┬────────────────┘     ┌─────┴──────┐      ┌───────┴──────┐
+              │                      │MoveCommand │      │ CastleCommand│
+              ▼                      └────────────┘      └──────────────┘
+  ┌────────────────────────────┐        ┌────────────────────────────┐
+  │          Board             │───────▶│      «interface»           │
+  ├────────────────────────────┤        │      WinStrategy           │
+  │ -grid : Cell[][]           │        ├────────────────────────────┤
+  │ -rows[] -cols[]            │        │ +check(Board, Move) : Res  │
+  │ -diag  -antiDiag           │ ◄── O(1) counters                   │
+  │ +place(pos, piece)         │        └─────────────△──────────────┘
+  │ +remove(pos) : Piece       │           ┌──────────┴──────────┐
+  └───────────┬────────────────┘     ┌─────┴──────┐      ┌───────┴──────┐
+              │ 0..1                 │ LineWin    │      │ Checkmate    │
+              ▼                      └────────────┘      └──────────────┘
+  ┌────────────────────────────┐
+  │        «abstract»          │
+  │          Piece             │
+  ├────────────────────────────┤
+  │ -colour : Colour           │
+  │ +canMove(Board,from,to)    │  ◄── the rule lives ON the piece
+  └────────────△───────────────┘
+     ┌─────────┼─────────┬──────────┐
+  ┌──┴───┐ ┌───┴──┐ ┌────┴───┐ ┌────┴───┐
+  │ Mark │ │ Rook │ │ Knight │ │  King  │
+  └──────┘ └──────┘ └────────┘ └────────┘
+```
+
+**Public API**
+
+| Signature | Contract |
+|---|---|
+| Result play(int row, int col) | Places for the current player, validates the turn, returns IN_PROGRESS / WIN / DRAW. |
+| void undo() | Reverses the last command and pushes it onto the redo stack. |
+| void redo() | Re-executes the last undone command. |
+| Player currentPlayer() | Whose turn it is. |
+| List<Move> history() | The full move list, for replay or notation. |
+
+**Schema**
+
+| Table | Columns | Note |
+|---|---|---|
+| **Note** | — | A game is in-memory. If persistence is asked for, store the MOVE LIST rather than board snapshots — replaying moves reconstructs any position and gives you game review for free. That answer scores well. |
+
+**The solution**
+
+**The O(1) win check — the point of the exercise**
+
+```java
+public class TicTacToe {
+    private final int n;
+    private final int[] rows, cols;
+    private int diag, antiDiag;
+
+    public TicTacToe(int n) {
+        this.n = n;
+        this.rows = new int[n];
+        this.cols = new int[n];
+    }
+
+    /** Player 1 adds +1, player 2 adds -1. A magnitude of n means a full line. */
+    public int move(int r, int c, int player) {
+        int delta = (player == 1) ? 1 : -1;
+
+        rows[r] += delta;
+        cols[c] += delta;
+        if (r == c)             diag     += delta;
+        if (r + c == n - 1)     antiDiag += delta;
+
+        if (Math.abs(rows[r]) == n || Math.abs(cols[c]) == n
+         || Math.abs(diag)    == n || Math.abs(antiDiag) == n) {
+            return player;                 // winner
+        }
+        return 0;                          // no winner yet
+    }
+}
+
+// O(1) time per move, O(n) space, versus the naive O(n^2) rescan.
+// CAVEAT: this works because a win requires a FULL line (k == n).
+// For k-in-a-row with k < n you must scan outward from the last move
+// in four directions - O(k), still far better than rescanning the board.
+```
+
+> The caveat is as important as the algorithm. Claiming the counter trick generalises to arbitrary k-in-a-row is a trap interviewers set, and the honest answer scores better than the confident wrong one.
+
+**Command — how undo and redo come for free**
+
+```java
+public interface GameCommand {
+    void execute(Board board);
+    void undo(Board board);
+}
+
+public class MoveCommand implements GameCommand {
+    private final Position from, to;
+    private final Player player;
+    private Piece moved;
+    private Piece captured;        // REMEMBERED during execute, restored on undo
+
+    public MoveCommand(Position from, Position to, Player player) {
+        this.from = from; this.to = to; this.player = player;
+    }
+
+    @Override public void execute(Board b) {
+        captured = b.pieceAt(to);              // may be null
+        moved    = b.remove(from);
+        b.place(to, moved);
+    }
+
+    @Override public void undo(Board b) {
+        b.remove(to);
+        b.place(from, moved);
+        if (captured != null) b.place(to, captured);
+    }
+}
+
+public class GameEngine {
+    private final Deque<GameCommand> undoStack = new ArrayDeque<>();
+    private final Deque<GameCommand> redoStack = new ArrayDeque<>();
+
+    public void play(GameCommand cmd) {
+        if (!turnManager.isTurnOf(cmd.player())) 
+            throw new IllegalStateException("not your turn");
+        cmd.execute(board);
+        undoStack.push(cmd);
+        redoStack.clear();          // a new move invalidates the redo branch
+        turnManager.advance();
+    }
+
+    public void undo() {
+        if (undoStack.isEmpty()) return;
+        GameCommand c = undoStack.pop();
+        c.undo(board);
+        redoStack.push(c);
+        turnManager.rewind();
+    }
+
+    public void redo() {
+        if (redoStack.isEmpty()) return;
+        GameCommand c = redoStack.pop();
+        c.execute(board);
+        undoStack.push(c);
+        turnManager.advance();
+    }
+}
+```
+
+> Storing the captured piece inside the command is the detail that makes undo correct. A Move holding only from and to cannot restore a capture — which is exactly why "now add undo" is asked: it tests whether your move representation was rich enough from the start. Note redoStack.clear() on a new move: without it you can redo into an impossible position.
+
+**Chess: movement on the piece, not in the board**
+
+```java
+public abstract class Piece {
+    protected final Colour colour;
+    protected Piece(Colour colour) { this.colour = colour; }
+
+    public abstract boolean canMove(Board b, Position from, Position to);
+    public Colour colour() { return colour; }
+}
+
+public class Rook extends Piece {
+    public Rook(Colour c) { super(c); }
+    @Override public boolean canMove(Board b, Position from, Position to) {
+        if (from.row() != to.row() && from.col() != to.col()) return false;
+        if (!b.isPathClear(from, to)) return false;
+        Piece target = b.pieceAt(to);
+        return target == null || target.colour() != colour;   // no friendly fire
+    }
+}
+
+public class Knight extends Piece {
+    public Knight(Colour c) { super(c); }
+    @Override public boolean canMove(Board b, Position from, Position to) {
+        int dr = Math.abs(from.row() - to.row());
+        int dc = Math.abs(from.col() - to.col());
+        if (!((dr == 2 && dc == 1) || (dr == 1 && dc == 2))) return false;
+        Piece target = b.pieceAt(to);                          // jumps, no path check
+        return target == null || target.colour() != colour;
+    }
+}
+
+// Adding a new piece = one new class. Board never changes.
+// A switch over a PieceType enum inside Board is the violation being tested.
+```
+
+> Knight deliberately skips the path check, which shows the rules genuinely differ per piece and are not a shared template with parameters. That is the argument for polymorphism over a switch.
 
 ---
 
@@ -3601,6 +6880,250 @@ pools.get(n.channel()).submit(() -> {
 - No retry, or retry with no cap and no DLQ.
 - Quiet hours applied to OTPs.
 
+#### Worked solution
+
+Design a notification service. Other parts of the system ask it to notify a user; it decides whether to send, which channel to use, renders the content, delivers it, retries on transient failure, and gives up gracefully on permanent failure. Users control what they receive.
+
+**Functional requirements**
+
+- Send via email, SMS, push and in-app.
+- Per-user, per-category preferences and opt-out.
+- Quiet hours, with a critical override.
+- Rate limit and de-duplicate so a user is not spammed.
+- Retry transient failures; dead-letter permanent ones.
+
+**Non-functional requirements**
+
+- Adding a channel must not modify any existing class.
+- One failing provider must not stall the others.
+- At-least-once delivery, so the consumer side must be idempotent.
+- An OTP must never queue behind a marketing campaign.
+
+**How to approach it**
+
+| Step | What you do |
+|---|---|
+| **1. Name the extension axis first** | Channel. Everything else follows from putting Channel behind an interface in minute five. |
+| **2. Separate the DECISION from the DELIVERY** | Should we send at all — preferences, quiet hours, rate limit, dedup — is a chain of filters. How we send is a strategy. Conflating them produces an unreadable god method. |
+| **3. Bulkhead the channels** | Separate queue and worker pool per channel. This is the failure question interviewers actually ask. |
+| **4. Decorate cross-cutting behaviour** | Retry, metrics and rate limiting wrap a channel rather than being coded into each one. |
+| **5. Handle priority explicitly** | CRITICAL bypasses quiet hours and rate limits. Say the rule; do not leave it implicit. |
+| **6. Show the extension** | "Adding WhatsApp is one class and one enum value." Say it before they ask. |
+
+**Class diagram**
+
+```
+  ┌──────────────────────────────┐
+  │    NotificationService       │
+  │         (facade)             │
+  ├──────────────────────────────┤
+  │ -filters : List<SendFilter>  │────┐ chain of responsibility
+  │ -channels : Map<Type,Channel>│    │
+  │ -pools : Map<Type,Executor>  │    ▼
+  │ +send(Notification)          │  ┌──────────────────────────────┐
+  └──────────────┬───────────────┘  │      «interface»             │
+                 │                  │      SendFilter              │
+                 │                  ├──────────────────────────────┤
+                 │                  │ +reject(n, prefs)            │
+                 │                  │   : Optional<String>         │
+                 │                  └─────────────△────────────────┘
+                 │        ┌───────────┬───────────┴────┬────────────┐
+                 │   ┌────┴────┐ ┌────┴──────┐ ┌───────┴───┐ ┌──────┴───┐
+                 │   │ OptOut  │ │QuietHours │ │ RateLimit │ │  Dedup   │
+                 │   └─────────┘ └───────────┘ └───────────┘ └──────────┘
+                 ▼
+  ┌──────────────────────────────┐
+  │       «interface»            │
+  │        Channel               │◄──────────────────┐  decorators wrap
+  ├──────────────────────────────┤                   │  a channel
+  │ +type() : ChannelType        │                   │
+  │ +send(Notification) : Result │        ┌──────────┴─────────────┐
+  │ +supports(Notification)      │        │  «abstract» ChannelDeco│
+  └─────────────△────────────────┘        ├────────────────────────┤
+     ┌──────────┼──────────┬──────┐       │ -delegate : Channel    │
+  ┌──┴────┐ ┌───┴───┐ ┌────┴──┐ ┌─┴────┐  └──────────△─────────────┘
+  │ Email │ │  Sms  │ │ Push  │ │InApp │      ┌──────┴───────┐
+  └───────┘ └───────┘ └───────┘ └──────┘  ┌───┴────┐ ┌───────┴────┐
+                                          │ Retry  │ │  Metered   │
+                                          └────────┘ └────────────┘
+```
+
+**Public API**
+
+| Signature | Contract |
+|---|---|
+| void send(Notification n) | Fire and forget. Returns immediately; delivery is async. |
+| DeliveryResult sendNow(Notification n) | Synchronous variant for OTPs, where the caller needs the outcome. |
+| void registerChannel(Channel c) | How a new channel is added — no existing code changes. |
+| NotificationStatus statusOf(String id) | PENDING, SENT, DELIVERED, FAILED, SUPPRESSED — and suppression carries a reason. |
+| void updatePreferences(String userId, Preferences p) | The opt-out path. Mandatory, not optional. |
+
+**Schema**
+
+| Table | Columns | Note |
+|---|---|---|
+| **notification** | id PK · user_id · category · channel · template_id · payload · priority · status · dedupe_key · created_at | dedupe_key UNIQUE makes at-least-once safe. |
+| **user_preferences** | user_id PK · category → channels[] · quiet_start · quiet_end · timezone · global_cap | Timezone matters — quiet hours are local, not UTC. |
+| **delivery_attempt** | notification_id + attempt_no PK · channel · provider_ref · result · error · at | Append-only. Answers "did they actually receive it?" |
+| **suppression** | notification_id PK · reason · at | A suppressed notification is not a failure. Record why so the product team can see it. |
+
+**The solution**
+
+**The Channel interface — the extension axis**
+
+```java
+public enum ChannelType { EMAIL, SMS, PUSH, IN_APP }
+public enum Priority { LOW, NORMAL, HIGH, CRITICAL }
+
+public interface Channel {
+    ChannelType type();
+    boolean supports(Notification n);       // SMS rejects rich payloads, etc.
+    DeliveryResult send(Notification n);
+}
+
+public class EmailChannel implements Channel {
+    private final EmailClient client;
+    private final TemplateEngine templates;
+
+    public ChannelType type() { return ChannelType.EMAIL; }
+    public boolean supports(Notification n) { return n.recipient().email() != null; }
+
+    public DeliveryResult send(Notification n) {
+        String body = templates.render(n.templateId(), n.payload(), ChannelType.EMAIL);
+        try {
+            String ref = client.send(n.recipient().email(), n.subject(), body, n.dedupeKey());
+            return DeliveryResult.sent(ref);
+        } catch (TransientMailException e) {
+            throw e;                        // let the retry decorator handle it
+        } catch (InvalidAddressException e) {
+            return DeliveryResult.permanentFailure(e.getMessage());   // never retry this
+        }
+    }
+}
+```
+
+> Note the exception discipline: transient failures propagate so the retry wrapper can act, permanent ones return a result. Retrying an invalid email address forever is a real production bug and the type distinction prevents it.
+
+**The pre-send chain — should we send at all?**
+
+```java
+public interface SendFilter {
+    /** Empty means continue; a value means suppress, with the reason. */
+    Optional<String> reject(Notification n, Preferences prefs);
+}
+
+public class OptOutFilter implements SendFilter {
+    public Optional<String> reject(Notification n, Preferences p) {
+        return p.allows(n.category(), n.channel())
+             ? Optional.empty()
+             : Optional.of("user opted out of " + n.category());
+    }
+}
+
+public class QuietHoursFilter implements SendFilter {
+    private final Clock clock;
+    public Optional<String> reject(Notification n, Preferences p) {
+        if (n.priority() == Priority.CRITICAL) return Optional.empty();  // OTP overrides
+        LocalTime local = LocalTime.now(clock.withZone(p.timezone()));
+        return p.inQuietHours(local)
+             ? Optional.of("quiet hours until " + p.quietEnd())
+             : Optional.empty();
+    }
+}
+
+public class RateLimitFilter implements SendFilter {
+    private final RateLimiter limiter;
+    public Optional<String> reject(Notification n, Preferences p) {
+        if (n.priority() == Priority.CRITICAL) return Optional.empty();
+        // GLOBAL cap across every producer - the control that actually protects the user
+        return limiter.tryAcquire(n.recipient().id())
+             ? Optional.empty()
+             : Optional.of("per-user rate limit exceeded");
+    }
+}
+```
+
+> The CRITICAL override appearing in two filters is deliberate and worth pointing out: an OTP at 2am is correct and a marketing push is not. The global per-user cap is the one that matters, because individual producers do not know about each other.
+
+**Decorators for retry and metrics**
+
+```java
+public abstract class ChannelDecorator implements Channel {
+    protected final Channel delegate;
+    protected ChannelDecorator(Channel d) { this.delegate = d; }
+    public ChannelType type()                  { return delegate.type(); }
+    public boolean supports(Notification n)    { return delegate.supports(n); }
+}
+
+public class RetryingChannel extends ChannelDecorator {
+    private final int maxAttempts;
+    private final DeadLetterQueue dlq;
+
+    public DeliveryResult send(Notification n) {
+        RuntimeException last = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return delegate.send(n);
+            } catch (TransientException e) {
+                last = e;
+                sleepWithJitter(attempt);      // backoff + jitter, never bare retry
+            }
+        }
+        dlq.publish(n, last);                  // give up, but do not lose it
+        return DeliveryResult.permanentFailure("exhausted " + maxAttempts + " attempts");
+    }
+}
+
+// composition order matters and is worth saying out loud:
+// Metered(Retrying(EmailChannel)) counts ONE logical send.
+// Retrying(Metered(EmailChannel)) counts every attempt.
+Channel email = new MeteredChannel(new RetryingChannel(new EmailChannel(...), 3, dlq));
+```
+
+> That last comment is the kind of detail that separates a design that has been run from one that has been drawn. Decorator order changes what your metrics mean.
+
+**The service, with bulkheads**
+
+```java
+public class NotificationService {
+    private final List<SendFilter> pipeline;
+    private final Map<ChannelType, Channel> channels = new EnumMap<>(ChannelType.class);
+    // SEPARATE pool per channel: a slow SMS provider must not stall email
+    private final Map<ChannelType, ExecutorService> pools = new EnumMap<>(ChannelType.class);
+    private final PreferenceStore preferences;
+
+    public void registerChannel(Channel c, int threads, int queueDepth) {
+        channels.put(c.type(), c);
+        pools.put(c.type(), boundedPool(threads, queueDepth));   // BOUNDED - backpressure
+    }
+
+    public void send(Notification n) {
+        Preferences prefs = preferences.forUser(n.recipient().id());
+
+        for (SendFilter f : pipeline) {
+            Optional<String> reason = f.reject(n, prefs);
+            if (reason.isPresent()) {
+                n.markSuppressed(reason.get());   // suppression is not failure
+                return;
+            }
+        }
+
+        Channel channel = channels.get(n.channel());
+        if (channel == null || !channel.supports(n)) {
+            n.markFailed("no channel able to deliver");
+            return;
+        }
+
+        pools.get(n.channel()).submit(() -> {
+            DeliveryResult r = channel.send(n);
+            n.record(r);
+        });
+    }
+}
+```
+
+> Three things being tested at once: bulkhead isolation per channel, bounded queues so a backlog applies backpressure rather than exhausting memory, and suppression recorded as a distinct outcome from failure so the product team can see why users are not receiving things.
+
 ---
 
 ### ATM  *(OOD, 40 min)*
@@ -3720,6 +7243,264 @@ public void withdraw(int amount) {
 - Verifying the PIN locally.
 - A switch over an ATM status enum instead of the State pattern.
 - No session timeout.
+
+#### Worked solution
+
+Design an ATM. A customer inserts a card, authenticates, and withdraws cash, deposits, checks a balance or transfers. The machine holds a finite number of notes in each denomination and must dispense the requested amount exactly, or refuse cleanly. Card data and PIN verification belong to the bank, not the machine.
+
+**Functional requirements**
+
+- Insert card, authenticate, choose a transaction, complete, eject card.
+- Withdraw with correct note selection from available denominations.
+- Deposit, balance enquiry, transfer.
+- Print a receipt.
+- Session timeout if the customer walks away.
+
+**Non-functional requirements**
+
+- Never dispense cash without a successful debit.
+- Never debit without being able to dispense the exact amount.
+- Illegal actions per state must be impossible, not merely checked.
+- The PIN is never verified or stored locally.
+
+**How to approach it**
+
+| Step | What you do |
+|---|---|
+| **1. Draw the state machine first** | Idle, CardInserted, Authenticated, Transacting, Dispensing, OutOfService. Every action must be answerable in every state. |
+| **2. Get the ORDER right and say it out loud** | Plan the notes, then debit, then dispense. Getting this backwards is the classic failure and interviewers probe it directly. |
+| **3. Push the bank behind an interface** | The ATM does not hold balances and does not verify PINs. Stating the trust boundary early is scored. |
+| **4. Chain of responsibility for notes** | Largest denomination first, each handler takes what it can and passes the remainder on. |
+| **5. Template method for transactions** | Every transaction validates, executes, records and prints. Making the skeleton final means a new transaction type cannot skip the audit record. |
+| **6. Handle the partial-failure case** | Debit succeeded, dispense jammed. That is the interesting question — have the reversal answer ready. |
+
+**Class diagram**
+
+```
+  ┌──────────────────────────────┐        ┌────────────────────────────┐
+  │            ATM               │───────▶│      «interface»           │
+  │          (context)           │        │        AtmState            │
+  ├──────────────────────────────┤        ├────────────────────────────┤
+  │ -state : AtmState            │◄───────│ +insertCard(atm, card)     │
+  │ -session : Session           │setState│ +authenticate(atm, pin)    │
+  │ -dispenser : CashDispenser   │        │ +select(atm, txn)          │
+  │ -bank : BankService          │        │ +ejectCard(atm)            │
+  │ +insertCard() +authenticate()│        │ +timeout(atm)              │
+  │ +select() +ejectCard()       │        └─────────────△──────────────┘
+  └────────┬──────────────┬──────┘   ┌───────┬──────────┼────────┬─────────┐
+           │              │     ┌────┴───┐ ┌─┴────────┐ │ ┌──────┴──────┐ │
+           │              │     │  Idle  │ │CardInsert│ │ │Authenticated│ │
+           │              │     └────────┘ └──────────┘ │ └─────────────┘ │
+           │              │                       ┌─────┴──────┐  ┌───────┴────┐
+           │              │                       │ Dispensing │  │OutOfService│
+           │              │                       └────────────┘  └────────────┘
+           ▼              ▼
+  ┌────────────────┐  ┌────────────────────────────┐
+  │  «interface»   │  │     CashDispenser          │
+  │  BankService   │  ├────────────────────────────┤
+  ├────────────────┤  │ -root : NoteDispenser      │
+  │ +authenticate  │  │ +plan(amount) : Map        │  ◄── plan without
+  │ +debit         │  │ +commit(plan)              │      mutating
+  │ +credit        │  └─────────────┬──────────────┘
+  │ +balance       │                │ chain
+  └────────────────┘                ▼
+   (PIN verified   ┌──────────┐   ┌──────────┐   ┌──────────┐
+    THERE, never   │ Note2000 │──▶│ Note500  │──▶│ Note100  │
+    on the ATM)    └──────────┘   └──────────┘   └──────────┘
+
+  ┌────────────────────────────┐
+  │      «abstract»            │   run() is FINAL:
+  │      Transaction           │   validate → execute → record → print
+  ├────────────────────────────┤
+  │ +run() «final»             │   ┌──────────┬───────────┬──────────┐
+  │ #validate() «abstract»     │◄──┤ Withdraw │  Deposit  │ Transfer │
+  │ #execute()  «abstract»     │   └──────────┴───────────┴──────────┘
+  └────────────────────────────┘
+```
+
+**Public API**
+
+| Signature | Contract |
+|---|---|
+| void insertCard(Card card) | Idle → CardInserted. Starts a session with a timeout. |
+| void authenticate(String encryptedPin) | Forwards to the bank. Three failures retain the card. |
+| Receipt select(Transaction txn) | Runs the transaction template. Legal only when Authenticated. |
+| void ejectCard() | Ends the session and returns to Idle. Legal in every state. |
+| void timeout() | Called by the session timer. Ejects and resets. |
+
+**Schema**
+
+| Table | Columns | Note |
+|---|---|---|
+| **Note** | — | The ATM holds NO balances. If asked what it persists locally: a transaction journal for reconciliation and dispute resolution, plus the current note inventory. Everything about the account lives at the bank — say this explicitly, it is the trust boundary. |
+
+**The solution**
+
+**Chain of responsibility, planning without mutating**
+
+```java
+public abstract class NoteDispenser {
+    private NoteDispenser next;
+    protected final int denomination;
+    protected int available;
+
+    protected NoteDispenser(int denomination, int available) {
+        this.denomination = denomination;
+        this.available = available;
+    }
+
+    public NoteDispenser chainTo(NoteDispenser next) { this.next = next; return next; }
+
+    /** PLAN only - takes nothing. Throws if the amount cannot be made. */
+    public void plan(int amount, Map<Integer, Integer> plan) {
+        int give = Math.min(amount / denomination, available);
+        if (give > 0) {
+            plan.put(denomination, give);
+            amount -= give * denomination;
+        }
+        if (amount == 0) return;
+        if (next == null) throw new InsufficientNotesException(amount);
+        next.plan(amount, plan);
+    }
+
+    /** COMMIT - only called after the debit has succeeded. */
+    public void commit(Map<Integer, Integer> plan) {
+        Integer take = plan.get(denomination);
+        if (take != null) available -= take;
+        if (next != null) next.commit(plan);
+    }
+}
+
+// wiring, largest denomination first
+NoteDispenser root = new Note(2000, 10);
+root.chainTo(new Note(500, 20)).chainTo(new Note(200, 30)).chainTo(new Note(100, 50));
+```
+
+> Splitting plan from commit is what makes the failure path safe: you discover you cannot make 3,700 BEFORE touching the account, and no notes have moved. Adding a 200 note is one handler inserted into the chain.
+
+**The ordering that decides the round**
+
+```java
+public class Withdrawal extends Transaction {
+    private final int amount;
+    private Map<Integer, Integer> plan;
+
+    @Override protected void validate() {
+        if (amount <= 0 || amount % 100 != 0)
+            throw new InvalidAmountException("must be a positive multiple of 100");
+        // 1. CAN WE PHYSICALLY MAKE IT? - throws before anything else happens
+        plan = atm.dispenser().plan(amount);
+    }
+
+    @Override protected Money execute() {
+        // 2. DEBIT - the bank decides; may throw InsufficientFunds
+        Money remaining = atm.bank().debit(session.account(), amount, session.txnId());
+
+        // 3. ONLY NOW does physical cash move
+        try {
+            atm.dispenser().commit(plan);
+        } catch (HardwareException e) {
+            // debited but could not dispense: REVERSE, and journal it either way
+            atm.bank().credit(session.account(), amount, session.txnId() + "-rev");
+            atm.journal().record(session.txnId(), "DISPENSE_FAILED_REVERSED");
+            throw new DispenseFailedException(e);
+        }
+        return remaining;
+    }
+
+    @Override protected TxType type() { return TxType.WITHDRAWAL; }
+}
+```
+
+> Plan, debit, dispense — and a reversal if the hardware fails after the debit. Note the txnId passed to the bank: it makes the debit idempotent, so a retry after a network timeout cannot double-debit. That is the same idempotency-key argument as the payment system, applied at the machine.
+
+**Template method — a new transaction cannot skip the journal**
+
+```java
+public abstract class Transaction {
+    protected final Session session;
+    protected final ATM atm;
+
+    /** final: subclasses cannot reorder or skip steps. */
+    public final Receipt run() {
+        validate();
+        Money resulting = execute();
+        record(resulting);
+        return printReceipt(resulting);
+    }
+
+    protected abstract void validate();
+    protected abstract Money execute();
+    protected abstract TxType type();
+
+    protected void record(Money balance) {          // shared, always runs
+        atm.journal().record(session.txnId(), type(), balance);
+    }
+
+    protected Receipt printReceipt(Money balance) { // hook - overridable
+        return Receipt.standard(session, type(), balance);
+    }
+}
+```
+
+> Marking run() final is the whole point. Without it a subclass overrides it, forgets record(), and you lose the audit trail for that transaction type — discovered months later during a dispute.
+
+**States, including the ones people forget**
+
+```java
+public class AuthenticatedState implements AtmState {
+    public void insertCard(ATM atm, Card c) {
+        throw new IllegalStateException("a card is already in the machine");
+    }
+    public void authenticate(ATM atm, String pin) { /* already authenticated */ }
+
+    public Receipt select(ATM atm, Transaction txn) {
+        atm.setState(new DispensingState());
+        try {
+            return txn.run();
+        } finally {
+            atm.setState(new AuthenticatedState());   // always return, even on failure
+        }
+    }
+
+    public void ejectCard(ATM atm) {
+        atm.endSession();
+        atm.setState(new IdleState());
+    }
+
+    public void timeout(ATM atm) {                   // the forgotten one
+        atm.journal().record(atm.session().txnId(), "SESSION_TIMEOUT");
+        ejectCard(atm);
+    }
+}
+
+public class CardInsertedState implements AtmState {
+    private int failedAttempts = 0;
+
+    public void authenticate(ATM atm, String encryptedPin) {
+        // the PIN block goes to the BANK. It is never checked or stored here.
+        if (atm.bank().authenticate(atm.session().card(), encryptedPin)) {
+            atm.setState(new AuthenticatedState());
+            return;
+        }
+        if (++failedAttempts >= 3) {
+            atm.retainCard();
+            atm.setState(new IdleState());
+            throw new CardRetainedException("three failed attempts");
+        }
+        throw new AuthenticationFailedException(3 - failedAttempts + " attempts remaining");
+    }
+
+    public Receipt select(ATM atm, Transaction t) {
+        throw new IllegalStateException("authenticate first");
+    }
+    public void insertCard(ATM atm, Card c) { throw new IllegalStateException("card present"); }
+    public void ejectCard(ATM atm) { atm.endSession(); atm.setState(new IdleState()); }
+    public void timeout(ATM atm)   { ejectCard(atm); }
+}
+```
+
+> timeout() defined on every state is what stops a card sitting in a machine overnight because someone walked away — the case candidates most often miss. And the try/finally around the transaction guarantees the machine returns to a usable state even when the transaction throws.
 
 ---
 
@@ -3880,6 +7661,249 @@ public Order place(Cart cart, String idempotencyKey) {
 - Summing stock across warehouses then decrementing one.
 - No compensation path when payment fails after reservation.
 
+#### Worked solution
+
+Design the order and inventory system for an e-commerce site. A customer places an order for several items; stock must be reserved so it cannot be sold twice, payment taken, and the order confirmed. If any step fails the earlier ones must be undone. Stock is displayed on the product page, and orders can be cancelled — sometimes only partially.
+
+**Functional requirements**
+
+- Place an order from a cart, idempotently.
+- Reserve stock per line, all-or-nothing.
+- Charge payment, then confirm.
+- Cancel or partially cancel, with refund.
+- Report availability for display.
+
+**Non-functional requirements**
+
+- NEVER oversell a physical item, under any concurrency.
+- A double-click must not create two orders.
+- Survive a flash sale on one SKU.
+- Order state transitions must be legal and auditable.
+
+**How to approach it**
+
+| Step | What you do |
+|---|---|
+| **1. Ask whether overselling is ever acceptable** | For physical goods, no. Airlines say yes. The answer changes everything, so get it on the record. |
+| **2. Write the atomic decrement first** | Everything else is supporting cast around one conditional update. Write it early and say why read-then-write is wrong. |
+| **3. Model the order as a state machine with explicit transitions** | They will ask whether a DELIVERED order can be cancelled. Encode the graph and the answer is structural. |
+| **4. Line-level status from the start** | Partial cancellation and partial shipment are always the follow-up. Retrofitting this is painful. |
+| **5. Saga with compensations, ordered** | Reserve, charge, confirm — with compensation in reverse. Irreversible steps last. |
+| **6. Separate display stock from reservation stock** | "Only 3 left" may be stale. The reservation may not. That distinction is the mature answer. |
+
+**Class diagram**
+
+```
+  ┌───────────────────────────────┐
+  │        OrderService           │  ◄── facade + saga orchestrator
+  ├───────────────────────────────┤
+  │ -inventory : InventoryService │
+  │ -payments : PaymentGateway    │
+  │ -idempotency : IdemStore      │
+  │ +place(cart, key) : Order     │
+  │ +cancel(orderId, lineIds?)    │
+  └───┬──────────┬────────────┬───┘
+      │          │            │
+      ▼          ▼            ▼
+  ┌────────┐ ┌──────────────────┐ ┌────────────────────────┐
+  │ Order  │ │ InventoryService │ │  «interface»           │
+  ├────────┤ ├──────────────────┤ │  PaymentGateway        │
+  │ -id    │ │ +tryReserve(...) │ ├────────────────────────┤
+  │ -status│ │ +release(...)    │ │ +charge(order, key)    │
+  │ -lines │ │ +commit(...)     │ │ +refund(order, key)    │
+  └───┬────┘ └────────┬─────────┘ └────────────────────────┘
+      │ 1..*          │
+      ▼               ▼
+  ┌──────────────┐  ┌─────────────────────────┐
+  │  OrderLine   │  │      StockItem          │  ◄── THE contended unit
+  ├──────────────┤  ├─────────────────────────┤
+  │ -sku, -qty   │  │ -sku                    │
+  │ -unitPrice   │  │ -available : AtomicInt  │
+  │ -status      │  │ +tryReserve(qty):boolean│
+  └──────────────┘  │ +release(qty)           │
+                    └─────────────────────────┘
+
+  OrderStatus transition graph (encoded, not commented):
+    CREATED ──▶ RESERVED ──▶ PAID ──▶ CONFIRMED ──▶ SHIPPED ──▶ DELIVERED
+       │            │          │           │
+       └────────────┴──────────┴───────────┴──────▶ CANCELLED
+                    │
+                    └──▶ EXPIRED  (reservation TTL elapsed)
+```
+
+**Public API**
+
+| Signature | Contract |
+|---|---|
+| Order place(Cart cart, String idempotencyKey) | All-or-nothing. Same key returns the same order. |
+| void cancel(String orderId, List<String> lineIds) | Null lineIds means cancel the whole order. |
+| Availability availability(String sku) | Explicitly allowed to be stale. Say so in the contract. |
+| boolean tryReserve(String sku, int qty, String orderId) | The atomic operation everything depends on. |
+| List<OrderEvent> timeline(String orderId) | Derived from the append-only event log. |
+
+**Schema**
+
+| Table | Columns | Note |
+|---|---|---|
+| **inventory** | sku PK · warehouse_id · available INT · reserved INT · version | UPDATE ... WHERE available >= qty is the correctness story. Check rowsAffected. |
+| **reservation** | id PK · sku · qty · order_id · expires_at · status | Index on expires_at for the sweeper. |
+| **order** | id PK · customer_id · status · total_minor · idempotency_key UNIQUE · created_at | The unique key gives idempotent placement for free. |
+| **order_line** | id PK · order_id · sku · qty · unit_price_minor · status | unit_price captured AT ORDER TIME. Never join to the current price. |
+| **order_event** | id PK · order_id · from_status · to_status · reason · at | Append-only. The timeline and the audit trail. |
+
+**The solution**
+
+**The oversell race, closed**
+
+```java
+public class StockItem {
+    private final String sku;
+    private final AtomicInteger available;
+
+    /** WRONG - two threads both pass the check and both decrement:
+     *    if (available.get() >= qty) available.addAndGet(-qty);
+     *  The check and the decrement must be ONE operation. */
+    public boolean tryReserve(int qty) {
+        while (true) {
+            int current = available.get();
+            if (current < qty) return false;                 // clean out of stock
+            if (available.compareAndSet(current, current - qty)) return true;
+            // lost the race, another thread moved it - re-read and retry
+        }
+    }
+
+    public void release(int qty) { available.addAndGet(qty); }
+    public int available()       { return available.get(); }
+}
+
+// The database form, which is what you write on the board:
+//   UPDATE inventory SET available = available - :qty
+//    WHERE sku = :sku AND available >= :qty
+//   then require rowsAffected == 1
+// One statement. No window between the check and the decrement.
+```
+
+> Include the wrong version as a comment and say why it is wrong. Interviewers are specifically listening for whether you know that read-then-write races, and showing both is faster than explaining it.
+
+**The state machine with legal transitions encoded**
+
+```java
+public enum OrderStatus {
+    CREATED   { public Set<OrderStatus> next() { return EnumSet.of(RESERVED, CANCELLED); } },
+    RESERVED  { public Set<OrderStatus> next() { return EnumSet.of(PAID, CANCELLED, EXPIRED); } },
+    PAID      { public Set<OrderStatus> next() { return EnumSet.of(CONFIRMED, REFUNDED); } },
+    CONFIRMED { public Set<OrderStatus> next() { return EnumSet.of(SHIPPED, CANCELLED); } },
+    SHIPPED   { public Set<OrderStatus> next() { return EnumSet.of(DELIVERED); } },
+    DELIVERED { public Set<OrderStatus> next() { return EnumSet.noneOf(OrderStatus.class); } },
+    CANCELLED { public Set<OrderStatus> next() { return EnumSet.noneOf(OrderStatus.class); } },
+    REFUNDED  { public Set<OrderStatus> next() { return EnumSet.noneOf(OrderStatus.class); } },
+    EXPIRED   { public Set<OrderStatus> next() { return EnumSet.noneOf(OrderStatus.class); } };
+
+    public abstract Set<OrderStatus> next();
+}
+
+public class Order {
+    private volatile OrderStatus status = OrderStatus.CREATED;
+    private final List<OrderEvent> events = new CopyOnWriteArrayList<>();
+
+    public synchronized void transitionTo(OrderStatus to, String reason) {
+        if (!status.next().contains(to))
+            throw new IllegalStateTransitionException(status + " -> " + to);
+        events.add(new OrderEvent(status, to, reason, Instant.now()));
+        status = to;
+    }
+}
+
+// "Can a DELIVERED order be cancelled?" -> DELIVERED.next() is empty, so no.
+// It becomes a RETURN, which is a different flow with its own states.
+```
+
+> Encoding the graph means the answer to the transition question is structural rather than remembered. And every transition appends an event, so the timeline and the audit trail come free.
+
+**The saga, with compensation in reverse**
+
+```java
+public class OrderService {
+
+    public Order place(Cart cart, String idempotencyKey) {
+        // 1. idempotent placement - the unique constraint decides a double-click
+        Optional<Order> existing = idempotency.find(idempotencyKey);
+        if (existing.isPresent()) return existing.get();
+
+        Order order = Order.from(cart, idempotencyKey);
+        Deque<Runnable> compensations = new ArrayDeque<>();
+
+        try {
+            // 2. reserve every line, all or nothing
+            for (OrderLine line : order.lines()) {
+                if (!inventory.tryReserve(line.sku(), line.qty(), order.id()))
+                    throw new OutOfStockException(line.sku());
+                compensations.push(() -> inventory.release(line.sku(), line.qty()));
+            }
+            order.transitionTo(OrderStatus.RESERVED, "stock held");
+
+            // 3. charge, passing the SAME key downstream
+            payments.charge(order, idempotencyKey);
+            compensations.push(() -> payments.refund(order, idempotencyKey + "-rev"));
+            order.transitionTo(OrderStatus.PAID, "payment captured");
+
+            // 4. commit the reservation into a real decrement
+            inventory.commit(order.id());
+            order.transitionTo(OrderStatus.CONFIRMED, "order confirmed");
+
+            // 5. IRREVERSIBLE actions last, after everything undoable succeeded
+            notifications.orderConfirmed(order);
+            idempotency.store(idempotencyKey, order);
+            return order;
+
+        } catch (RuntimeException e) {
+            // compensate in REVERSE order - a Deque used as a stack gives that
+            while (!compensations.isEmpty()) {
+                try { compensations.pop().run(); }
+                catch (RuntimeException ce) { deadLetter.record(order, ce); }
+            }
+            order.transitionTo(OrderStatus.CANCELLED, e.getMessage());
+            throw e;
+        }
+    }
+}
+```
+
+> Four things at once: the idempotency key wrapping the whole operation, all-or-nothing reservation with rollback, compensation in reverse via a stack, and the notification placed LAST because you cannot un-send it. Compensation failures go to a dead letter rather than being swallowed — some failures need a human.
+
+**Reservations: lazy expiry plus a sweeper**
+
+```java
+public class InventoryService {
+    private static final Duration HOLD_TTL = Duration.ofMinutes(15);
+    private final Map<String, StockItem> stock = new ConcurrentHashMap<>();
+    private final Map<String, List<Reservation>> byOrder = new ConcurrentHashMap<>();
+
+    public boolean tryReserve(String sku, int qty, String orderId) {
+        StockItem item = stock.get(sku);
+        if (item == null) return false;
+        if (!item.tryReserve(qty)) {
+            // LAZY: reclaim anything expired for this sku, then try once more
+            if (releaseExpiredFor(sku) > 0) return item.tryReserve(qty);
+            return false;
+        }
+        byOrder.computeIfAbsent(orderId, k -> new CopyOnWriteArrayList<>())
+               .add(new Reservation(sku, qty, Instant.now().plus(HOLD_TTL)));
+        return true;
+    }
+
+    /** Background sweeper - frees stock for people merely BROWSING. */
+    @Scheduled(fixedDelay = 30_000)
+    public void sweepExpired() {
+        byOrder.forEach((orderId, rs) -> rs.stream()
+            .filter(Reservation::isExpired)
+            .forEach(r -> { stock.get(r.sku()).release(r.qty()); rs.remove(r); }));
+    }
+}
+```
+
+> You need BOTH. A sweeper alone leaves a window where an abandoned hold blocks a live sale; lazy alone means the item looks unavailable to anyone browsing. Saying that unprompted is the mature answer, and it is the same pairing as the seat-booking design.
+
 ---
 
 ## BLOCK C · TOP TIER — Amazon hybrid · Uber / Flipkart machine coding
@@ -4028,6 +8052,251 @@ public V get(K key) { return segmentFor(key).get(key); }
 - Claiming get() can be lock-free.
 - No sentinel nodes, then drowning in null checks under time pressure.
 
+#### Worked solution
+
+Design a fixed-capacity cache with O(1) get and put. When capacity is exceeded, evict the least recently used entry. Then extend it: make the eviction policy swappable to LFU, add a per-entry TTL, and make it safe under concurrent access.
+
+**Functional requirements**
+
+- get(key) returns the value or null, and counts as a use.
+- put(key, value) inserts or updates, evicting if full.
+- Eviction policy must be replaceable without rewriting the cache.
+- Optional TTL per entry.
+
+**Non-functional requirements**
+
+- Both operations O(1) — amortised is not good enough here, they mean worst case.
+- No memory leak: an evicted key must leave BOTH structures.
+- Thread safety discussed, with a story better than one global lock.
+
+**How to approach it**
+
+| Step | What you do |
+|---|---|
+| **1. Say the two structures immediately** | Hashmap for O(1) lookup, doubly linked list for O(1) reordering. Neither alone is enough — say why. |
+| **2. Use sentinel head and tail** | It removes every null check. Under time pressure this is the difference between working and nearly working. |
+| **3. Write get, then put** | get moves to front. put handles update, insert, and evict-then-insert. |
+| **4. Watch the eviction bug** | Removing from the list but not the map is the classic leak. Say it aloud as you write it. |
+| **5. Lift the policy out** | Once LRU works, extract EvictionPolicy. That is what turns a LeetCode answer into a design answer, and it is what makes the LFU follow-up a swap not a rewrite. |
+| **6. Handle the concurrency question in three levels** | Global lock, then segmentation, then approximate LRU with read buffering. Name all three. |
+
+**Class diagram**
+
+```
+   ┌────────────────────────────────┐      ┌──────────────────────────┐
+   │        LruCache<K,V>           │─────▶│      «interface»         │
+   ├────────────────────────────────┤      │    EvictionPolicy<K>     │
+   │ -map : Map<K, Node<K,V>>       │      ├──────────────────────────┤
+   │ -head, -tail : Node  «sentinel»│      │ +recordAccess(K)         │
+   │ -capacity : int                │      │ +evictCandidate() : K    │
+   │ +get(K) : V                    │      └────────────△─────────────┘
+   │ +put(K,V)                      │            ┌──────┴──────┐
+   │ -moveToFront(Node)             │      ┌─────┴─────┐ ┌─────┴─────┐
+   │ -addFront(Node) -remove(Node)  │      │  LruPolicy│ │ LfuPolicy │
+   └───────────────┬────────────────┘      └───────────┘ └───────────┘
+                   │ owns
+                   ▼
+   ┌────────────────────────────────┐
+   │          Node<K,V>             │
+   ├────────────────────────────────┤
+   │ -key : K   -value : V          │
+   │ -prev : Node  -next : Node     │
+   └────────────────────────────────┘
+
+   head ⇄ [most recent] ⇄ ... ⇄ [least recent] ⇄ tail
+    ▲                                             ▲
+    │ insert here                     evict here ─┘
+   sentinel                                   sentinel
+```
+
+**Public API**
+
+| Signature | Contract |
+|---|---|
+| V get(K key) | Returns the value and marks it most-recently-used. null if absent. |
+| void put(K key, V value) | Insert or update. Evicts the LRU entry when at capacity. |
+| V remove(K key) | Explicit removal from both structures. |
+| int size() | Current entry count. |
+| CacheStats stats() | Hits, misses, evictions — for the "how do you know it works" follow-up. |
+
+**Schema**
+
+| Table | Columns | Note |
+|---|---|---|
+| **Note** | — | An in-memory cache has no schema. If they push toward distributed caching, that is a system design question: consistent hashing, invalidation, and the fact that per-node LRU is no longer global LRU. |
+
+**The solution**
+
+**The node and the sentinel list**
+
+```java
+class Node<K, V> {
+    final K key;
+    V value;
+    Node<K, V> prev, next;
+
+    Node(K key, V value) { this.key = key; this.value = value; }
+}
+
+public class LruCache<K, V> {
+    private final int capacity;
+    private final Map<K, Node<K, V>> map;
+    private final Node<K, V> head = new Node<>(null, null);   // sentinels:
+    private final Node<K, V> tail = new Node<>(null, null);   // no null checks
+
+    public LruCache(int capacity) {
+        if (capacity <= 0) throw new IllegalArgumentException("capacity must be > 0");
+        this.capacity = capacity;
+        this.map = new HashMap<>(capacity * 2);
+        head.next = tail;
+        tail.prev = head;
+    }
+
+    // --- list primitives, each O(1) ---
+    private void unlink(Node<K, V> n) {
+        n.prev.next = n.next;
+        n.next.prev = n.prev;
+    }
+
+    private void addFront(Node<K, V> n) {
+        n.next = head.next;
+        n.prev = head;
+        head.next.prev = n;
+        head.next = n;
+    }
+
+    private void moveToFront(Node<K, V> n) { unlink(n); addFront(n); }
+}
+```
+
+> Sentinels mean unlink() never checks for null, because head and tail always exist. Under a 20-minute clock that removes an entire class of bug.
+
+**get and put**
+
+```java
+    public V get(K key) {
+        Node<K, V> n = map.get(key);
+        if (n == null) { misses++; return null; }
+        hits++;
+        moveToFront(n);            // a READ mutates the list - hence no lock-free LRU
+        return n.value;
+    }
+
+    public void put(K key, V value) {
+        Node<K, V> existing = map.get(key);
+        if (existing != null) {
+            existing.value = value;
+            moveToFront(existing);
+            return;
+        }
+
+        if (map.size() == capacity) {
+            Node<K, V> lru = tail.prev;      // sentinel guarantees this exists
+            unlink(lru);
+            map.remove(lru.key);            // <-- BOTH structures. The classic bug.
+            evictions++;
+        }
+
+        Node<K, V> fresh = new Node<>(key, value);
+        map.put(key, fresh);
+        addFront(fresh);
+    }
+
+    public V remove(K key) {
+        Node<K, V> n = map.remove(key);
+        if (n == null) return null;
+        unlink(n);
+        return n.value;
+    }
+
+    public int size() { return map.size(); }
+```
+
+> The comment on moveToFront in get() is worth saying out loud: a cache read is a write to the recency structure. That single fact is why a plain LRU cannot be lock-free, and it is the setup for the whole concurrency follow-up.
+
+**LFU — frequency buckets with a tracked minimum**
+
+```java
+public class LfuCache<K, V> {
+    private final int capacity;
+    private final Map<K, V> values   = new HashMap<>();
+    private final Map<K, Integer> freq = new HashMap<>();
+    // LinkedHashSet: ties within a frequency break by recency
+    private final Map<Integer, LinkedHashSet<K>> buckets = new HashMap<>();
+    private int minFreq = 0;
+
+    public V get(K key) {
+        if (!values.containsKey(key)) return null;
+        touch(key);
+        return values.get(key);
+    }
+
+    public void put(K key, V value) {
+        if (capacity == 0) return;
+        if (values.containsKey(key)) { values.put(key, value); touch(key); return; }
+
+        if (values.size() == capacity) {
+            LinkedHashSet<K> lowest = buckets.get(minFreq);
+            K victim = lowest.iterator().next();     // least frequent, then oldest
+            lowest.remove(victim);
+            values.remove(victim);
+            freq.remove(victim);
+        }
+        values.put(key, value);
+        freq.put(key, 1);
+        buckets.computeIfAbsent(1, k -> new LinkedHashSet<>()).add(key);
+        minFreq = 1;                                  // a new key is always freq 1
+    }
+
+    private void touch(K key) {
+        int f = freq.get(key);
+        buckets.get(f).remove(key);
+        if (buckets.get(f).isEmpty() && minFreq == f) minFreq++;   // <-- the trick
+        freq.put(key, f + 1);
+        buckets.computeIfAbsent(f + 1, k -> new LinkedHashSet<>()).add(key);
+    }
+}
+```
+
+> minFreq is what keeps eviction O(1). Without it you would scan the buckets for the minimum on every eviction. The two places it moves — up in touch(), reset to 1 in put() — are the whole algorithm.
+
+**Thread safety, in three honest levels**
+
+```java
+// LEVEL 1 - correct, and it serialises every user against every other
+public synchronized V get(K key) { ... }
+
+// LEVEL 2 - segmentation. Lock per shard, not per cache.
+public class SegmentedLruCache<K, V> {
+    private final LruCache<K, V>[] segments;
+
+    @SuppressWarnings("unchecked")
+    public SegmentedLruCache(int capacity, int segmentCount) {
+        segments = new LruCache[segmentCount];
+        int per = Math.max(1, capacity / segmentCount);
+        for (int i = 0; i < segmentCount; i++) segments[i] = new LruCache<>(per);
+    }
+
+    private LruCache<K, V> segmentFor(K key) {
+        return segments[Math.floorMod(key.hashCode(), segments.length)];
+    }
+
+    public V get(K key) {
+        LruCache<K, V> seg = segmentFor(key);
+        synchronized (seg) { return seg.get(key); }
+    }
+}
+// Trade-off to state: eviction is now per-segment, so the policy is
+// approximate globally. Usually acceptable, and you should say so.
+
+// LEVEL 3 - what production caches actually do.
+// Caffeine buffers reads in a lock-free ring and replays them in batches,
+// so the hot path never touches the recency list. Its admission policy is
+// W-TinyLFU, which beats both plain LRU and plain LFU on real workloads.
+```
+
+> Being able to walk all three levels — and naming Caffeine and W-TinyLFU at the end — is what separates someone who has implemented a cache from someone who has run one.
+
 ---
 
 ### In-Memory File System  *(Amazon hybrid, 45 min)*
@@ -4151,6 +8420,283 @@ private Directory traverse(String path, boolean createMissing) {
 - HashMap for children, then forgetting ls must be sorted.
 - No handling of intermediate directories in mkdir.
 - Adding a search method to every node class instead of using a visitor.
+
+#### Worked solution
+
+Design an in-memory file system supporting ls, mkdir, addContentToFile and readContentFromFile. Directories contain files and other directories to any depth. Then extend it: search with wildcards, permissions, and computing the size of a subtree.
+
+**Functional requirements**
+
+- mkdir with intermediate directories created as needed.
+- ls a path — sorted; on a file, return just that file name.
+- addContentToFile, appending if the file exists.
+- readContentFromFile.
+- Compute the size of any subtree.
+
+**Non-functional requirements**
+
+- One traversal implementation, not one per operation.
+- Adding an operation must not modify the node classes.
+- ls output must be lexicographically sorted without sorting on every call.
+- Safe under concurrent creation of the same path.
+
+**How to approach it**
+
+| Step | What you do |
+|---|---|
+| **1. Say "Composite" out loud** | A directory contains files AND directories, so they share a base type. Naming the pattern immediately frames everything that follows. |
+| **2. Choose TreeMap for children** | ls must be sorted. TreeMap keeps that invariant instead of sorting on each listing. A small choice worth stating. |
+| **3. Write ONE traversal** | A single walk with a create-missing flag serves mkdir, ls and read. Three near-identical walkers is the duplication interviewers notice. |
+| **4. Extract a Path value object** | String splitting scattered across methods is where the bugs live. |
+| **5. Make size() recursive on the composite** | It falls out of the pattern in one line, which is the payoff. |
+| **6. Use Visitor for new operations** | Search, du, find — added without touching File or Directory. |
+
+**Class diagram**
+
+```
+                ┌────────────────────────────┐
+                │        «abstract»          │
+                │          FsNode            │◄──────────┐
+                ├────────────────────────────┤           │ 0..* children
+                │ -name : String             │           │ (composite only)
+                │ -parent : Directory        │           │
+                │ +isDirectory() : boolean   │           │
+                │ +size() : int              │           │
+                │ +accept(FsVisitor)         │           │
+                └─────────────△──────────────┘           │
+                              │                          │
+           ┌──────────────────┴───────────────┐          │
+   ┌───────┴────────┐                ┌────────┴──────────┴───┐
+   │      File      │                │      Directory        │
+   │     (leaf)     │                │     (composite)       │
+   ├────────────────┤                ├───────────────────────┤
+   │ -content : SB  │                │ -children : TreeMap   │ ◄── sorted ls
+   │ +size() → len  │                │ +size() → sum(child)  │     for free
+   │ +append(s)     │                │ +addChild(node)       │
+   └────────────────┘                │ +child(name)          │
+                                     └───────────────────────┘
+  ┌────────────────────────────┐     ┌────────────────────────────┐
+  │       FileSystem           │     │      «interface»           │
+  │        (facade)            │────▶│       FsVisitor            │
+  ├────────────────────────────┤     ├────────────────────────────┤
+  │ -root : Directory          │     │ +visit(File)               │
+  │ +ls(path) : List<String>   │     │ +visit(Directory)          │
+  │ +mkdir(path)               │     └─────────────△──────────────┘
+  │ +addContentToFile(path, s) │        ┌──────────┴──────────┐
+  │ +readContentFromFile(path) │  ┌─────┴──────┐      ┌───────┴──────┐
+  │ -traverse(path, create)    │  │ SearchVisit│      │  SizeVisitor │
+  └────────────────────────────┘  └────────────┘      └──────────────┘
+```
+
+**Public API**
+
+| Signature | Contract |
+|---|---|
+| List<String> ls(String path) | Sorted. On a file, returns a single-element list with that file name. |
+| void mkdir(String path) | Creates intermediate directories, like mkdir -p. |
+| void addContentToFile(String path, String content) | Creates the file if absent, otherwise appends. |
+| String readContentFromFile(String path) | Throws if the path is missing or is a directory. |
+| int size(String path) | Recursive for a directory, content length for a file. |
+
+**Schema**
+
+| Table | Columns | Note |
+|---|---|---|
+| **Note** | — | In-memory by definition. If persistence is asked for: either serialise the tree, or keep a write-ahead log of operations and replay it. A Repository interface at the FileSystem boundary is the seam — the node classes should not know persistence exists. |
+
+**The solution**
+
+**Composite — the whole design in one shape**
+
+```java
+public abstract class FsNode {
+    protected final String name;
+    protected Directory parent;
+
+    protected FsNode(String name) {
+        if (name == null || name.isEmpty() || name.contains("/"))
+            throw new IllegalArgumentException("bad name: " + name);
+        this.name = name;
+    }
+
+    public String name()                { return name; }
+    public abstract boolean isDirectory();
+    public abstract int size();          // leaf: own size. composite: recurses.
+    public abstract <T> T accept(FsVisitor<T> v);
+
+    public String absolutePath() {
+        return parent == null ? "/" : parent.absolutePath() + name +
+               (isDirectory() ? "/" : "");
+    }
+}
+
+public class File extends FsNode {
+    private final StringBuilder content = new StringBuilder();
+
+    public File(String name) { super(name); }
+
+    public boolean isDirectory() { return false; }
+    public int size()            { return content.length(); }
+    public <T> T accept(FsVisitor<T> v) { return v.visit(this); }
+
+    public synchronized void append(String s) { content.append(s); }
+    public synchronized String read()         { return content.toString(); }
+}
+
+public class Directory extends FsNode {
+    // TreeMap, so ls() is lexicographically sorted with no sort call
+    private final Map<String, FsNode> children = new ConcurrentSkipListMap<>();
+
+    public Directory(String name) { super(name); }
+
+    public boolean isDirectory() { return true; }
+    public <T> T accept(FsVisitor<T> v) { return v.visit(this); }
+
+    /** The payoff of Composite: one line, whole subtree. */
+    public int size() {
+        return children.values().stream().mapToInt(FsNode::size).sum();
+    }
+
+    /** computeIfAbsent is atomic - two threads creating /a/b race safely. */
+    public FsNode addChild(FsNode node) {
+        FsNode actual = children.computeIfAbsent(node.name(), k -> node);
+        actual.parent = this;
+        return actual;
+    }
+
+    public FsNode child(String name)   { return children.get(name); }
+    public List<String> list()         { return new ArrayList<>(children.keySet()); }
+}
+```
+
+> ConcurrentSkipListMap gives you sorted order AND atomic computeIfAbsent in one choice. Note that addChild returns the ACTUAL child, so a thread that lost the creation race still gets the winner node rather than a detached orphan.
+
+**One traversal, four operations**
+
+```java
+public class FileSystem {
+    private final Directory root = new Directory("");
+
+    /** The single walker. createMissing=true gives mkdir -p semantics. */
+    private Directory traverse(List<String> parts, boolean createMissing) {
+        Directory cur = root;
+        for (String part : parts) {
+            FsNode next = cur.child(part);
+            if (next == null) {
+                if (!createMissing) throw new NoSuchFileException(part);
+                next = cur.addChild(new Directory(part));
+            }
+            if (!next.isDirectory()) throw new NotADirectoryException(part);
+            cur = (Directory) next;
+        }
+        return cur;
+    }
+
+    public void mkdir(String path) {
+        traverse(Path.of(path).parts(), true);
+    }
+
+    public List<String> ls(String path) {
+        Path p = Path.of(path);
+        if (p.isRoot()) return root.list();
+        Directory parent = traverse(p.parentParts(), false);
+        FsNode node = parent.child(p.lastName());
+        if (node == null) throw new NoSuchFileException(path);
+        // ls on a FILE returns just that file name - the edge case worth confirming
+        return node.isDirectory() ? ((Directory) node).list() : List.of(node.name());
+    }
+
+    public void addContentToFile(String path, String content) {
+        Path p = Path.of(path);
+        Directory parent = traverse(p.parentParts(), true);
+        FsNode node = parent.child(p.lastName());
+        if (node == null) node = parent.addChild(new File(p.lastName()));
+        if (node.isDirectory()) throw new IsADirectoryException(path);
+        ((File) node).append(content);
+    }
+
+    public String readContentFromFile(String path) {
+        Path p = Path.of(path);
+        FsNode node = traverse(p.parentParts(), false).child(p.lastName());
+        if (node == null) throw new NoSuchFileException(path);
+        if (node.isDirectory()) throw new IsADirectoryException(path);
+        return ((File) node).read();
+    }
+}
+```
+
+> Four public operations, one private walker. Writing three separate walkers is the duplication reviewers flag, and it is also where the inconsistent edge-case handling creeps in.
+
+**Path as a value object — parsing in one place**
+
+```java
+public final class Path {
+    private final List<String> parts;
+
+    private Path(List<String> parts) { this.parts = List.copyOf(parts); }
+
+    public static Path of(String raw) {
+        if (raw == null || !raw.startsWith("/"))
+            throw new IllegalArgumentException("paths must be absolute: " + raw);
+        List<String> out = new ArrayList<>();
+        for (String s : raw.split("/")) {
+            if (s.isEmpty() || s.equals(".")) continue;      // //, trailing /, .
+            if (s.equals("..")) {
+                if (!out.isEmpty()) out.remove(out.size() - 1);
+                continue;
+            }
+            out.add(s);
+        }
+        return new Path(out);
+    }
+
+    public boolean isRoot()            { return parts.isEmpty(); }
+    public List<String> parts()        { return parts; }
+    public List<String> parentParts()  { return parts.subList(0, Math.max(0, parts.size() - 1)); }
+    public String lastName()           { return parts.get(parts.size() - 1); }
+}
+```
+
+> Normalising //, trailing slashes, . and .. in ONE place. Interviewers rarely ask for it, and having it makes every other method shorter and correct — which is itself the signal.
+
+**Visitor — new operations without touching the nodes**
+
+```java
+public interface FsVisitor<T> {
+    T visit(File f);
+    T visit(Directory d);
+}
+
+/** Wildcard search, added without editing File or Directory at all. */
+public class SearchVisitor implements FsVisitor<List<String>> {
+    private final Pattern pattern;
+    private final List<String> found = new ArrayList<>();
+
+    public SearchVisitor(String glob) {
+        this.pattern = Pattern.compile(glob.replace(".", "\\.")
+                                           .replace("*", ".*")
+                                           .replace("?", "."));
+    }
+
+    public List<String> visit(File f) {
+        if (pattern.matcher(f.name()).matches()) found.add(f.absolutePath());
+        return found;
+    }
+
+    public List<String> visit(Directory d) {
+        if (pattern.matcher(d.name()).matches()) found.add(d.absolutePath());
+        d.list().forEach(name -> d.child(name).accept(this));   // recurse
+        return found;
+    }
+}
+
+// usage: fs.root().accept(new SearchVisitor("*.log"))
+//
+// Adding permissions, du, or find is another visitor. The alternative -
+// a search() method on every node class - is the Open/Closed violation.
+```
+
+> When they say "now add search with wildcards", the answer is a new class and zero edits to existing ones. If symlinks are added later, this is also where cycle detection goes — a visited set on the visitor.
 
 ---
 
@@ -4297,6 +8843,311 @@ public class GridIndex implements DriverIndex {
 - Modelling matching as one decision rather than an offer loop with timeouts.
 - Building persistence nobody asked for.
 
+#### Worked solution
+
+Build a ride-hailing service in 90 minutes: riders request rides, drivers report location and accept or decline offers, trips progress through a lifecycle and are priced. Runnable and tested. In-memory, no database, no framework. You must FINISH.
+
+**Functional requirements**
+
+- Driver goes online, reports location, goes offline.
+- Rider requests a ride from A to B.
+- Match a nearby available driver and offer the ride.
+- Driver accepts or declines; on decline or timeout, offer the next.
+- Trip lifecycle: start, end, price it.
+
+**Non-functional requirements**
+
+- Two riders must NEVER be matched to the same driver.
+- Nearby lookup must not scan every driver.
+- Matching and pricing strategies replaceable.
+- It must RUN, with a demo main() and a test for the race.
+
+**How to approach it**
+
+| Step | What you do |
+|---|---|
+| **1. Ask what you can skip** | Payment, auth, persistence, real geography. Confirm a 2D grid is acceptable — it usually is, and it saves 20 minutes. |
+| **2. Ship a skeleton by minute 20** | Driver, Rider, Trip, RideService, and a main() that runs one ride end to end. Then enrich. This is the rule this round is scored on. |
+| **3. Write the CAS on driver status early** | It is the correctness core. Everything else is arrangement. |
+| **4. Grid index, and say why not H3** | A grid is adequate here and you chose it deliberately for time. Naming the production answer shows judgement, not ignorance. |
+| **5. Model matching as an offer LOOP** | Offer, timeout, next candidate. A single assignment cannot represent a driver declining. |
+| **6. Write the concurrency test** | Fifty threads racing for one driver, assert exactly one wins. Worth more than another feature. |
+
+**Class diagram**
+
+```
+  ┌──────────────────────────────┐        ┌────────────────────────────┐
+  │        RideService           │───────▶│     «interface»            │
+  │         (facade)             │        │    MatchingStrategy        │
+  ├──────────────────────────────┤        ├────────────────────────────┤
+  │ -index : DriverIndex         │        │ +choose(candidates, from)  │
+  │ -matcher : MatchingStrategy  │        └─────────────△──────────────┘
+  │ -pricing : PricingStrategy   │           ┌──────────┴──────────┐
+  │ -trips : Map<String, Trip>   │     ┌─────┴──────┐      ┌───────┴─────┐
+  │ +requestRide(rider, from, to)│     │  Nearest   │      │ HighestRated│
+  │ +accept(offerId)             │     └────────────┘      └─────────────┘
+  │ +decline(offerId)            │        ┌────────────────────────────┐
+  │ +startTrip() +endTrip()      │───────▶│     «interface»            │
+  └───────┬──────────────┬───────┘        │    PricingStrategy         │
+          │              │                ├────────────────────────────┤
+          ▼              ▼                │ +quote(from, to, surge)    │
+  ┌───────────────┐  ┌──────────────────┐ └────────────────────────────┘
+  │ «interface»   │  │      Driver      │
+  │  DriverIndex  │  ├──────────────────┤
+  ├───────────────┤  │ -id, -location   │
+  │ +add(driver)  │  │ -status : Atomic │ ◄── CAS here is the whole
+  │ +move(d, loc) │  │ +tryOffer()      │     correctness story
+  │ +within(l,km) │  │ +accept()        │
+  └───────△───────┘  │ +decline()       │
+          │          └──────────────────┘
+  ┌───────┴────────┐   DriverStatus:
+  │   GridIndex    │   OFFLINE → AVAILABLE → OFFERED → ON_TRIP
+  │ cell → {ids}   │                  ▲          │
+  └────────────────┘                  └──decline─┘
+
+  ┌──────────────────────────────┐
+  │            Trip              │  TripStatus:
+  ├──────────────────────────────┤  REQUESTED → MATCHED → STARTED
+  │ -rider, -driver, -from, -to  │           → COMPLETED / CANCELLED
+  │ -status, -fare               │
+  └──────────────────────────────┘
+```
+
+**Public API**
+
+| Signature | Contract |
+|---|---|
+| Trip requestRide(Rider r, Location from, Location to) | Finds a driver, creates an offer. Throws if none available. |
+| void goOnline(Driver d, Location at) / goOffline(Driver d) | Adds to or removes from the index. |
+| void updateLocation(Driver d, Location at) | Moves the driver between grid cells. |
+| Trip accept(String offerId) / void decline(String offerId) | Atomic. Exactly one driver can win an offer. |
+| Trip startTrip(String tripId) / Receipt endTrip(String tripId) | Guarded transitions; endTrip prices the ride. |
+
+**Schema**
+
+| Table | Columns | Note |
+|---|---|---|
+| **Note** | — | In-memory, as the round demands. If asked what you WOULD persist: trips and their event log durably; driver location never — it is high-churn and disposable, held in memory with a TTL. Sampling location every few seconds during an active trip is enough for the route map. |
+
+**The solution**
+
+**Driver — the double-assignment race, closed**
+
+```java
+public enum DriverStatus { OFFLINE, AVAILABLE, OFFERED, ON_TRIP }
+
+public class Driver {
+    private final String id;
+    private final String name;
+    private volatile Location location;
+    private final AtomicReference<DriverStatus> status =
+            new AtomicReference<>(DriverStatus.OFFLINE);
+
+    public Driver(String id, String name) { this.id = id; this.name = name; }
+
+    public boolean goOnline(Location at) {
+        this.location = at;
+        return status.compareAndSet(DriverStatus.OFFLINE, DriverStatus.AVAILABLE);
+    }
+
+    /** THE correctness core: exactly one rider can win this driver. */
+    public boolean tryOffer() {
+        return status.compareAndSet(DriverStatus.AVAILABLE, DriverStatus.OFFERED);
+    }
+    public boolean accept()  { return status.compareAndSet(DriverStatus.OFFERED, DriverStatus.ON_TRIP); }
+    public void decline()    { status.compareAndSet(DriverStatus.OFFERED, DriverStatus.AVAILABLE); }
+    public void finishTrip() { status.compareAndSet(DriverStatus.ON_TRIP, DriverStatus.AVAILABLE); }
+
+    public String id()            { return id; }
+    public Location location()    { return location; }
+    void setLocation(Location l)  { this.location = l; }
+    public DriverStatus status()  { return status.get(); }
+}
+```
+
+> Every transition is a compareAndSet, so an invalid one simply returns false rather than corrupting state. There is no lock anywhere and no shared mutex — contention is per driver, so two riders after different drivers never block each other.
+
+**Grid index — nearby without scanning**
+
+```java
+public record Location(double lat, double lng) {
+    public double distanceKmTo(Location o) {
+        // equirectangular approximation - fine for a few km, and fast
+        double x = Math.toRadians(o.lng - lng) * Math.cos(Math.toRadians((lat + o.lat) / 2));
+        double y = Math.toRadians(o.lat - lat);
+        return 6371 * Math.sqrt(x * x + y * y);
+    }
+}
+
+record Cell(int x, int y) { }
+
+public class GridIndex implements DriverIndex {
+    private static final double CELL_KM = 1.0;
+    private final Map<Cell, Set<String>> cells = new ConcurrentHashMap<>();
+    private final Map<String, Cell> where = new ConcurrentHashMap<>();
+    private final Map<String, Driver> drivers = new ConcurrentHashMap<>();
+
+    private Cell cellOf(Location l) {
+        return new Cell((int) Math.floor(l.lat() * 111 / CELL_KM),
+                        (int) Math.floor(l.lng() * 111 / CELL_KM));
+    }
+
+    public void move(Driver d, Location to) {
+        Cell from = where.get(d.id());
+        Cell dest = cellOf(to);
+        if (!dest.equals(from)) {
+            if (from != null) cells.getOrDefault(from, Set.of()).remove(d.id());
+            cells.computeIfAbsent(dest, k -> ConcurrentHashMap.newKeySet()).add(d.id());
+            where.put(d.id(), dest);
+        }
+        d.setLocation(to);
+    }
+
+    /** Own cell PLUS neighbours - the nearest driver is often just over a boundary. */
+    public List<Driver> within(Location centre, double km) {
+        Cell c = cellOf(centre);
+        int span = (int) Math.ceil(km / CELL_KM);
+        List<Driver> out = new ArrayList<>();
+        for (int dx = -span; dx <= span; dx++) {
+            for (int dy = -span; dy <= span; dy++) {
+                for (String id : cells.getOrDefault(new Cell(c.x() + dx, c.y() + dy), Set.of())) {
+                    Driver d = drivers.get(id);
+                    if (d != null && d.status() == DriverStatus.AVAILABLE
+                            && d.location().distanceKmTo(centre) <= km) out.add(d);
+                }
+            }
+        }
+        return out;
+    }
+}
+
+// Production would use H3 hexagons: all six neighbours equidistant, so no
+// diagonal ambiguity. A grid is a deliberate choice for a 90-minute round.
+```
+
+> Querying neighbour cells rather than only the own cell is the detail that matters — without it the nearest driver two hundred metres away across a boundary is invisible. Say the H3 sentence out loud; it converts a simplification into a stated trade-off.
+
+**RideService — the offer loop, not a single decision**
+
+```java
+public class RideService {
+    private static final Duration OFFER_TTL = Duration.ofSeconds(15);
+    private static final double RADIUS_KM = 3.0;
+
+    private final DriverIndex index;
+    private final MatchingStrategy matcher;
+    private final PricingStrategy pricing;
+    private final Map<String, Trip> trips = new ConcurrentHashMap<>();
+    private final Map<String, Offer> offers = new ConcurrentHashMap<>();
+
+    public Trip requestRide(Rider rider, Location from, Location to) {
+        Trip trip = new Trip(rider, from, to);
+        trips.put(trip.id(), trip);
+        if (!offerNext(trip, Set.of()))
+            throw new NoDriverAvailableException(from);
+        return trip;
+    }
+
+    /** Walk candidates until one is won. Skips drivers already tried. */
+    private boolean offerNext(Trip trip, Set<String> tried) {
+        List<Driver> nearby = index.within(trip.from(), RADIUS_KM).stream()
+                .filter(d -> !tried.contains(d.id()))
+                .toList();
+        for (Driver d : matcher.rank(nearby, trip.from())) {
+            if (d.tryOffer()) {                       // CAS - only one rider wins
+                Offer o = new Offer(trip, d, Instant.now().plus(OFFER_TTL));
+                offers.put(o.id(), o);
+                trip.markOffered(d);
+                return true;
+            }
+            // lost the race, try the next candidate
+        }
+        return false;
+    }
+
+    public Trip accept(String offerId) {
+        Offer o = offers.remove(offerId);
+        if (o == null || o.isExpired()) throw new OfferExpiredException(offerId);
+        if (!o.driver().accept()) throw new OfferExpiredException(offerId);
+        o.trip().markMatched(o.driver());
+        return o.trip();
+    }
+
+    public void decline(String offerId) {
+        Offer o = offers.remove(offerId);
+        if (o == null) return;
+        o.driver().decline();                          // back into the pool
+        if (!offerNext(o.trip(), Set.of(o.driver().id())))
+            o.trip().markCancelled("no drivers available");
+    }
+
+    /** Reaper: an offer nobody answered must not strand the driver. */
+    public void sweepExpiredOffers() {
+        offers.values().stream().filter(Offer::isExpired).toList()
+              .forEach(o -> decline(o.id()));
+    }
+}
+```
+
+> Modelling matching as one decision is the common mistake. It is a sequence: offer, wait, timeout, next. The reaper matters — without it a driver who closed their app sits in OFFERED forever and is lost to the pool.
+
+**main() and the test that proves the race is closed**
+
+```java
+public static void main(String[] args) {
+    GridIndex index = new GridIndex();
+    RideService svc = new RideService(index, new NearestMatching(),
+                                      new DistancePricing(2.50, 1.20));
+
+    Driver alice = new Driver("d1", "Alice");
+    alice.goOnline(new Location(51.5074, -0.1278));
+    index.add(alice);
+
+    Trip t = svc.requestRide(new Rider("r1", "Bob"),
+                             new Location(51.5080, -0.1280),
+                             new Location(51.5200, -0.1000));
+    System.out.println("offered to " + t.driver().name());
+
+    svc.accept(t.offerId());
+    svc.startTrip(t.id());
+    System.out.println("fare " + svc.endTrip(t.id()).fare());
+}
+
+@Test
+void onlyOneRiderGetsTheDriver() throws Exception {
+    GridIndex index = new GridIndex();
+    RideService svc = new RideService(index, new NearestMatching(), flatPricing());
+    Driver only = new Driver("d1", "Alice");
+    only.goOnline(new Location(51.5, -0.12));
+    index.add(only);
+
+    int threads = 50;
+    CountDownLatch start = new CountDownLatch(1);
+    ExecutorService pool = Executors.newFixedThreadPool(threads);
+    AtomicInteger wins = new AtomicInteger();
+
+    for (int i = 0; i < threads; i++) {
+        int n = i;
+        pool.submit(() -> {
+            start.await();                     // release all at once
+            try {
+                svc.requestRide(new Rider("r" + n, "R" + n),
+                                new Location(51.5, -0.12), new Location(51.6, -0.1));
+                wins.incrementAndGet();
+            } catch (NoDriverAvailableException expected) { }
+            return null;
+        });
+    }
+    start.countDown();
+    pool.shutdown();
+    pool.awaitTermination(5, TimeUnit.SECONDS);
+
+    assertEquals(1, wins.get());               // exactly one
+}
+```
+
+> In a machine-coding round this test is worth more than another feature. It is the difference between asserting the design is correct and demonstrating it, and it takes five minutes to write.
+
 ---
 
 ### Rate Limiter / Logger (as objects)  *(Amazon hybrid, 35 min)*
@@ -4421,20 +9272,247 @@ public boolean allow(String key) {
 - Unbounded bucket map with no eviction.
 - Using System.currentTimeMillis() directly, making the class untestable.
 
+#### Worked solution
+
+Design a rate limiter as a set of classes. Callers ask whether a given key may proceed; the limiter decides based on a configured limit and window. Support several algorithms, per-tier limits, and thread safety. Then extend it: weighted requests, and a distributed version.
+
+**Functional requirements**
+
+- tryAcquire(key) returns allow or deny, with remaining and reset time.
+- Multiple algorithms — fixed window, sliding window, token bucket.
+- Per-key and per-tier limits, changeable without a deploy.
+- Weighted permits so an expensive endpoint costs more.
+
+**Non-functional requirements**
+
+- Thread-safe under heavy concurrency, without one global lock.
+- Lazy refill — no background thread per bucket.
+- Bounded memory: idle keys must be evicted.
+- Testable without sleeping — the clock is injected.
+
+**How to approach it**
+
+| Step | What you do |
+|---|---|
+| **1. Write the interface first** | One method, returning a rich result rather than a boolean. Retry-After needs the reset time. |
+| **2. Implement fixed window, then break it** | Show the boundary burst yourself, then implement the fix. Demonstrating the flaw is worth more than avoiding it. |
+| **3. Inject the clock immediately** | Every algorithm here is time-based. A hard-coded System.currentTimeMillis makes the class untestable and interviewers notice. |
+| **4. Lock the BUCKET, not the limiter** | Per-key locking is the answer to "where do you put the lock". Say it explicitly. |
+| **5. Lazy refill** | Compute elapsed time on access. A scheduled thread topping up a million buckets is the design that does not scale. |
+| **6. Bound the memory** | Millions of keys with no eviction is the follow-up people miss. LRU or TTL, and say which. |
+
+**Class diagram**
+
+```
+  ┌────────────────────────────────┐
+  │        «interface»             │
+  │        RateLimiter             │
+  ├────────────────────────────────┤
+  │ +tryAcquire(key) : Decision    │
+  │ +tryAcquire(key, permits)      │
+  └──────────────△─────────────────┘
+      ┌──────────┼──────────────┬────────────────┐
+  ┌───┴────────┐ │ ┌────────────┴───┐ ┌──────────┴─────────┐
+  │FixedWindow │ │ │ SlidingWindow  │ │   TokenBucket      │
+  │(shown to   │ │ │   Counter      │ │   (the default)    │
+  │ be WRONG)  │ │ └────────────────┘ └──────────┬─────────┘
+  └────────────┘ │                               │ owns many
+                 │                               ▼
+   ┌─────────────┴──────────┐        ┌────────────────────────┐
+   │  DistributedLimiter    │        │        Bucket          │
+   │  (Redis + Lua, atomic) │        ├────────────────────────┤
+   └────────────────────────┘        │ -tokens : double       │
+                                     │ -lastRefillNanos       │
+  ┌────────────────────────┐         │ +tryTake(n, now)       │ ◄── lock HERE,
+  │     «interface»        │         └────────────────────────┘     per key
+  │       Clock            │  ◄── injected, so tests never sleep
+  ├────────────────────────┤
+  │ +nanoTime() : long     │        ┌────────────────────────┐
+  └────────────────────────┘        │     LimitConfig        │
+                                    │  tier → {limit, window}│
+                                    └────────────────────────┘
+```
+
+**Public API**
+
+| Signature | Contract |
+|---|---|
+| Decision tryAcquire(String key) | One permit. Returns allowed, remaining, resetAt. |
+| Decision tryAcquire(String key, int permits) | Weighted — an expensive endpoint costs more tokens. |
+| void configure(String tier, Limit limit) | Changes limits without a deploy. |
+| void reset(String key) | Operational escape hatch for support. |
+| int activeKeys() | Observability — this is the number that tells you whether memory is bounded. |
+
+**Schema**
+
+| Table | Columns | Note |
+|---|---|---|
+| **Note** | — | Rate-limit state is disposable — losing it costs one window of over-permission, which is acceptable. Nothing durable. In the distributed version it lives in Redis with a TTL, and the correct failure mode is FAIL OPEN with a conservative local fallback: a limiter that takes your API down when it fails is worse than no limiter. |
+
+**The solution**
+
+**The interface, and a result richer than a boolean**
+
+```java
+public record Decision(boolean allowed, long remaining, Instant resetAt) {
+    public static Decision allow(long remaining, Instant reset) {
+        return new Decision(true, remaining, reset);
+    }
+    public static Decision deny(Instant reset) { return new Decision(false, 0, reset); }
+
+    /** Seconds for the Retry-After header. Without this, clients hammer harder. */
+    public long retryAfterSeconds() {
+        return Math.max(1, Duration.between(Instant.now(), resetAt).toSeconds());
+    }
+}
+
+public interface RateLimiter {
+    Decision tryAcquire(String key, int permits);
+    default Decision tryAcquire(String key) { return tryAcquire(key, 1); }
+}
+
+/** Injected so tests do not sleep. */
+public interface Clock { long nanoTime(); Instant now(); }
+```
+
+> Returning a Decision rather than a boolean is what lets the caller emit X-RateLimit-Remaining and Retry-After. Well-behaved clients back off correctly if you tell them when to return, and that materially reduces load during an incident.
+
+**Fixed window — implement it to show why it is wrong**
+
+```java
+public class FixedWindowLimiter implements RateLimiter {
+    private final int limit;
+    private final long windowMs;
+    private final Clock clock;
+    private final Map<String, Window> windows = new ConcurrentHashMap<>();
+
+    public Decision tryAcquire(String key, int permits) {
+        long now = clock.now().toEpochMilli();
+        long windowStart = now - (now % windowMs);
+
+        Window w = windows.compute(key, (k, existing) ->
+            (existing == null || existing.start != windowStart)
+                ? new Window(windowStart, 0) : existing);
+
+        synchronized (w) {
+            if (w.count + permits > limit)
+                return Decision.deny(Instant.ofEpochMilli(windowStart + windowMs));
+            w.count += permits;
+            return Decision.allow(limit - w.count, Instant.ofEpochMilli(windowStart + windowMs));
+        }
+    }
+}
+
+// THE FLAW, and you should draw it:
+//   limit 100/min
+//   100 requests at 11:00:59.9  -> all allowed (window 11:00)
+//   100 requests at 11:01:00.1  -> all allowed (window 11:01)
+//   = 200 requests in 200ms, every one of them "legal".
+```
+
+> Writing the flawed version deliberately and then naming the flaw is stronger than only presenting the correct one. It proves you understand WHY the good algorithm exists rather than having memorised it.
+
+**Token bucket with lazy refill — the default**
+
+```java
+public class TokenBucket {
+    private final double capacity;
+    private final double refillPerSecond;
+    private final Clock clock;
+    private double tokens;
+    private long lastRefillNanos;
+
+    TokenBucket(double capacity, double refillPerSecond, Clock clock) {
+        this.capacity = capacity;
+        this.refillPerSecond = refillPerSecond;
+        this.clock = clock;
+        this.tokens = capacity;                 // start full: bursts are legitimate
+        this.lastRefillNanos = clock.nanoTime();
+    }
+
+    /** Lock is on the BUCKET, so unrelated keys never contend. */
+    synchronized boolean tryTake(int permits) {
+        refill();
+        if (tokens >= permits) { tokens -= permits; return true; }
+        return false;
+    }
+
+    /** LAZY: computed on access. No background thread, no scheduler. */
+    private void refill() {
+        long now = clock.nanoTime();
+        double elapsedSec = (now - lastRefillNanos) / 1_000_000_000.0;
+        tokens = Math.min(capacity, tokens + elapsedSec * refillPerSecond);
+        lastRefillNanos = now;
+    }
+
+    synchronized double available() { refill(); return tokens; }
+}
+```
+
+> Two decisions worth stating: the lock is per bucket rather than per limiter, so a million users do not serialise against each other; and refill is computed from elapsed time on access rather than by a scheduled thread, which would be enormous waste at a million buckets.
+
+**The limiter, with bounded memory**
+
+```java
+public class TokenBucketLimiter implements RateLimiter {
+    private final LimitConfig config;
+    private final Clock clock;
+    // BOUNDED. Millions of keys with no eviction is the follow-up people miss.
+    private final Map<String, TokenBucket> buckets;
+
+    public TokenBucketLimiter(LimitConfig config, Clock clock, int maxKeys) {
+        this.config = config;
+        this.clock = clock;
+        this.buckets = Collections.synchronizedMap(
+            new LinkedHashMap<>(maxKeys, 0.75f, true) {          // access-ordered = LRU
+                @Override protected boolean removeEldestEntry(Map.Entry<String, TokenBucket> e) {
+                    return size() > maxKeys;
+                }
+            });
+    }
+
+    @Override public Decision tryAcquire(String key, int permits) {
+        Limit limit = config.forKey(key);         // cached in-process, not a network read
+        TokenBucket b = buckets.computeIfAbsent(key,
+            k -> new TokenBucket(limit.burst(), limit.perSecond(), clock));
+
+        if (b.tryTake(permits)) {
+            return Decision.allow((long) b.available(), nextRefillAt(b, limit));
+        }
+        return Decision.deny(nextRefillAt(b, limit));
+    }
+}
+
+// Distributed version: the same shape, but refill-and-take must be ONE
+// atomic Redis operation or gateway instances race:
+//   EVAL "local t = redis.call(GET, KEYS[1]) ... " 1 key permits now
+// Redis is single-threaded per key, which is exactly the guarantee needed.
+// On Redis failure: FAIL OPEN, fall back to a conservative local bucket.
+```
+
+> The LRU map is the answer to "millions of keys, what breaks?" — unbounded memory. An access-ordered LinkedHashMap with removeEldestEntry gives eviction in five lines, and evicting an idle bucket is harmless because a fresh one starts full.
+
 ---
 
 ## AMAZON LEADERSHIP PRINCIPLES
 
-LP is roughly half of Amazon's signal and the bar-raiser can reject you on it alone. It is the single most common way strong coders fail Amazon. Two stories per Sunday from week 2, reaching 15 by week 13. Each with real numbers, each rehearsed to under two minutes, each saying "I" not "we" — Amazon scores your actions, not your team's.
+LP is roughly half of the Amazon hiring signal and the bar-raiser can reject you on it alone. It has its own section in the tracker (16 principles, the follow-up probes, 10 anti-patterns and an annotated worked story). The story bank you fill in has these 15 slots:
 
-- **LP stories 1–3 — ownership · dive deep · deliver results** — Real numbers. Written down, not remembered.
-- **LP stories 4–6 — customer obsession · invent and simplify · bias for action**
-- **LP stories 7–9 — earn trust · have backbone and disagree · learn and be curious**
-- **LP stories 10–12 — hire and develop · frugality · think big**
-- **LP stories 13–15 — highest standards · are right a lot · best employer**
-- **LP: "your biggest failure" — rehearsed cold** — This one catches people. Prepare it specifically.
-- **LP: "when you disagreed with a manager" — rehearsed cold** — So does this one.
-- **LP full rehearsal — all 15 under two minutes each, "I" not "we"** — Record it. Count how often you say "we".
+- **A problem nobody owned that you fixed anyway** — Ownership · Bias for Action. The clearest Ownership story. Cross a boundary, stay for the follow-through.
+- **The hardest thing you have ever debugged** — Dive Deep · Ownership. Must survive three levels of "how did you know?". Choose one you can still explain.
+- **A mistake you made that had real consequences** — Earn Trust · Ownership. Raised by you, not discovered. What process changed afterwards.
+- **A time you disagreed with your manager or a senior engineer** — Have Backbone · Earn Trust. BOTH halves: the disagreement AND the commitment afterwards.
+- **Your biggest professional failure** — Earn Trust · Learn and Be Curious. The other question that catches people. Real cost, real change.
+- **Delivering under a hard deadline or a blocking dependency** — Deliver Results · Bias for Action. Name what you cut. There must be a trade-off.
+- **A decision made with incomplete information** — Bias for Action · Are Right, A Lot. Use the two-way-door framing. Say what your rollback was.
+- **Something you simplified or automated away** — Invent and Simplify · Frugality. Quantify the reduction — steps, code, time, cost.
+- **A time you refused to ship something** — Insist on the Highest Standards. What the bar was, and what holding it cost.
+- **Improving something for the team or a downstream consumer** — Customer Obsession · Best Employer. Your "customer" can be internal. Say who, specifically.
+- **Something hard you taught yourself and then used** — Learn and Be Curious. Self-directed, applied, with an outcome.
+- **A time you were wrong and changed your mind** — Are Right, A Lot · Earn Trust. The disconfirmation step is the whole point.
+- **Mentoring or levelling someone up** — Hire and Develop the Best. One is enough at SDE2. Needs evidence they actually improved.
+- **A proposal bigger than your remit** — Think Big · Invent and Simplify. Even if rejected — what you learned about making the case.
+- **Spare — whatever your best story is that these prompts missed** — —. Every career has one that does not fit a template. Keep the slot.
 # PART IV — TECH (Java · Spring · Postgres · Kafka · K8s · microservices)
 
 **The gradient inverts here.** The deepest tech questioning is at the **bottom** of your ladder — JP Morgan and Amex will go far deeper on `@Transactional`, thread pools and index plans than Google ever will. Google asks none of it. So Block B is the heavy one, and this whole track is front-loaded into Phase 1.

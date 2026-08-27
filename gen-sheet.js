@@ -7,6 +7,43 @@ eval(fs.readFileSync('data.js', 'utf8'));
 
 function cell(s) { return String(s == null ? '' : s).replace(/\|/g, '\\|'); }
 
+
+/* ---- shared: emit a worked solution ---- */
+function emitCode(w, title, lines, why) {
+  if (title) { w('**' + title + '**'); w(''); }
+  w('```java');
+  lines.forEach(function (l) { w(l); });
+  w('```');
+  w('');
+  if (why) { w('> ' + why); w(''); }
+}
+function emitAscii(w, lines, title) {
+  if (!lines || !lines.length) return;
+  if (title) { w('**' + title + '**'); w(''); }
+  w('```');
+  lines.forEach(function (l) { w(l); });
+  w('```');
+  w('');
+}
+function emitTable(w, heads, rows, boldFirst) {
+  w('| ' + heads.join(' | ') + ' |');
+  w('|' + heads.map(function () { return '---'; }).join('|') + '|');
+  rows.forEach(function (r) {
+    var cells = r.map(function (c, i) {
+      return (boldFirst && i === 0) ? '**' + cell(c) + '**' : cell(c == null ? '—' : c);
+    });
+    w('| ' + cells.join(' | ') + ' |');
+  });
+  w('');
+}
+function emitList(w, title, items) {
+  if (!items || !items.length) return;
+  w('**' + title + '**');
+  w('');
+  items.forEach(function (i) { w('- ' + i); });
+  w('');
+}
+
 /* ------------------------------------------------------------- PART II --- */
 function partTwo() {
   var out = [];
@@ -114,6 +151,34 @@ function partTwo() {
       s.fail.forEach(function (a) { w('- ' + a); });
       w('');
     }
+
+    var sol = (PLAN.sdSolution || {})[s.n];
+    if (sol) {
+      w('#### Worked solution');
+      w('');
+      emitList(w, 'Functional requirements', sol.req.functional);
+      emitList(w, 'Non-functional requirements', sol.req.nonFunctional);
+      w('**Estimation**'); w('');
+      emitTable(w, ['Quantity', 'Working', 'Result'], sol.estimate, true);
+      w('**API**'); w('');
+      emitTable(w, ['Endpoint', 'Request', 'Response', 'Note'], sol.api, false);
+      w('**Data model**'); w('');
+      emitTable(w, ['Table', 'Columns', 'Why'], sol.dataModel, true);
+      emitAscii(w, sol.arch, 'Architecture');
+      sol.flows.forEach(function (f) { emitList(w, f[0], f[1]); });
+      w('**Deep dive**'); w('');
+      sol.deepDive.forEach(function (d) {
+        w('*' + d[0] + '*'); w('');
+        String(d[1]).split('\n\n').forEach(function (para) { w(para); w(''); });
+      });
+      w('**Scaling**'); w('');
+      emitTable(w, ['Bottleneck', 'What you do'], sol.scaling, true);
+      w('**Trade-offs**'); w('');
+      emitTable(w, ['Decision', 'Chose', 'Over', 'Because'], sol.tradeoffs, true);
+      w('**What each company pushes on**'); w('');
+      emitTable(w, ['Company', 'What they push on'], sol.angle, true);
+    }
+
     w('---');
     w('');
   });
@@ -258,15 +323,42 @@ function partThree() {
     w('');
     p.fail.forEach(function (a) { w('- ' + a); });
     w('');
+
+    var sol = (PLAN.lldSolution || {})[p.id];
+    if (sol) {
+      w('#### Worked solution');
+      w('');
+      w(sol.statement);
+      w('');
+      emitList(w, 'Functional requirements', sol.req.functional);
+      emitList(w, 'Non-functional requirements', sol.req.nonFunctional);
+      w('**How to approach it**'); w('');
+      emitTable(w, ['Step', 'What you do'], sol.approach, true);
+      emitAscii(w, sol.uml, 'Class diagram');
+      w('**Public API**'); w('');
+      emitTable(w, ['Signature', 'Contract'], sol.api, false);
+      if (sol.schema && sol.schema.length) {
+        w('**Schema**'); w('');
+        emitTable(w, ['Table', 'Columns', 'Note'], sol.schema, true);
+      }
+      w('**The solution**'); w('');
+      sol.solution.forEach(function (c) { emitCode(w, c[0], c[1], c[2]); });
+    }
+
     w('---');
     w('');
   });
 
   w('## AMAZON LEADERSHIP PRINCIPLES');
   w('');
-  w(PLAN.lldLpNote);
+  w('LP is roughly half of the Amazon hiring signal and the bar-raiser can reject you on it alone. It has its own section in the tracker (' +
+    PLAN.lp.principles.length + ' principles, the follow-up probes, ' + PLAN.lp.antipatterns.length +
+    ' anti-patterns and an annotated worked story). The story bank you fill in has these ' +
+    PLAN.lp.slots.length + ' slots:');
   w('');
-  PLAN.lldLp.forEach(function (r) { w('- **' + r[0] + '**' + (r[1] ? ' — ' + r[1] : '')); });
+  PLAN.lp.slots.forEach(function (r) {
+    w('- **' + r[0] + '** — ' + r[1] + (r[2] ? '. ' + r[2] : ''));
+  });
   w('');
   return out.join(String.fromCharCode(10));
 }
