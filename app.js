@@ -93,6 +93,7 @@ function blankState() {
     patterns: {},   /* pt-key -> 'unknown'|'learning'|'fast' */
     templates: {},  /* index -> {status} */
     notes: {},      /* free text keyed by section / module / session id */
+    unlocked: {},
     ui: { open: {}, sel: {}, navQuery: '', refQuery: '', tab: 'dashboard', theme: 'dark' }
   };
 }
@@ -256,10 +257,20 @@ function packItems(c) {
       diff: '', kind: 'pack', group: c.name + ' pack' };
   });
 }
+function methodItems() {
+  var out = [];
+  ((PLAN.method && PLAN.method.blind && PLAN.method.blind.groups) || []).forEach(function (g, gi) {
+    g[2].forEach(function (p, i) {
+      out.push({ key: 'bp-' + gi + '-' + i, lc: null, name: p, note: '',
+        diff: '', kind: 'mock', group: 'Blind prompt · ' + g[0] });
+    });
+  });
+  return out;
+}
 var _allCache = null;
 function allItems() {
   if (_allCache) return _allCache;
-  var out = dsaItems().concat(sdItems(), lldItems(), techItems(), mockItems());
+  var out = dsaItems().concat(sdItems(), lldItems(), techItems(), mockItems(), methodItems());
   PLAN.companies.forEach(function (c) { out = out.concat(packItems(c)); });
   _allCache = out;
   return out;
@@ -400,6 +411,24 @@ function navModel(tab) {
       (m.phase === 1 ? g1 : g2).push({ id: m.id, n: String(m.n), label: m.name, sub: m.hrs + ' hours' });
     });
     return [{ g: 'Phase 1 · the JPM offer', items: g1 }, { g: 'Phase 2', items: g2 }];
+  }
+
+  if (tab === 'weekly') {
+    var ws = buildWeeks(), byPhase = { 1: [], 2: [], 3: [] };
+    ws.forEach(function (wk) {
+      var pr = weekProgress(wk), open = weekUnlocked(wk.n);
+      byPhase[wk.phase].push({
+        id: String(wk.n),
+        n: 'W' + wk.n,
+        label: (open ? '' : '✕ ') + fmtDate(wk.from),
+        sub: open ? (pr.core + '/' + pr.coreTotal + ' core' + (pr.complete ? ' ✓' : '')) : 'locked'
+      });
+    });
+    return [
+      { g: 'Phase 1 · JPM tier',     items: byPhase[1] },
+      { g: 'Phase 2 · Amazon tier',  items: byPhase[2] },
+      { g: 'Phase 3 · Google tier',  items: byPhase[3] }
+    ];
   }
 
   if (tab === 'method') {
@@ -557,6 +586,206 @@ function pagerFor(tab) {
   return h + '</div>';
 }
 
+/* ============================================================== WEEKLY ===
+   A goal-gated view over everything else. The 22 weeks PARTITION the whole
+   sheet: every trackable item belongs to exactly one week, so finishing all
+   22 weeks is finishing the repo. The plan is GENERATED from the content,
+   which is what guarantees the partition holds when content is added.
+
+   core   the spine. Week N+1 stays locked until every core item is done.
+   addon  block C, pattern drills, blind prompts, packs. Optional per week -
+          and finishing all addons is finishing those sections.            */
+
+var WEEKS = 22;
+
+/* even, order-preserving distribution across a week range */
+function chunkTo(items, fromW, toW) {
+  var out = {}, n = toW - fromW + 1;
+  if (n <= 0) return out;
+  var base = Math.floor(items.length / n), rem = items.length % n, idx = 0;
+  for (var i = 0; i < n; i++) {
+    var take = base + (i < rem ? 1 : 0);
+    out[fromW + i] = items.slice(idx, idx + take);
+    idx += take;
+  }
+  return out;
+}
+function phaseRangeFor(p) { return p === 1 ? [1, 6] : p === 2 ? [7, 13] : [14, 22]; }
+
+function G(key, type, label, note, group) {
+  return { key: key, type: type, label: label, note: note || '', group: group };
+}
+
+var _weekCache = null;
+function buildWeeks() {
+  if (_weekCache) return _weekCache;
+
+  var w = [], i;
+  for (i = 1; i <= WEEKS; i++) w.push({ n: i, core: [], addon: [] });
+  function at(n) { return w[n - 1]; }
+  function push(n, bucket, item) { if (n >= 1 && n <= WEEKS) at(n)[bucket].push(item); }
+
+  /* ---- DSA block B : phase 1 sections into weeks 1-6, phase 2 into 7-13 ---- */
+  [1, 2].forEach(function (ph) {
+    var items = [];
+    PLAN.sections.filter(function (s) { return s.phase === ph; }).forEach(function (s) {
+      s.b.forEach(function (q, ix) {
+        items.push(G('ds-' + s.id + '-b-' + ix, 'problem',
+          (q[0] ? 'LC ' + q[0] + ' · ' : '') + q[1], q[3], 'DSA §' + s.n + ' ' + s.name));
+      });
+    });
+    var r = phaseRangeFor(ph), map = chunkTo(items, r[0], r[1]);
+    Object.keys(map).forEach(function (k) {
+      map[k].forEach(function (it) { push(+k, 'core', it); });
+    });
+  });
+
+  /* ---- DSA block C : the hard tier, weeks 14-22, addon ---- */
+  var cItems = [];
+  PLAN.sections.forEach(function (s) {
+    s.c.forEach(function (q, ix) {
+      cItems.push(G('ds-' + s.id + '-c-' + ix, 'problem',
+        (q[0] ? 'LC ' + q[0] + ' · ' : '') + q[1], q[3], 'DSA §' + s.n + ' ' + s.name + ' · block C'));
+    });
+  });
+  /* Block C is the whole point of phase 3, so it is CORE there - not an
+     addon. Leaving it optional made weeks 14-22 nearly empty. */
+  var cMap = chunkTo(cItems, 14, 22);
+  Object.keys(cMap).forEach(function (k) {
+    cMap[k].forEach(function (it) { push(+k, 'core', it); });
+  });
+
+  /* ---- pattern drills : with their section's phase, addon ---- */
+  [1, 2].forEach(function (ph) {
+    var pats = [];
+    PLAN.sections.filter(function (s) { return s.phase === ph; }).forEach(function (s) {
+      s.p.forEach(function (p, ix) {
+        pats.push(G('pt-' + s.id + '-' + ix, 'pattern', p[0], p[1], 'Pattern drill · §' + s.n + ' ' + s.name));
+      });
+    });
+    var r = phaseRangeFor(ph), m = chunkTo(pats, r[0], r[1]);
+    Object.keys(m).forEach(function (k) { m[k].forEach(function (it) { push(+k, 'addon', it); }); });
+  });
+
+  /* ---- system design : one session per week, already numbered ---- */
+  PLAN.sd.forEach(function (s) {
+    push(s.wk, 'core', G('sd-' + s.n, 'problem', 'SD ' + s.n + ' — ' + s.t, s.design, 'System design'));
+  });
+
+  /* ---- LLD : tier b across weeks 1-13, tier c across 14-22 ---- */
+  ['b', 'c'].forEach(function (tier) {
+    var items = PLAN.lldProblems.filter(function (p) { return p.tier === tier; })
+      .map(function (p) { return G('ld-' + p.id, 'problem', p.name, p.flavour + ' · ' + p.mins + ' min', 'LLD'); });
+    var r = tier === 'b' ? [1, 13] : [14, 22], m = chunkTo(items, r[0], r[1]);
+    Object.keys(m).forEach(function (k) { m[k].forEach(function (it) { push(+k, 'core', it); }); });
+  });
+
+  /* ---- tech : module Q&A and practice, by module phase ---- */
+  [1, 2].forEach(function (ph) {
+    var items = [];
+    PLAN.tech.filter(function (m) { return m.phase === ph; }).forEach(function (m) {
+      m.qa.forEach(function (q, ix) {
+        items.push(G('tq-' + m.id + '-' + ix, 'problem', q[0], q[2], 'Tech ' + m.n + ' · ' + m.name));
+      });
+      var set = (PLAN.techProblems || {})[m.id];
+      if (set) {
+        set.groups.forEach(function (g, gi) {
+          g[2].forEach(function (r2, ix) {
+            items.push(G('pp-' + m.id + '-' + gi + '-' + ix, 'problem',
+              (r2[0] ? 'LC ' + r2[0] + ' · ' : '') + r2[1], r2[3], 'Tech practice · ' + m.name));
+          });
+        });
+      }
+    });
+    var r = phaseRangeFor(ph), mm = chunkTo(items, r[0], r[1]);
+    Object.keys(mm).forEach(function (k) { mm[k].forEach(function (it) { push(+k, 'core', it); }); });
+  });
+
+  /* ---- Amazon LP : two stories a week from week 2 ---- */
+  PLAN.lp.slots.forEach(function (s, ix) {
+    push(2 + Math.floor(ix / 2), 'core', G('lp-story-' + ix, 'problem', s[0], s[1], 'Amazon LP'));
+  });
+
+  /* ---- templates : by the deadline group they carry ---- */
+  var tGroupWeek = { 'By day 21': 3, 'By day 70': 10, 'By day 130': 19 };
+  PLAN.templates.forEach(function (t, ix) {
+    push(tGroupWeek[t.g] || 3, 'addon', G(String(ix), 'template', t.n, t.d, 'Template · ' + t.g));
+  });
+
+  /* ---- recorded mocks : phase 2 onward ---- */
+  var mocks = (PLAN.mocks || []).map(function (m, ix) {
+    return G('mk-' + ix, 'problem', m.t, m.d, 'Recorded mock');
+  });
+  var mMap = chunkTo(mocks, 9, 22);
+  Object.keys(mMap).forEach(function (k) { mMap[k].forEach(function (it) { push(+k, 'core', it); }); });
+
+  /* ---- blind prompts : the unseen-problem drill, phase 3 ---- */
+  var blind = [];
+  PLAN.method.blind.groups.forEach(function (g, gi) {
+    g[2].forEach(function (p, ix) { blind.push(G('bp-' + gi + '-' + ix, 'problem', p, '', 'Blind prompt')); });
+  });
+  var bMap = chunkTo(blind, 12, 22);
+  Object.keys(bMap).forEach(function (k) { bMap[k].forEach(function (it) { push(+k, 'addon', it); }); });
+
+  /* ---- company packs : optional, spread across the whole run ---- */
+  var packs = [];
+  PLAN.companies.forEach(function (c) {
+    (c.pack || []).forEach(function (q, ix) {
+      packs.push(G('pk-' + c.id + '-' + ix, 'problem',
+        (q[0] ? 'LC ' + q[0] + ' · ' : '') + q[1], q[3], c.name + ' pack'));
+    });
+  });
+  var pMap = chunkTo(packs, 4, 22);
+  Object.keys(pMap).forEach(function (k) { pMap[k].forEach(function (it) { push(+k, 'addon', it); }); });
+
+  /* ---- phase + dates ---- */
+  w.forEach(function (week) {
+    week.phase = week.n <= 6 ? 1 : week.n <= 13 ? 2 : 3;
+    week.from = addDays(state.startDate, (week.n - 1) * 7);
+    week.to = addDays(state.startDate, week.n * 7 - 1);
+  });
+
+  _weekCache = w;
+  return w;
+}
+
+/* ---- completion ---- */
+function goalDone(g) {
+  if (g.type === 'pattern') return state.patterns[g.key] === 'fast';
+  if (g.type === 'template') return (state.templates[g.key] || {}).status === 'fast';
+  var p = state.problems[g.key];
+  return !!(p && p.done);
+}
+function weekProgress(week) {
+  var c = week.core.filter(goalDone).length;
+  var a = week.addon.filter(goalDone).length;
+  return { core: c, coreTotal: week.core.length, addon: a, addonTotal: week.addon.length,
+           complete: week.core.length > 0 && c === week.core.length };
+}
+/* Week 1 is always open. After that: the previous week is complete, or you
+   explicitly unlocked it. */
+function weekUnlocked(n) {
+  if (n <= 1) return true;
+  if (state.unlocked && state.unlocked[n]) return true;
+  var w = buildWeeks();
+  for (var i = 0; i < n - 1; i++) {
+    if (!weekProgress(w[i]).complete) return false;
+  }
+  return true;
+}
+function currentWeek() {
+  var w = buildWeeks();
+  for (var i = 0; i < w.length; i++) {
+    if (!weekProgress(w[i]).complete) return w[i].n;
+  }
+  return WEEKS;
+}
+function weekByDate() {
+  var d = diffDays(state.startDate, today());
+  return Math.max(1, Math.min(WEEKS, Math.floor(d / 7) + 1));
+}
+
+
 /* ---------------------------------------------------------- dashboard --- */
 function renderDashboard() {
   var s = stats(), due = dueReviews();
@@ -640,7 +869,9 @@ function renderDashboard() {
 
   $('#view-dashboard').innerHTML = h;
   var sd = $('#startdate');
-  if (sd) sd.onchange = function () { state.startDate = sd.value; save(); renderAll(); };
+  if (sd) sd.onchange = function () {
+    state.startDate = sd.value; _weekCache = null; save(); renderAll();
+  };
 }
 
 /* --------------------------------------------------------------- DSA --- */
@@ -1278,6 +1509,109 @@ function renderTech() {
 
   h += pagerFor('tech');
   $('#view-tech').innerHTML = h;
+}
+
+/* ------------------------------------------------------------ weekly --- */
+function goalRow(g) {
+  var done = goalDone(g);
+  var cls = g.type === 'pattern' ? 'pat' : g.type === 'template' ? 'tpl' : '';
+  var h = '<div class="prow' + (done ? ' done' : '') + '"' +
+    (g.type === 'problem' ? ' data-open="' + esc(g.key) + '"' : '') + '>';
+  if (g.type === 'problem') {
+    h += '<button class="cb" data-check="' + esc(g.key) + '">' + (done ? '✓' : '') + '</button>';
+  } else if (g.type === 'pattern') {
+    h += '<button class="cb" data-patq="' + esc(g.key) + '">' + (done ? '✓' : '') + '</button>';
+  } else {
+    h += '<button class="cb" data-tplq="' + esc(g.key) + '">' + (done ? '✓' : '') + '</button>';
+  }
+  h += '<span class="wk-src">' + esc(g.group) + '</span>' +
+    '<span class="p-name">' + esc(g.label) + '</span>' +
+    (g.note ? '<span class="p-note">' + esc(g.note) + '</span>' : '') + '</div>';
+  return h;
+}
+
+function renderWeekList(items, emptyMsg) {
+  if (!items.length) return '<p class="dim">' + esc(emptyMsg) + '</p>';
+  var byGroup = {}, order = [];
+  items.forEach(function (g) {
+    if (!byGroup[g.group]) { byGroup[g.group] = []; order.push(g.group); }
+    byGroup[g.group].push(g);
+  });
+  var h = '';
+  order.forEach(function (grp) {
+    var gi = byGroup[grp], d = gi.filter(goalDone).length;
+    h += '<h3 class="prac-h">' + esc(grp) + ' <span class="h2-count">' + d + '/' + gi.length + '</span></h3>';
+    gi.forEach(function (g) { h += goalRow(g); });
+  });
+  return h;
+}
+
+function renderWeekly() {
+  var ws = buildWeeks();
+  var sel = parseInt(selected('weekly'), 10);
+  if (isNaN(sel)) sel = currentWeek();
+  var wk = ws[sel - 1] || ws[0];
+  var pr = weekProgress(wk);
+  var open = weekUnlocked(wk.n);
+  var byDate = weekByDate();
+
+  var h = '<div class="pane-head">' +
+    '<div class="eyebrow">Weekly goal &middot; week ' + wk.n + ' of ' + WEEKS +
+    ' &middot; <span class="chip ph' + wk.phase + '">phase ' + wk.phase + '</span></div>' +
+    '<h1>Week ' + wk.n + '</h1>' +
+    '<p class="pane-sub">' + fmtDate(wk.from) + ' → ' + fmtDate(wk.to) + '</p>';
+
+  if (!open) {
+    h += '<div class="wk-locked"><b>Locked.</b> Finish the core goals of every earlier week first. ' +
+      'That is the point of this page — one week at a time, no jumping around.' +
+      '<div class="btnrow" style="margin-top:14px">' +
+      '<button class="btn warn" data-unlock="' + wk.n + '">Unlock anyway</button></div>' +
+      '<p class="dim" style="margin-top:10px;font-size:12.5px">The override exists so a week you cannot finish ' +
+      'never traps you permanently. Use it deliberately, not habitually.</p></div></div>';
+    h += pagerFor('weekly');
+    $('#view-weekly').innerHTML = h;
+    return;
+  }
+
+  h += '<div class="pane-stats">' +
+    '<span><b>' + pr.core + '</b>/' + pr.coreTotal + ' core</span>' +
+    '<span><b>' + pr.addon + '</b>/' + pr.addonTotal + ' addon</span>' +
+    (pr.complete ? '<span class="ok-txt"><b>week complete</b></span>' : '') +
+    '</div>';
+
+  var cp = pr.coreTotal ? pr.core / pr.coreTotal : 0;
+  h += '<div class="co-bar" style="margin-top:14px"><i style="width:' +
+    (cp > 0 ? Math.max(0.8, cp * 100).toFixed(1) : 0) + '%"></i></div>';
+
+  if (byDate !== wk.n && wk.n === currentWeek()) {
+    h += '<div class="warnbox" style="margin-top:16px">By the calendar you are in <b>week ' + byDate +
+      '</b>, but by completion you are on <b>week ' + wk.n + '</b>. ' +
+      (byDate > wk.n ? 'You are behind — cut addons before you cut core.'
+                     : 'You are ahead. Do the addons rather than racing forward.') + '</div>';
+  }
+  h += '</div>';
+
+  h += '<h2 class="pane-h2">Core — required to unlock week ' + (wk.n + 1) +
+    ' <span class="h2-count">' + pr.core + '/' + pr.coreTotal + '</span></h2>' +
+    renderWeekList(wk.core, 'Nothing core this week.');
+
+  h += '<h2 class="pane-h2">Addons — optional this week, but they ARE the rest of the sheet' +
+    ' <span class="h2-count">' + pr.addon + '/' + pr.addonTotal + '</span></h2>' +
+    '<p class="pane-p">Block C, pattern drills, blind prompts and company packs. Skipping them is a legitimate ' +
+    'choice under time pressure; finishing all of them is finishing those sections outright.</p>' +
+    renderWeekList(wk.addon, 'No addons this week.');
+
+  if (pr.complete) {
+    h += '<div class="wk-done"><b>Week ' + wk.n + ' core is complete.</b> ' +
+      (wk.n < WEEKS ? 'Week ' + (wk.n + 1) + ' is unlocked.' : 'That is the whole plan.') + '</div>';
+  }
+
+  h += '<div class="field pane-notes"><label>What actually happened this week</label>' +
+    '<textarea data-note="week-' + wk.n + '" placeholder="What you cut. What to redo. What surprised you.">' +
+    esc(state.notes['week-' + wk.n] || '') + '</textarea></div>';
+
+  h += pagerFor('weekly');
+  $('#view-weekly').innerHTML = h;
 }
 
 /* --------------------------------------------------------- The Method --- */
@@ -2061,7 +2395,7 @@ function renderHeader() {
   $('#tab-due').textContent = overdue;
 }
 var RENDER = {
-  dashboard: renderDashboard, method: renderMethod, dsa: renderDsa, sd: renderSd, lld: renderLld,
+  dashboard: renderDashboard, weekly: renderWeekly, method: renderMethod, dsa: renderDsa, sd: renderSd, lld: renderLld,
   tech: renderTech, lp: renderLp, revision: renderRevision, companies: renderCompanies,
   reference: renderReference, log: renderLog, strategy: renderStrategy
 };
@@ -2134,6 +2468,28 @@ document.addEventListener('click', function (e) {
   if ((a = t.closest('[data-lpstory]'))) {
     toggleOpen('lp-story-' + a.getAttribute('data-lpstory'));
     save(); renderLp();
+    return;
+  }
+
+  if ((a = t.closest('[data-unlock]'))) {
+    if (!state.unlocked) state.unlocked = {};
+    state.unlocked[a.getAttribute('data-unlock')] = true;
+    save(); renderSidenav('weekly'); renderWeekly();
+    return;
+  }
+  if ((a = t.closest('[data-patq]'))) {
+    e.stopPropagation();
+    var pk2 = a.getAttribute('data-patq');
+    state.patterns[pk2] = state.patterns[pk2] === 'fast' ? '' : 'fast';
+    save(); renderSidenav('weekly'); renderWeekly();
+    return;
+  }
+  if ((a = t.closest('[data-tplq]'))) {
+    e.stopPropagation();
+    var tk = a.getAttribute('data-tplq');
+    if (!state.templates[tk]) state.templates[tk] = {};
+    state.templates[tk].status = state.templates[tk].status === 'fast' ? '' : 'fast';
+    save(); renderSidenav('weekly'); renderWeekly();
     return;
   }
 

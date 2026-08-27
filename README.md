@@ -22,6 +22,17 @@ Three files you read, one app you use.
 
 ---
 
+## Weekly Goal — the way to actually use this
+
+Open the **Weekly Goal** tab and work one week at a time. Week N+1 stays **locked** until every core goal in week N is done, so there is no drifting between sections.
+
+- **Core** — the spine: DSA, one system design session, LLD, tech, LP stories, mocks. Required to unlock the next week.
+- **Addons** — pattern drills, blind prompts, templates, company packs. Optional per week, and finishing all of them finishes those sections outright.
+
+The 22 weeks **partition the entire sheet** — all 1,194 trackable items appear in exactly one week each, verified by `test-weekly.js`. Finishing all 22 weeks is finishing the repo.
+
+An **Unlock anyway** override exists so a week you cannot finish never traps you permanently. Use it deliberately, not habitually.
+
 ## For problems you have never seen
 
 Every other section teaches machinery through **named** problems. Real rounds do not oblige — two Amazon LLD rounds in the wild were "mix songs from a DJ service and a recommendation service" and "handle audio buffers across stages at X frames per second." Neither is on any prep list.

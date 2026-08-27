@@ -4,7 +4,7 @@
 var fs = require('fs');
 var data = fs.readFileSync('data.js', 'utf8');
 var appsrc = fs.readFileSync('app.js', 'utf8');
-var views = ['dashboard', 'method', 'dsa', 'sd', 'lld', 'tech', 'lp', 'revision', 'companies', 'reference', 'log', 'strategy'];
+var views = ['dashboard', 'weekly', 'method', 'dsa', 'sd', 'lld', 'tech', 'lp', 'revision', 'companies', 'reference', 'log', 'strategy'];
 var failed = 0;
 
 function El(id) {
@@ -134,6 +134,7 @@ function esc(x) {
   for (var pair of [['lld', ['flavours','script','patterns','solid','concurrency','checklist','rules','parking','elevator','vending','booking','splitwise','tictactoe','notification','atm','orderinv','lru','filesystem','ridehail','ratelimiter','pat-strategy','pat-state','pat-factory','pat-observer','pat-decorator','pat-command','pat-builder','pat-chain','pat-composite','pat-singleton','pat-adapter','pat-template','pat-facade']],
                     ['reference', ['templates','triggers','pool','reading']],
                     ['strategy', ['0','1','2','3','4','5']],
+                    ['weekly', ['1','2','3','7','14','22']],
                     ['method', ['why','altitude','decompose','primitives','failures','ambiguity','domain','product','worked','blind','rubric']],
                     ['lp', ['scoring','star','probes','anti','worked','mining','bank','coverage','schedule','p-ownership','p-dive-deep','p-deliver-results','p-customer-obsession','p-bias-for-action','p-earn-trust','p-backbone','p-invent-simplify','p-highest-standards','p-learn-curious','p-are-right','p-frugality','p-hire-develop','p-think-big','p-best-employer','p-broad-responsibility']]]) {
     for (var id of pair[1]) {

@@ -859,3 +859,21 @@ td.wrong-cell { color: var(--bad); font-size: 13px; }
   display: inline-block; min-width: 46px; text-align: right;
   margin-left: 10px; font-family: var(--mono); font-size: 11px; color: var(--ink-3);
 }
+
+/* --- weekly goal --- */
+.wk-src {
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink-3);
+  flex: 0 0 auto; max-width: 190px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.wk-locked {
+  margin-top: 20px; padding: 20px 22px;
+  border: 1px dashed var(--line); border-radius: var(--radius);
+  background: var(--panel-2); font-size: 14px; line-height: 1.7; color: var(--ink-2);
+}
+.wk-done {
+  margin-top: 30px; padding: 16px 20px;
+  border-left: 3px solid var(--ok); background: var(--ok-soft);
+  border-radius: 0 var(--radius) var(--radius) 0; font-size: 14.5px;
+}
+.nav-item .nav-lbl > span { font-variant-numeric: tabular-nums; }
