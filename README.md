@@ -87,6 +87,7 @@ No single curve peaks in January. That is why the tech track is front-loaded int
 | Tech modules | 13 |
 | Tech code patterns | 34 |
 | Tech Q&A — *question → spine → **follow-up*** | 197 |
+| Concurrency practice problems (LeetCode + classic implementations) | 28 |
 | Recorded mocks | 16 |
 | Templates | 29 |
 | Companies with readiness weights | 10 |

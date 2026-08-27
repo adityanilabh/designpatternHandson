@@ -223,6 +223,16 @@ function techItems() {
       out.push({ key: 'tq-' + m.id + '-' + i, lc: null, name: q[0], note: q[2],
         diff: '', kind: 'tech', group: 'Tech ' + m.n + ' · ' + m.name });
     });
+    var set = (PLAN.techProblems || {})[m.id];
+    if (set) {
+      set.groups.forEach(function (g, gi) {
+        g[2].forEach(function (r, i) {
+          out.push({ key: 'pp-' + m.id + '-' + gi + '-' + i, lc: r[0], name: r[1],
+            note: r[3], diff: r[2], kind: 'tech',
+            group: m.name + ' practice · ' + g[0] });
+        });
+      });
+    }
   });
   return out;
 }
@@ -939,7 +949,16 @@ function renderLld() {
   } else if (id === 'concurrency') {
     h += head('LLD', 'Concurrency in LLD',
       'The single biggest separator at Amazon. Raise the race before they ask about it.') +
-      twoColTable(PLAN.lldConcurrency, ['The race', 'How you close it'], true);
+      twoColTable(PLAN.lldConcurrency, ['The race', 'How you close it'], true) +
+      '<div class="exit"><b>Practice.</b> Reading about races does not survive "write me a bounded blocking queue". ' +
+      'The <b>Tech &rarr; Concurrency</b> module carries ' +
+      (function () {
+        var s = (PLAN.techProblems || {}).conc, n = 0;
+        if (s) s.groups.forEach(function (g) { n += g[2].length; });
+        return n;
+      })() +
+      ' practice problems — the LeetCode concurrency section, the classic whiteboard implementations, ' +
+      'and the design problems where thread safety is the actual question.</div>';
 
   } else if (id === 'checklist') {
     h += head('LLD', 'Class design checklist',
@@ -1030,6 +1049,45 @@ function renderLld() {
 }
 
 /* -------------------------------------------------------------- tech --- */
+/* a practice-problem block on a tech module page */
+function practiceProblems(modId) {
+  var set = (PLAN.techProblems || {})[modId];
+  if (!set) return '';
+
+  var total = 0;
+  set.groups.forEach(function (g) { total += g[2].length; });
+
+  var h = '<h2 class="pane-h2">Practice problems <span class="h2-count">' + total + '</span></h2>' +
+    '<p class="pane-p">' + esc(set.intro) + '</p>';
+
+  set.groups.forEach(function (g, gi) {
+    h += '<h3 class="prac-h">' + esc(g[0]) + '</h3>' +
+      '<p class="pane-p">' + esc(g[1]) + '</p>';
+    g[2].forEach(function (r, i) {
+      var key = 'pp-' + modId + '-' + gi + '-' + i;
+      var p = state.problems[key] || {};
+      var diffCls = { E: 'e', M: 'm', H: 'h' }[r[2]] || '';
+      h += '<div class="prow' + (p.done ? ' done' : '') + '" data-open="' + key + '">' +
+        '<button class="cb" data-check="' + key + '">' + (p.done ? '✓' : '') + '</button>' +
+        '<span class="diff ' + diffCls + '">' + esc(r[2] || '') + '</span>' +
+        (r[0] != null
+          ? problemLinks(r[0], r[1])
+          : '<a class="p-lc lnk" href="https://www.google.com/search?q=' +
+            encodeURIComponent('java ' + r[1] + ' implementation interview') +
+            '" target="_blank" rel="noopener" title="No LeetCode equivalent — search">impl</a>' +
+            '<span class="p-gfg" style="opacity:.35">—</span>') +
+        '<span class="p-name">' + esc(r[1]) + '</span>' +
+        (r[3] ? '<span class="p-note">' + esc(r[3]) + '</span>' : '') +
+        '<span class="dot ' + esc(p.status || '') + '"></span></div>';
+    });
+  });
+
+  if (set.drill && set.drill.length) {
+    h += '<h3 class="prac-h">How to work them</h3>' + bulletList(set.drill);
+  }
+  return h;
+}
+
 function renderTech() {
   var id = selected('tech');
   var m = null;
@@ -1083,6 +1141,8 @@ function renderTech() {
     h += '<h2 class="pane-h2">Traps that bite <span class="h2-count">' + m.traps.length + '</span></h2>' +
       bulletList(m.traps, 'fail');
   }
+
+  h += practiceProblems(m.id);
 
   h += readingList((PLAN.techRead || {})[m.id], 'Read more');
 

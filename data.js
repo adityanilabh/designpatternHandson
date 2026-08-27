@@ -7575,6 +7575,95 @@ obs:[['Google SRE Book — monitoring distributed systems', 'https://sre.google/
      ['Why H2 is a bad stand-in for Postgres in tests', 'H2 in memory database vs Testcontainers postgres dialect differences', 0]]
 };
 
+
+/* ============================================== CONCURRENCY PRACTICE ===
+   Concurrency is asked as CODE at tier 1 (JPM, Amex, Goldman) and as a
+   follow-up on design problems everywhere else. Reading about volatile does
+   not survive "write me a bounded blocking queue".
+
+   Keyed by tech module id so other modules can take problem sets later.
+   Row: [lc, name, difficulty, note]  ·  lc null = no LeetCode equivalent,
+   so the row links to a search instead.                                  */
+
+PLAN.techProblems = {
+
+conc: {
+ intro:'LeetCode has a small, unloved Concurrency section that is exactly right for this — nine problems that force you to use wait/notify, semaphores and CountDownLatch correctly. Do all nine; they take an evening each at most. Then the classic implementations, which are what tier-1 interviews actually ask you to write on a whiteboard.',
+ groups:[
+
+  ['LeetCode · the Concurrency section — do all nine',
+   'Small problems, but they will not compile until your synchronisation is genuinely correct. Solve each one twice: once with synchronized/wait/notify, once with a java.util.concurrent primitive. The comparison is the lesson.',
+   [
+    [1114,'Print in Order','E','Three threads, forced order. Start here. wait/notify first, then CountDownLatch — the second version should be half the length.'],
+    [1115,'Print FooBar Alternately','M','Two threads alternating. The classic wait/notify ping-pong, or two Semaphores. Watch for the lost-wakeup bug.'],
+    [1116,'Print Zero Even Odd','M','Three threads, a cycle rather than a pair. Semaphores make this clean; wait/notify with one lock gets ugly fast.'],
+    [1117,'Building H2O','M','A barrier problem: two H for every O. Semaphore plus CyclicBarrier is the intended shape.'],
+    [1195,'Fizz Buzz Multithreaded','M','Four threads on one counter. Good practice at deciding what the shared state actually is.'],
+    [1226,'The Dining Philosophers','M','THE deadlock problem. Solve it three ways: global lock ordering, an arbitrator/semaphore limiting to n-1 diners, and tryLock with timeout. Be able to explain which Coffman condition each one breaks.'],
+    [1188,'Design Bounded Blocking Queue','M','PREMIUM. The single most-asked concurrency implementation in real interviews. If you can only do one from this list, do this — and see the classics section below.'],
+    [1242,'Web Crawler Multithreaded','M','PREMIUM. An ExecutorService plus a concurrent visited-set. The realistic one: a thread pool, not raw threads.'],
+    [1279,'Traffic Light Controlled Intersection','E','PREMIUM. Simple mutual exclusion. Fine to skip if you cannot access it.']
+   ]],
+
+  ['Classic implementations — no LeetCode equivalent, and asked constantly',
+   'These are whiteboard questions at JP Morgan, Amex, Goldman and most finance-adjacent loops. Write each from a blank file, then write a test that actually exercises the race with a CountDownLatch and 50 threads.',
+   [
+    [null,'Bounded blocking queue with wait/notify','M','put() waits while full, take() waits while empty. Must use while(...) wait() not if — spurious wakeups are the whole point. Then rewrite with ReentrantLock and two Conditions (notFull, notEmpty) and say why two conditions beat notifyAll.'],
+    [null,'Producer-consumer with a bounded queue','M','The application of the above. Say out loud that the bound IS the backpressure mechanism.'],
+    [null,'Readers-writers lock','H','Many readers or one writer. Then the follow-up nobody prepares: is it reader-preferring or writer-preferring, and which one starves? Compare against ReentrantReadWriteLock.'],
+    [null,'A simple fixed thread pool','H','A BlockingQueue plus N worker threads looping on take(). Shows you understand what ExecutorService actually is. Follow-up: how does shutdown() differ from shutdownNow()?'],
+    [null,'Implement a CountDownLatch from scratch','M','Around 15 lines with wait/notifyAll. Proves you understand the primitive rather than just calling it.'],
+    [null,'Implement a Semaphore from scratch','M','Same idea, with permits. Then: why is acquire() in a while loop?'],
+    [null,'Thread-safe singleton','E','Enum, holder idiom, and double-checked locking. Be ready to explain why DCL is BROKEN without volatile — the reference can be published before the constructor finishes.'],
+    [null,'Reproduce a deadlock, then fix it','M','Two accounts, two threads, transfer in opposite directions. Fix by global lock ordering on the account id, then again with tryLock and timeout. Find it in a thread dump — jstack prints "Found one Java-level deadlock" explicitly.'],
+    [null,'Thread-safe counter, three ways','E','synchronized, then AtomicInteger with a CAS loop, then LongAdder. Benchmark them under contention and be able to say when LongAdder wins.'],
+    [null,'Rate limiter: token bucket, thread-safe','M','Lazy refill on access. Lock per bucket, never one global lock. This one bridges straight into the system design session.'],
+    [null,'Print N numbers with N threads in order','M','Generalises 1114. A single lock plus a turn variable, or an array of Semaphores.'],
+    [null,'Async fan-out with CompletableFuture','M','Ten remote calls in parallel, collect results, with a per-call timeout and fallback. Pass your OWN executor — never the common ForkJoinPool for IO.']
+   ]],
+
+  ['Design problems where concurrency IS the question',
+   'These appear elsewhere in this sheet as design problems. Re-solve them here with thread safety as the primary requirement, because that is how the follow-up arrives in a real round.',
+   [
+    [146,'LRU Cache — now make it thread-safe','M','The interesting part: get() mutates the recency list, so a read is a write and it cannot be lock-free. Answer in three levels — global lock, segmented, then approximate LRU with read buffering (what Caffeine does).'],
+    [1188,'Bounded blocking queue','M','PREMIUM. Listed twice on purpose. It is both a LeetCode problem and the classic whiteboard implementation.'],
+    [362,'Design Hit Counter','M','PREMIUM. Add the concurrency follow-up yourself: many threads recording hits into time buckets.'],
+    [359,'Logger Rate Limiter','E','PREMIUM. Make the message map concurrent, then handle the memory leak when messages are never evicted.'],
+    [1279,'Traffic Light Controlled Intersection','E','PREMIUM. Mutual exclusion in its simplest form.'],
+    [155,'Min Stack — make it thread-safe','E','Deceptive. Two structures must stay consistent, so per-method synchronized is not enough for compound operations.'],
+    [295,'Find Median from Data Stream — concurrent','H','Two heaps that must be rebalanced atomically. A good test of where you put the lock.']
+   ]]
+ ],
+ drill:[
+  'Write a test that actually races. A CountDownLatch, 50 threads, all released at once, then assert the invariant. A concurrency implementation with no such test is unverified.',
+  'Solve each problem twice — once with synchronized/wait/notify, once with java.util.concurrent. Interviewers ask "could you do that without synchronized?"',
+  'Always use while(condition) wait(), never if(condition) wait(). Spurious wakeups are real and this is checked.',
+  'Say where the lock is scoped. "Per bucket, not per limiter" or "per spot, not per lot" is the sentence that separates a correct answer from a good one.',
+  'Run with -XX:+PrintCompilation or a thread dump at least once, so "how would you diagnose it in production" is not hypothetical.'
+ ]
+}
+
+};
+
+/* correct slugs for the LeetCode concurrency section */
+PLAN.lcSlug[1114] = 'print-in-order';
+PLAN.lcSlug[1115] = 'print-foobar-alternately';
+PLAN.lcSlug[1116] = 'print-zero-even-odd';
+PLAN.lcSlug[1117] = 'building-h2o';
+PLAN.lcSlug[1188] = 'design-bounded-blocking-queue';
+PLAN.lcSlug[1195] = 'fizz-buzz-multithreaded';
+PLAN.lcSlug[1226] = 'the-dining-philosophers';
+PLAN.lcSlug[1242] = 'web-crawler-multithreaded';
+PLAN.lcSlug[1279] = 'traffic-light-controlled-intersection';
+PLAN.lcSlug[155]  = 'min-stack';
+PLAN.lcSlug[295]  = 'find-median-from-data-stream';
+
+/* GfG names these differently where they exist at all */
+PLAN.gfgName[1114] = 'Print in order using threads';
+PLAN.gfgName[1226] = 'Dining Philosophers problem';
+PLAN.gfgName[1188] = 'Producer Consumer bounded buffer';
+PLAN.gfgName[1117] = 'Barrier synchronization';
+
 /* ============================================================ TEMPLATES === */
 
 PLAN.templates = [
