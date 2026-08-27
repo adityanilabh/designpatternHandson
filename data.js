@@ -1918,79 +1918,1568 @@ PLAN.sd = PLAN.sd.concat([
 
 /* ================================================================== LLD === */
 
+/* ================================================================== LLD ===
+   Three different rounds wear this name. Getting the flavour wrong is how
+   people lose it before they write a line.
+
+   Reference blocks first, then problems. Per problem:
+     asked        how the interviewer poses it, and the variants
+     who          who asks it
+     clarify      what you pin down before drawing anything
+     entities     [name, kind, note] - the class list you put on the board
+     patterns     [pattern, exactly where it applies]
+     code         [title, [lines], why it matters]
+     concurrency  [the race, how you close it]  <- the Amazon differentiator
+     extend       [the "now add X" follow-up, how you answer]
+     cross        [the question, the answer spine]
+     fail         what actually sinks candidates                            */
+
 PLAN.lldFlavours = [
-  ['Whiteboard OOD','Amazon · Adobe · Microsoft · JPM','45–60 min, class diagram + key methods','Entities, relationships, extensibility. SOLID APPLIED, not recited'],
-  ['Machine coding','Uber · Flipkart','60–90 min, RUNNABLE, TESTED code','FINISHING. An unfinished elegant design scores below a finished plain one'],
-  ['Amazon hybrid','Amazon','60 min: design PLUS working code PLUS an algorithmic core','Doing all three under one clock. Most candidates over-invest in the design and never run the code']
+  ['Whiteboard OOD','Amazon · Adobe · Microsoft · JPM','45–60 min, class diagram plus key methods','Entities, relationships, extensibility. SOLID applied, never recited. You are scored on whether a new requirement slots in without rewriting.'],
+  ['Machine coding','Uber · Flipkart · Swiggy','60–90 min, RUNNABLE and TESTED code','FINISHING. An unfinished elegant design scores below a finished plain one. Ship a working skeleton in 20 minutes, then enrich.'],
+  ['Amazon hybrid','Amazon','60 min: design PLUS working code PLUS an algorithmic core','Doing all three under one clock. Most candidates over-invest in the diagram and never run the code.']
+];
+
+PLAN.lldScript = [
+  ['0:00–5:00','Clarify and scope','Restate. Ask 4–6 questions. Write the scope on the board and get explicit agreement: "so we are building X and Y, not Z — agreed?" Scope creep later is then their choice, not your failure.'],
+  ['5:00–12:00','Entities and relationships','Nouns become classes, verbs become methods. Draw cardinality on every line (1..*, 0..1). Enums for closed sets. Say "I am deliberately keeping this in memory."'],
+  ['12:00–20:00','Interfaces and the extension axes','Name the things that will change — pricing, scheduling, notification channel — and put an interface on each. This is where the round is actually won.'],
+  ['20:00–40:00','Implement the core','Not every class. The one flow that proves the design: park a vehicle, book a seat, dispense an item. Real method bodies, not pseudocode.'],
+  ['40:00–50:00','Concurrency and edge cases','Say where two users collide and how you resolve it, before being asked. This is the single biggest separator at Amazon.'],
+  ['50:00–60:00','Show one extension','"Here is how a new vehicle type slots in — one enum value and one strategy, no existing class changes." The highest-scoring thirty seconds of the round.']
 ];
 
 PLAN.lldPatterns = [
-  ['"support multiple algorithms for X, swappable"','Strategy','Parking pricing, elevator scheduling, ride matching, payment methods'],
-  ['"create objects without naming the concrete class"','Factory / Abstract Factory','Vehicle types, chess pieces, notification channels'],
-  ['"notify N things when this changes"','Observer','Bidding, notifications, order status, stock ticker'],
-  ['"behaves differently depending on its mode"','State — NOT a switch over an enum','Vending machine, ATM, elevator, order lifecycle'],
-  ['"undo / redo / a queue of operations"','Command','Chess moves, text editor, job scheduler'],
-  ['"add behaviour without a subclass explosion"','Decorator','Pizza toppings, coffee, middleware'],
-  ['"lots of optional constructor parameters"','Builder','Complex config, request objects'],
-  ['"exactly one of these, globally"','Singleton — and say when it is a mistake','Config, connection pool. Usually DI is better'],
-  ['"two users grab the same resource"','Optimistic vs pessimistic locking — say WHICH and WHY','Booking, parking spot, inventory'],
+  ['"support multiple algorithms for X, swappable"','Strategy','Parking pricing, elevator scheduling, ride matching, payment methods, notification channel'],
+  ['"create objects without naming the concrete class"','Factory / Abstract Factory','Vehicle types, chess pieces, notification senders, document parsers'],
+  ['"notify N things when this changes"','Observer','Bidding, order status, stock ticker, elevator display panels'],
+  ['"behaves differently depending on its mode"','State — NOT a switch over an enum','Vending machine, ATM, elevator, order lifecycle, chess game phase'],
+  ['"undo / redo / a queue of operations"','Command','Chess moves, text editor, job scheduler, remote control'],
+  ['"add behaviour without a subclass explosion"','Decorator','Pizza toppings, coffee add-ons, middleware, discount stacking'],
+  ['"lots of optional constructor parameters"','Builder','Complex config, pizza order, HTTP request objects'],
+  ['"exactly one of these, globally"','Singleton — and say when it is a mistake','Config, connection pool, id generator. Usually dependency injection is better and more testable.'],
+  ['"two users grab the same resource"','Optimistic vs pessimistic locking — say WHICH and WHY','Booking a seat, claiming a parking spot, decrementing inventory'],
   ['"make it extensible"','Depend on an interface, not a concrete class','Every LLD round, always'],
-  ['"the object is expensive to create"','Object pool / flyweight','Connections, threads, game sprites'],
-  ['"one interface over several subsystems"','Facade','Service layer over repositories']
+  ['"the object is expensive to create"','Object pool / Flyweight','Connections, threads, game sprites, chess piece images'],
+  ['"one simple interface over several subsystems"','Facade','A service layer over repositories, an order facade over payment plus inventory plus shipping'],
+  ['"walk a structure without knowing its concrete types"','Visitor','Tax calculation over item types, AST evaluation'],
+  ['"a chain of handlers, first one that can, handles it"','Chain of Responsibility','ATM note dispensing, approval workflows, middleware, logging levels'],
+  ['"wrap an incompatible interface"','Adapter','Third-party payment gateway, legacy service']
 ];
 
 PLAN.lldSolid = [
-  ['S','Single responsibility','A class that both computes AND persists'],
-  ['O','Open/closed','A switch you must edit for each new type'],
-  ['L','Liskov substitution','A subclass that throws on an inherited method'],
-  ['I','Interface segregation','A fat interface forcing empty implementations'],
-  ['D','Dependency inversion','new ConcreteThing() inside business logic']
+  ['S','Single responsibility','A class that both computes a total AND writes it to the database.',
+   ['// VIOLATION',
+    'class Order {',
+    '    BigDecimal total() { ... }',
+    '    void saveToDb(Connection c) { ... }   // second reason to change',
+    '    String toJson() { ... }               // third',
+    '}',
+    '',
+    '// FIX - one reason to change each',
+    'class Order            { BigDecimal total() { ... } }',
+    'class OrderRepository  { void save(Order o) { ... } }',
+    'class OrderSerializer  { String toJson(Order o) { ... } }']],
+  ['O','Open/closed','A switch you must edit every time a new type appears.',
+   ['// VIOLATION - every new vehicle edits this method',
+    'BigDecimal fee(Vehicle v, Duration d) {',
+    '    switch (v.type()) {',
+    '        case CAR:  return d.toHours() * 20;',
+    '        case BIKE: return d.toHours() * 10;',
+    '    }',
+    '}',
+    '',
+    '// FIX - open for extension, closed for modification',
+    'interface PricingStrategy { BigDecimal fee(Duration d); }',
+    'class CarPricing  implements PricingStrategy { ... }',
+    'class BikePricing implements PricingStrategy { ... }',
+    '// new vehicle type = one new class, zero edits']],
+  ['L','Liskov substitution','A subclass that throws on a method it inherited.',
+   ['// VIOLATION',
+    'class Bird { void fly() { ... } }',
+    'class Penguin extends Bird {',
+    '    void fly() { throw new UnsupportedOperationException(); }  // breaks callers',
+    '}',
+    '',
+    '// FIX - model the capability, not the taxonomy',
+    'interface Bird {}',
+    'interface Flying { void fly(); }',
+    'class Sparrow implements Bird, Flying { ... }',
+    'class Penguin implements Bird { ... }']],
+  ['I','Interface segregation','A fat interface forcing empty implementations.',
+   ['// VIOLATION',
+    'interface Worker { void work(); void eat(); }',
+    'class Robot implements Worker {',
+    '    public void work() { ... }',
+    '    public void eat()  { }        // meaningless, forced to exist',
+    '}',
+    '',
+    '// FIX',
+    'interface Workable { void work(); }',
+    'interface Feedable { void eat(); }',
+    'class Robot implements Workable { ... }']],
+  ['D','Dependency inversion','new ConcreteThing() buried inside business logic.',
+   ['// VIOLATION - untestable, cannot swap',
+    'class OrderService {',
+    '    private final MySqlOrderRepo repo = new MySqlOrderRepo();',
+    '}',
+    '',
+    '// FIX - depend on the abstraction, inject the concrete',
+    'class OrderService {',
+    '    private final OrderRepository repo;',
+    '    OrderService(OrderRepository repo) { this.repo = repo; }',
+    '}']]
 ];
 
-PLAN.lldFramework = 'clarify requirements → identify entities → relationships and cardinality → define interfaces → implement the core → SHOW ONE EXTENSION ("here is how a new vehicle type slots in"). That last step is the highest-scoring thirty seconds of the round.';
+PLAN.lldConcurrency = [
+  ['Two users claim the same seat / spot / last item',
+   'An atomic conditional transition, not read-then-write. In memory: AtomicReference.compareAndSet or a synchronized block on the specific resource. In a database: UPDATE ... WHERE status = AVAILABLE, and check rows-affected. Whoever gets zero rows loses cleanly.'],
+  ['A hold expires while the user is paying',
+   'Reservation with a TTL, plus a decision you must state: refuse the payment, or extend the hold once. Silently taking payment for released stock is the failure everyone ships.'],
+  ['Two threads read a balance, both compute, both write',
+   'Lost update. Fix with an atomic operation (balance.addAndGet), a version field with retry, or a lock scoped to the account.'],
+  ['Locking the whole system to make one thing safe',
+   'A single global lock is correct and useless. Lock per resource - per spot, per seat, per account - so unrelated operations do not serialise. Interviewers probe this the moment you write synchronized on a method.'],
+  ['Two locks taken in opposite order',
+   'Deadlock. Impose a global ordering (always lock the lower id first), or use tryLock with a timeout and retry.'],
+  ['A collection mutated while another thread iterates it',
+   'ConcurrentModificationException. Use ConcurrentHashMap, CopyOnWriteArrayList for read-heavy, or copy before iterating.'],
+  ['Optimistic vs pessimistic — how to choose out loud',
+   'Low contention and cheap retry: optimistic (version check, retry). High contention on a specific named unit like seat 14A: pessimistic (lock the row). Say the contention assumption you are making — that is the scored part.']
+];
+
+PLAN.lldChecklist = [
+  ['Nouns to classes, verbs to methods','Extract them from the requirements out loud so the interviewer sees the derivation.'],
+  ['Enums for every closed set','VehicleType, SpotSize, OrderStatus, Direction. Never magic strings.'],
+  ['Cardinality on every relationship','A Lot has 1..* Floors; a Floor has 1..* Spots; a Spot has 0..1 Ticket. Draw it.'],
+  ['An interface on every axis of change','Pricing, allocation, scheduling, notification. One interface per axis, not fifteen.'],
+  ['Immutable value objects','Money, TimeSlot, Coordinates. Records are ideal. Prevents a whole class of bugs.'],
+  ['A single entry-point facade','ParkingLotService, BookingService. The interviewer should see one obvious place to start reading.'],
+  ['No database, no framework','In-memory collections unless asked. Say "in-memory for now, the repository interface is the seam."'],
+  ['Say what you are NOT building','Auth, persistence, UI. Naming the exclusions shows judgement rather than omission.']
+];
 
 PLAN.lldRules = [
   'Ship a working skeleton in the first 20 minutes, then enrich. Never design for 60 and code for 30.',
   'In-memory only unless asked. No database, no framework, no build tooling.',
-  'Write main() with a demo run early — it proves it works and prevents you being unfinished.',
+  'Write main() with a demo run early - it proves it works and prevents you being unfinished.',
   'Two or three tests beat ten. Add them as you go, not at the end.',
   'One interface per axis of change. Do not create fifteen.',
-  'Say your assumptions out loud and write them as comments.'
+  'Say your assumptions out loud and write them as comments.',
+  'When you run out of time, say what you would do next and why. A stated plan scores; silence does not.'
 ];
 
-PLAN.lld = {
- b:[
-  ['Parking lot','OOD','The "two sum" of LLD. Pricing strategy, spot allocation, CONCURRENCY on allocation'],
-  ['Elevator system','OOD','Scheduling strategy + State. Multiple cars is the follow-up'],
-  ['Vending machine','OOD','STATE PATTERN. If you wrote a switch over an enum, you failed the point'],
-  ['ATM','OOD','State + transaction integrity + note dispensing (a small greedy/DP)'],
-  ['Library / inventory management','OOD','Deliberately boring. JPM-flavoured. Get the entities clean'],
-  ['Booking system (BookMyShow)','OOD','THE RACE CONDITION IS THE INTERVIEW. Seat hold with TTL, optimistic vs pessimistic, payment failing after the hold'],
-  ['Splitwise','OOD','Balance simplification — LC 465 is the algorithmic core'],
-  ['Tic-tac-toe / chess','OOD','Command for undo; efficient win-check (LC 348)'],
-  ['Notification system','OOD','Strategy per channel, Observer for subscribers, retry with backoff'],
-  ['Rate limiter / logger / cache as objects','OOD','Bridges into system design; LRU is the classic'],
-  ['Ordering system','OOD','Amazon. Order state machine, inventory reservation'],
-  ['SOLID: write a 10-line violation and its fix for each of the five','concept','Not definitions — refactors'],
-  ['Implement Strategy, Factory, Observer, State — small but runnable','concept','']
+PLAN.lldFramework = 'clarify requirements → identify entities → relationships and cardinality → define interfaces on the axes of change → implement the core flow → state the concurrency story → SHOW ONE EXTENSION. That last step is the highest-scoring thirty seconds of the round.';
+
+/* ============================================================= PROBLEMS === */
+
+PLAN.lldProblems = [
+
+{id:'parking', name:'Parking Lot', tier:'b', flavour:'OOD', mins:45,
+ who:'Amazon · Microsoft · Adobe · JPM. The most-asked LLD problem there is.',
+ asked:[
+  'Design a parking lot.',
+  'Design a multi-floor parking system with different vehicle sizes and pricing.',
+  'How do you allocate the nearest available spot?',
+  'Two cars arrive at the same instant and one spot is left. What happens?'
  ],
- c:[
-  ['Ride-hailing (driver matching)','Machine 90m','UBER ACTUAL ROUND. Matching strategy, state machine, geo lookup — and you must FINISH'],
-  ['Food delivery / cart & checkout','Machine','Flipkart flavour. Many entities, tight clock'],
-  ['Snake / game simulation','Machine','Tick loop, collision, growth. Tests plain execution speed'],
-  ['In-memory key-value store with TTL','Machine','Expiry strategy: lazy vs active sweep'],
-  ['In-memory file system','Hybrid','LC 588. Tree + design + path parsing'],
-  ['Design Tic-Tac-Toe (efficient)','Hybrid','LC 348. Design PLUS the O(1) win-check'],
-  ['LRU / LFU cache','Hybrid','LC 146 / 460. Design PLUS the data-structure insight'],
-  ['Max frequency stack','Hybrid','LC 895. Uber'],
-  ['Exam room','Hybrid','LC 855. Uber. Design + ordered set'],
-  ['Snapshot array / versioned store','Hybrid','LC 1146 / 981'],
-  ['Splitwise balance settlement','Hybrid','LC 465 — design PLUS bitmask DP'],
-  ['Text editor with undo/redo','Machine','Command + a rope or gap buffer if pushed'],
-  ['Machine-coding drill: finish under the clock x3','Machine','Learning to SHIP in 90 minutes'],
-  ['Amazon LP: 15 STAR stories, real numbers, under 2 min each, "I" not "we"','concept','LP is roughly half of Amazon signal. Prepare "biggest failure" and "disagreed with a manager" specifically']
- ]
-};
+ clarify:[
+  'How many floors, and are spot sizes fixed per floor?',
+  'Vehicle types — bike, car, truck? Can a car take a truck spot?',
+  'Pricing: flat hourly, or per vehicle type, or slab-based?',
+  'Do we need entry and exit gates as first-class objects, or just park/unpark?',
+  'Payment: cash, card, both? Is payment in scope at all?'
+ ],
+ entities:[
+  ['ParkingLot','class','The facade. Holds floors, exposes park() and unpark().'],
+  ['ParkingFloor','class','Holds spots, knows its own availability counts per size.'],
+  ['ParkingSpot','class','id, size, occupied flag, current vehicle. The unit of contention.'],
+  ['Vehicle','abstract class','licensePlate, VehicleType. Car / Bike / Truck extend it.'],
+  ['VehicleType','enum','BIKE, CAR, TRUCK — with the spot sizes each may occupy.'],
+  ['SpotSize','enum','SMALL, MEDIUM, LARGE.'],
+  ['Ticket','class','id, spot, vehicle, entryTime, exitTime. Immutable except exit.'],
+  ['PricingStrategy','interface','fee(Ticket) — the first axis of change.'],
+  ['SpotAllocationStrategy','interface','findSpot(VehicleType) — nearest, first-free, per-floor.'],
+  ['PaymentProcessor','interface','Optional. Say if you are excluding it.']
+ ],
+ patterns:[
+  ['Strategy','PricingStrategy and SpotAllocationStrategy — the two things that always change.'],
+  ['Factory','VehicleFactory creating Car/Bike/Truck from a type, so callers never name concretes.'],
+  ['Singleton','ParkingLot itself, arguably. Say out loud that injection is usually better and more testable.'],
+  ['Observer','Optional: display boards subscribing to availability changes.']
+ ],
+ code:[
+  ['The extension axis that wins the round',
+   ['public interface PricingStrategy {',
+    '    BigDecimal fee(Ticket ticket);',
+    '}',
+    '',
+    'public class HourlyPricing implements PricingStrategy {',
+    '    private final Map<VehicleType, BigDecimal> ratePerHour;',
+    '    public BigDecimal fee(Ticket t) {',
+    '        long hours = Math.max(1, Duration.between(t.entry(), t.exit()).toHours());',
+    '        return ratePerHour.get(t.vehicle().type()).multiply(BigDecimal.valueOf(hours));',
+    '    }',
+    '}',
+    '',
+    '// weekend pricing, EV discount, first-hour-free: a new class, zero edits'],
+   'When they say "now add weekend pricing", you add one class. If pricing were a switch inside ParkingLot, you would be editing the core class - which is the Open/Closed violation they are testing for.'],
+  ['Allocation without a race',
+   ['public class ParkingLot {',
+    '    private final SpotAllocationStrategy allocator;',
+    '',
+    '    public Optional<Ticket> park(Vehicle v) {',
+    '        for (ParkingSpot spot : allocator.candidates(v.type())) {',
+    '            if (spot.tryOccupy(v)) {                 // atomic - see below',
+    '                return Optional.of(new Ticket(spot, v, Instant.now()));',
+    '            }',
+    '        }',
+    '        return Optional.empty();                     // lot full',
+    '    }',
+    '}',
+    '',
+    'public class ParkingSpot {',
+    '    private final AtomicReference<Vehicle> occupant = new AtomicReference<>();',
+    '',
+    '    public boolean tryOccupy(Vehicle v) {',
+    '        return occupant.compareAndSet(null, v);      // exactly one winner',
+    '    }',
+    '    public void release() { occupant.set(null); }',
+    '}'],
+   'Note there is NO global lock. Contention is per spot, so two cars heading for different spots never block each other. compareAndSet means the loser simply tries the next candidate instead of failing the request.']
+ ],
+ concurrency:[
+  ['Two cars, one remaining spot','compareAndSet on the spot. One wins; the loser continues the loop to the next candidate, and only reports "full" after exhausting all of them.'],
+  ['synchronized on park() — why it is wrong','It is correct and it serialises the entire lot. A thousand-spot lot would process one car at a time. Lock the spot, not the lot.'],
+  ['Availability counters drifting','If you cache a per-floor free count, it must be updated atomically with occupation, or use an AtomicInteger and accept that reads are a hint, not a guarantee.']
+ ],
+ extend:[
+  ['"Now add electric vehicles with charging spots"','A new SpotSize or a Boolean capability on the spot, a new VehicleType, and an allocation strategy that prefers charging spots for EVs. No existing class changes.'],
+  ['"Now support monthly pass holders"','A new PricingStrategy returning zero, plus a reserved-spot allocation strategy. Say this out loud — it demonstrates the design holds.'],
+  ['"Now make it multi-lot across a city"','ParkingLot becomes one node; add a LotDirectory keyed by location. The spot-level locking still holds because contention is local.'],
+  ['"Show me the display board at the entrance"','Observer: the board subscribes to spot occupation events. Do not have the board poll.']
+ ],
+ cross:[
+  ['Why an interface for pricing rather than a method?','Because pricing is the requirement most likely to change, and it changes for reasons unrelated to parking. Separating it means a pricing change never risks the allocation code.'],
+  ['How do you find the NEAREST spot?','That is the allocation strategy. Keep a per-floor sorted structure or a priority queue keyed by distance from the entrance. Swapping to "first free" is then a one-line change.'],
+  ['What if the ticket is lost?','A business rule, not a design problem — flat penalty fee, look up by licence plate. Say that you would confirm the rule rather than invent it.'],
+  ['Where would this break at scale?','The in-memory spot map. In a real system the spot state lives in a database and tryOccupy becomes UPDATE ... WHERE occupied = false, checking rows-affected. The design shape is identical; only the atomic primitive changes.'],
+  ['Would you use a Singleton for ParkingLot?','I would inject it instead. Singleton makes testing painful and hides the dependency. If they push, implement it — but state the trade-off.']
+ ],
+ fail:[
+  'A switch over vehicle type inside the pricing method. This is the exact Open/Closed violation being tested.',
+  'synchronized on the whole park() method.',
+  'Forgetting the "lot is full" path entirely.',
+  'Modelling Ticket as mutable everywhere, so the entry time can be changed after the fact.',
+  'Spending 30 minutes on class diagrams and never writing an allocation method.'
+ ]},
+
+{id:'elevator', name:'Elevator System', tier:'b', flavour:'OOD', mins:50,
+ who:'Amazon · Microsoft · Adobe. The scheduling discussion is the whole round.',
+ asked:[
+  'Design an elevator system.',
+  'Design elevators for a 50-floor building with 4 cars.',
+  'Someone presses 5 while the lift is going up from 2 to 8. What happens?',
+  'How would you change the scheduling algorithm without touching the elevator class?'
+ ],
+ clarify:[
+  'How many elevators and how many floors?',
+  'Are there external (floor) and internal (car) buttons? They behave differently.',
+  'Any special modes — express, service, fire?',
+  'Optimising for average wait time, or for throughput?',
+  'Do we simulate time, or is this event-driven?'
+ ],
+ entities:[
+  ['ElevatorSystem','class','The facade. Receives requests, delegates to the dispatcher.'],
+  ['Elevator (Car)','class','id, currentFloor, Direction, State, the set of target floors.'],
+  ['Direction','enum','UP, DOWN, IDLE.'],
+  ['ElevatorState','interface','Moving / Stopped / DoorsOpen / Maintenance — the State pattern.'],
+  ['Request','class','sourceFloor, destinationFloor, direction, timestamp.'],
+  ['ExternalRequest / InternalRequest','class','Hall call versus car call. Different routing rules.'],
+  ['SchedulingStrategy','interface','chooseElevator(Request, List<Elevator>) — the axis of change.'],
+  ['Door','class','Optional but shows care: open, close, obstruction.'],
+  ['DisplayPanel','class','Observer on elevator state.']
+ ],
+ patterns:[
+  ['Strategy','SchedulingStrategy — FCFS, nearest-car, SCAN/LOOK. The interviewer will ask you to swap it.'],
+  ['State','Elevator behaviour differs by state. Moving ignores door-open; DoorsOpen ignores movement. A switch over an enum is the wrong answer here.'],
+  ['Observer','Display panels and floor indicators subscribe to elevator movement.'],
+  ['Command','Optional: requests as command objects, queued and cancellable.']
+ ],
+ code:[
+  ['State, not a switch over an enum',
+   ['public interface ElevatorState {',
+    '    void openDoors(Elevator e);',
+    '    void move(Elevator e);',
+    '    default String name() { return getClass().getSimpleName(); }',
+    '}',
+    '',
+    'public class MovingState implements ElevatorState {',
+    '    public void openDoors(Elevator e) {',
+    '        throw new IllegalStateException("cannot open doors while moving");',
+    '    }',
+    '    public void move(Elevator e) { e.stepTowardsNextTarget(); }',
+    '}',
+    '',
+    'public class DoorsOpenState implements ElevatorState {',
+    '    public void openDoors(Elevator e) { /* already open, no-op */ }',
+    '    public void move(Elevator e) { e.setState(new MovingState()); e.stepTowardsNextTarget(); }',
+    '}'],
+   'Illegal transitions become impossible by construction rather than by an if-check someone forgets. When they ask "what if the doors are told to open mid-travel", the answer is already in the type system.'],
+  ['The SCAN scheduler — keep going, serve on the way',
+   ['public class LookScheduling implements SchedulingStrategy {',
+    '',
+    '    public Elevator choose(Request r, List<Elevator> cars) {',
+    '        return cars.stream()',
+    '            .filter(e -> e.canServe(r))          // moving toward r, or idle',
+    '            .min(Comparator.comparingInt(e -> Math.abs(e.currentFloor() - r.source())))',
+    '            .orElse(leastBusy(cars));',
+    '    }',
+    '}',
+    '',
+    '// inside Elevator',
+    'public boolean canServe(Request r) {',
+    '    if (direction == IDLE) return true;',
+    '    if (direction == UP)   return r.source() >= currentFloor && r.direction() == UP;',
+    '    return r.source() <= currentFloor && r.direction() == DOWN;',
+    '}'],
+   'canServe is where the "press 5 while going 2 to 8" question is answered: the request is on the path and in the same direction, so it is absorbed into the current sweep rather than queued for later.']
+ ],
+ concurrency:[
+  ['Two floors call simultaneously','The dispatcher is the single point of assignment. Make choose-and-assign atomic (synchronized on the dispatcher, or a single-threaded request queue) so one elevator is not double-assigned.'],
+  ['Request arrives while the elevator is mid-move','Target floors live in a thread-safe sorted set. Adding a floor already on the path is idempotent.'],
+  ['The event loop','A common clean answer: one thread per elevator consuming from a BlockingQueue of commands. Say it — it removes most locking questions at a stroke.']
+ ],
+ extend:[
+  ['"Now optimise for average wait instead of throughput"','A different SchedulingStrategy. The Elevator and Request classes do not change. That is the payoff of putting scheduling behind an interface.'],
+  ['"Add an express elevator serving only floors above 30"','A capability on the elevator plus a filter in canServe. No change to the dispatcher.'],
+  ['"Fire mode: all cars to the ground floor and stop"','A new state, plus a system-level mode that overrides the scheduler. Show it as a state transition, not a boolean flag.'],
+  ['"How would you test this?"','Simulate time with an injected clock and step the system tick by tick. Saying that you would inject the clock is a strong signal.']
+ ],
+ cross:[
+  ['Why State rather than an if/switch on a status field?','Because the number of illegal transitions grows quadratically with states, and each one becomes a forgotten if. With State the compiler and the object structure carry the rules.'],
+  ['Press 5 while going from 2 to 8 — walk me through it.','5 is above the current floor and the direction matches, so canServe is true. Insert 5 into the sorted target set; the sweep stops there naturally on the way to 8.'],
+  ['What if someone presses down on floor 5 while the car is going up?','It is not absorbed into this sweep. It stays in the pending pool and is served on the downward pass, or assigned to another car. Say why: absorbing it would make an upward passenger travel down.'],
+  ['How do you avoid starvation on a busy building?','Age the requests — after a threshold, promote a waiting request so a sweep must serve it. Mention it unprompted; it shows you thought past the happy path.'],
+  ['Four elevators, one request. How do you pick?','That is the strategy. Nearest suitable car by default; the real answer names the objective — minimising wait versus minimising total travel — and says they give different algorithms.']
+ ],
+ fail:[
+  'A switch over an ElevatorStatus enum instead of the State pattern.',
+  'Hard-coding the scheduling algorithm inside Elevator.',
+  'Not distinguishing external (hall) from internal (car) requests.',
+  'No answer for direction-mismatched requests.',
+  'Ignoring starvation entirely.'
+ ]},
+
+{id:'vending', name:'Vending Machine', tier:'b', flavour:'OOD', mins:40,
+ who:'Amazon · Adobe · Microsoft. The canonical State-pattern question.',
+ asked:[
+  'Design a vending machine.',
+  'Design a vending machine that handles coins, refunds and out-of-stock.',
+  'The user presses the button before inserting money. What happens?',
+  'How do you dispense the right change?'
+ ],
+ clarify:[
+  'Cash only, or card as well?',
+  'Do we need to return change, and with which denominations?',
+  'What happens on a mid-transaction cancel?',
+  'Can the machine be restocked while a transaction is in flight?'
+ ],
+ entities:[
+  ['VendingMachine','class','Context object. Holds current state, inventory, and inserted amount.'],
+  ['VendingState','interface','idle / hasMoney / dispensing / outOfService. The State pattern.'],
+  ['Inventory','class','Map<Slot, ItemStack>. Knows counts, not prices.'],
+  ['Item','class','code, name, price.'],
+  ['Slot','class','A physical position holding one item type.'],
+  ['Coin / Note','enum','Denominations, with values. Enums make change-making trivial.'],
+  ['CashRegister','class','Tracks denominations available for change.'],
+  ['ChangeStrategy','interface','makeChange(amount) — greedy or exact-DP.']
+ ],
+ patterns:[
+  ['State','THE point of this problem. IdleState, HasMoneyState, DispensingState, OutOfServiceState.'],
+  ['Strategy','ChangeStrategy — greedy by default, exact-change DP if they push.'],
+  ['Singleton','The machine itself, arguably.'],
+  ['Command','Optional: each user action as a command, giving you a transaction log for free.']
+ ],
+ code:[
+  ['State handles what is legal, not the machine',
+   ['public interface VendingState {',
+    '    void insertCoin(VendingMachine m, Coin c);',
+    '    void selectItem(VendingMachine m, String code);',
+    '    void dispense(VendingMachine m);',
+    '    void cancel(VendingMachine m);',
+    '}',
+    '',
+    'public class IdleState implements VendingState {',
+    '    public void insertCoin(VendingMachine m, Coin c) {',
+    '        m.addToBalance(c.value());',
+    '        m.setState(new HasMoneyState());',
+    '    }',
+    '    public void selectItem(VendingMachine m, String code) {',
+    '        throw new IllegalStateException("insert money first");   // the classic question',
+    '    }',
+    '    public void dispense(VendingMachine m) { throw new IllegalStateException("nothing selected"); }',
+    '    public void cancel(VendingMachine m)   { /* nothing to refund */ }',
+    '}'],
+   '"The user presses the button before inserting money" is answered by the state, not by a guard clause scattered through the machine. Every state implements all four actions, so no transition is accidentally unhandled.'],
+  ['Change-making, and being honest about greedy',
+   ['public class GreedyChange implements ChangeStrategy {',
+    '    public Optional<List<Coin>> make(int amount, Map<Coin,Integer> available) {',
+    '        List<Coin> out = new ArrayList<>();',
+    '        for (Coin c : Coin.descending()) {',
+    '            while (amount >= c.value() && available.get(c) > 0) {',
+    '                out.add(c); amount -= c.value();',
+    '                available.merge(c, -1, Integer::sum);',
+    '            }',
+    '        }',
+    '        return amount == 0 ? Optional.of(out) : Optional.empty();  // cannot make change',
+    '    }',
+    '}'],
+   'Greedy is correct for canonical currency systems and WRONG in general - with coins {1, 3, 4} making 6 greedily gives 4+1+1 instead of 3+3. Saying that unprompted, and noting the DP alternative, is a genuine differentiator on this question.']
+ ],
+ concurrency:[
+  ['Two users on one machine','Physically impossible, so say so — but if they push, the machine is a single-threaded state machine and actions are serialised through one queue.'],
+  ['Restocking during a transaction','Inventory updates must be atomic against the dispense check. A synchronized inventory or a ConcurrentHashMap with atomic decrement.'],
+  ['Dispense succeeds, change fails','Decide the policy: refuse the sale up front if change cannot be made. Checking change availability BEFORE dispensing is the correct order and interviewers look for it.']
+ ],
+ extend:[
+  ['"Add card payment"','A PaymentMethod interface with Cash and Card implementations. The states stay the same; only how balance is credited changes.'],
+  ['"Machine runs out of change"','A pre-check before accepting a selection, plus an exact-change-only mode as a state or a flag on the machine.'],
+  ['"Add a maintenance mode"','A new state. It rejects every user action and allows restocking. That is the whole change.'],
+  ['"Log every transaction"','Observer on state transitions, or Command objects appended to a log.']
+ ],
+ cross:[
+  ['Why State and not a switch on an enum?','Because each state must answer all four actions, so a new state forces you to decide every case. A switch lets you silently forget one, and that is exactly how the "press before paying" bug ships.'],
+  ['Is greedy change always correct?','No. It is correct for canonical denominations like INR or USD, and wrong for arbitrary sets. With {1,3,4} making 6, greedy gives three coins where two suffice. The general solution is coin-change DP.'],
+  ['User cancels after inserting money.','The cancel action on HasMoneyState refunds the balance and returns to Idle. Every state defines cancel, which is why nothing is missed.'],
+  ['Item is out of stock but money is in.','Reject the selection, keep the balance, stay in HasMoneyState so the user can choose something else or cancel.'],
+  ['How would you unit test this?','Drive the state machine directly: assert that selectItem on IdleState throws, that insertCoin moves to HasMoneyState. State objects are trivially testable in isolation, which is another argument for the pattern.']
+ ],
+ fail:[
+  'A giant switch statement over a status enum. This problem exists to test the State pattern.',
+  'Dispensing before verifying change can be made.',
+  'Claiming greedy change is universally correct.',
+  'No cancel or refund path.',
+  'Prices stored on the slot AND the item, so they can disagree.'
+ ]}
+
+];
+
+PLAN.lldProblems = PLAN.lldProblems.concat([
+
+{id:'booking', name:'Movie Booking (BookMyShow)', tier:'b', flavour:'OOD + concurrency', mins:50,
+ who:'AMAZON favourite · Adobe · Expedia (rooms) · Flipkart. Chosen specifically because of the race condition.',
+ asked:[
+  'Design BookMyShow / Ticketmaster.',
+  'Design seat booking for a cinema.',
+  'Two users click the same seat at the same instant. Walk me through it.',
+  'The user holds seats and then abandons the payment. What happens?'
+ ],
+ clarify:[
+  'Can a user hold seats before paying, and for how long?',
+  'Is overbooking ever acceptable? (for cinemas, no)',
+  'Multiple screens per cinema, multiple shows per screen — how far do we model?',
+  'Seat categories and dynamic pricing in scope?',
+  'What happens if payment fails after the hold?'
+ ],
+ entities:[
+  ['City / Cinema / Screen','class','The location hierarchy. Cinema has 1..* Screens.'],
+  ['Movie','class','id, title, duration, language.'],
+  ['Show','class','movie, screen, startTime. THE unit that owns seat availability.'],
+  ['Seat','class','row, number, SeatCategory. Physical, belongs to a Screen.'],
+  ['ShowSeat','class','seat + show + SeatStatus. The unit of contention — NOT Seat itself.'],
+  ['SeatStatus','enum','AVAILABLE, HELD, BOOKED.'],
+  ['SeatHold','class','showSeats, userId, expiresAt. The TTL lives here.'],
+  ['Booking','class','id, user, showSeats, amount, BookingStatus.'],
+  ['BookingService','class','The facade: hold, confirm, release.'],
+  ['PricingStrategy','interface','Category-based, time-based, demand-based.']
+ ],
+ patterns:[
+  ['Strategy','PricingStrategy — weekday vs weekend, premium seats, dynamic pricing.'],
+  ['State','Booking lifecycle: CREATED, HELD, PAID, CONFIRMED, CANCELLED, EXPIRED.'],
+  ['Observer','Notify the user on confirmation; notify the screen display on availability change.'],
+  ['Factory','Optional, for creating ShowSeats when a Show is scheduled.']
+ ],
+ code:[
+  ['ShowSeat is the unit of contention — this is the key modelling insight',
+   ['// WRONG: Seat holds the status. Seat 14A is shared across every show,',
+    '// so booking it for the 6pm show would mark it taken for the 9pm show too.',
+    '',
+    '// RIGHT: status belongs to (seat, show)',
+    'public class ShowSeat {',
+    '    private final Seat seat;',
+    '    private final Show show;',
+    '    private final AtomicReference<SeatStatus> status =',
+    '            new AtomicReference<>(SeatStatus.AVAILABLE);',
+    '    private volatile String heldBy;',
+    '    private volatile Instant holdExpiry;',
+    '',
+    '    public boolean tryHold(String userId, Duration ttl) {',
+    '        if (status.compareAndSet(SeatStatus.AVAILABLE, SeatStatus.HELD)) {',
+    '            heldBy = userId;',
+    '            holdExpiry = Instant.now().plus(ttl);',
+    '            return true;',
+    '        }',
+    '        return releaseIfExpiredThenRetry(userId, ttl);   // lazy expiry, see below',
+    '    }',
+    '}'],
+   'Putting status on Seat instead of ShowSeat is the single most common modelling error on this question, and it is invisible until the interviewer asks about a second show.'],
+  ['All-or-nothing hold across several seats',
+   ['public Optional<SeatHold> hold(List<ShowSeat> requested, String userId) {',
+    '    List<ShowSeat> acquired = new ArrayList<>();',
+    '    // deterministic order prevents deadlock between two overlapping requests',
+    '    requested.sort(Comparator.comparing(ShowSeat::id));',
+    '',
+    '    for (ShowSeat s : requested) {',
+    '        if (s.tryHold(userId, HOLD_TTL)) {',
+    '            acquired.add(s);',
+    '        } else {',
+    '            acquired.forEach(ShowSeat::release);   // roll back partial holds',
+    '            return Optional.empty();',
+    '        }',
+    '    }',
+    '    return Optional.of(new SeatHold(acquired, userId, Instant.now().plus(HOLD_TTL)));',
+    '}'],
+   'Two things interviewers look for: the rollback of partial holds (otherwise you strand seats nobody can book), and the deterministic sort (otherwise two users each holding one of the other pair deadlock).'],
+  ['Expiry: lazy plus sweeper, not sweeper alone',
+   ['// lazy - checked on every access, so an expired hold never blocks a sale',
+    'private boolean releaseIfExpiredThenRetry(String userId, Duration ttl) {',
+    '    if (status.get() == SeatStatus.HELD && Instant.now().isAfter(holdExpiry)) {',
+    '        if (status.compareAndSet(SeatStatus.HELD, SeatStatus.AVAILABLE)) {',
+    '            return tryHold(userId, ttl);',
+    '        }',
+    '    }',
+    '    return false;',
+    '}',
+    '',
+    '// sweeper - so seats free up for BROWSING users too',
+    '@Scheduled(fixedDelay = 30_000)',
+    'public void sweepExpiredHolds() { ... }'],
+   'A sweeper alone leaves a window where an expired hold still blocks a sale. Lazy alone means the seat looks taken to anyone browsing. You need both, and saying so is the mature answer.']
+ ],
+ concurrency:[
+  ['Two users click seat 14A simultaneously','compareAndSet from AVAILABLE to HELD. Exactly one wins; the other gets a clean "seat no longer available". Never read-then-write.'],
+  ['Partial hold on a multi-seat request','Roll back everything acquired so far. Otherwise seats sit HELD with no owner until the TTL expires.'],
+  ['Two users request overlapping seat sets in opposite order','Deadlock risk. Sort by seat id before acquiring so every request takes locks in the same order.'],
+  ['Hold expires mid-payment','State the policy. Either fail the payment with a clear message, or extend the hold once when payment begins. Silently charging for a released seat is the failure that ships.'],
+  ['At database scale','The same shape: UPDATE show_seat SET status = HELD WHERE id = ? AND status = AVAILABLE, then check rows-affected. Or SELECT ... FOR UPDATE if you need to hold several rows.']
+ ],
+ extend:[
+  ['"Now add dynamic pricing based on demand"','A new PricingStrategy reading the current occupancy ratio. Booking and seat classes untouched.'],
+  ['"Support seat maps with couple seats and wheelchair spaces"','SeatCategory plus a capability flag; the allocation and validation rules read the flag.'],
+  ['"Handle a whole show being cancelled"','A state transition on Show that cascades to bookings, plus refund events. Show it as a state machine, not a boolean.'],
+  ['"Ten thousand users hitting one popular show"','That single Show becomes the hot object. Shard holds by seat id, or admit users through a queue. Say that the design is unchanged; only the contention management moves.']
+ ],
+ cross:[
+  ['Why ShowSeat rather than putting status on Seat?','Because a seat exists in the cinema, but availability exists per show. Status on Seat would make booking 14A at 6pm also book it at 9pm.'],
+  ['Optimistic or pessimistic here?','For a specific named seat under high contention, pessimistic — a compare-and-set or a row lock on that seat. Optimistic retry thrashes when everyone wants the same seat.'],
+  ['What if the payment gateway times out and you do not know the outcome?','Do not release the hold. Mark the booking PENDING, reconcile against the gateway, and make the confirm operation idempotent so a retry does not double-book.'],
+  ['How do you stop one user holding every seat?','A per-user hold limit and a rate limit. A design question worth raising unprompted — it shows product thinking.'],
+  ['Where does this design break first?','The in-memory ShowSeat map. Move it to a database with a conditional update; the concurrency argument transfers unchanged.']
+ ],
+ fail:[
+  'Status on Seat instead of ShowSeat.',
+  'Read-then-write on availability — the exact race being tested.',
+  'No rollback of partial holds.',
+  'No answer for payment failing after the hold.',
+  'A global lock on the show, which serialises every booking in the cinema.'
+ ]},
+
+{id:'splitwise', name:'Splitwise', tier:'b', flavour:'OOD + algorithm', mins:45,
+ who:'Amazon · Uber · Flipkart. The settlement algorithm is the hybrid element.',
+ asked:[
+  'Design Splitwise.',
+  'Design an expense sharing app with equal, exact and percentage splits.',
+  'How do you minimise the number of transactions to settle a group?',
+  'Show me the balance sheet for a user.'
+ ],
+ clarify:[
+  'Split types — equal, exact amounts, percentages, shares?',
+  'Do we settle within groups only, or globally across all friends?',
+  'Multi-currency?',
+  'Do we need simplified debts (A owes C directly instead of A→B→C)?'
+ ],
+ entities:[
+  ['User','class','id, name, email.'],
+  ['Group','class','name, members. Optional but usually asked for.'],
+  ['Expense','class','paidBy, amount, description, SplitStrategy, participants.'],
+  ['Split','abstract class','user + amount owed. EqualSplit / ExactSplit / PercentSplit.'],
+  ['SplitStrategy','interface','validate() and computeSplits(amount, participants).'],
+  ['BalanceSheet','class','Map<userA, Map<userB, amount>> — who owes whom.'],
+  ['ExpenseService','class','The facade: addExpense, settleUp, showBalances.'],
+  ['SettlementStrategy','interface','Minimise transactions, or simple pairwise netting.']
+ ],
+ patterns:[
+  ['Strategy','SplitStrategy for the split types; SettlementStrategy for simplification.'],
+  ['Factory','SplitFactory creating the right Split from a type.'],
+  ['Observer','Notify members when an expense is added or settled.'],
+  ['Command','Optional: expenses as commands, giving undo for free.']
+ ],
+ code:[
+  ['Split types behind one interface, with validation',
+   ['public interface SplitStrategy {',
+    '    List<Split> split(BigDecimal total, List<User> participants, List<BigDecimal> args);',
+    '}',
+    '',
+    'public class PercentSplit implements SplitStrategy {',
+    '    public List<Split> split(BigDecimal total, List<User> users, List<BigDecimal> pcts) {',
+    '        BigDecimal sum = pcts.stream().reduce(BigDecimal.ZERO, BigDecimal::add);',
+    '        if (sum.compareTo(new BigDecimal("100")) != 0)',
+    '            throw new IllegalArgumentException("percentages must total 100");',
+    '        // ... and the rounding problem below',
+    '    }',
+    '}'],
+   'Validation belongs in the strategy, because each split type has a different invariant: exact must sum to the total, percent must sum to 100, equal has none.'],
+  ['The rounding trap nobody mentions',
+   ['// 100.00 split equally three ways = 33.333...',
+    '// naive rounding gives 33.33 x 3 = 99.99. One cent has vanished.',
+    '',
+    'public List<Split> splitEqually(BigDecimal total, List<User> users) {',
+    '    int n = users.size();',
+    '    BigDecimal each = total.divide(BigDecimal.valueOf(n), 2, RoundingMode.DOWN);',
+    '    BigDecimal remainder = total.subtract(each.multiply(BigDecimal.valueOf(n)));',
+    '',
+    '    List<Split> out = new ArrayList<>();',
+    '    for (int i = 0; i < n; i++) {',
+    '        BigDecimal amt = each;',
+    '        if (remainder.compareTo(BigDecimal.ZERO) > 0) {   // give the odd cents away',
+    '            amt = amt.add(new BigDecimal("0.01"));',
+    '            remainder = remainder.subtract(new BigDecimal("0.01"));',
+    '        }',
+    '        out.add(new Split(users.get(i), amt));',
+    '    }',
+    '    return out;',
+    '}'],
+   'Raising this unprompted is a strong signal. It also settles the "why BigDecimal and never double" question before it is asked - floating point cannot represent 0.1 and money must balance exactly.'],
+  ['Debt simplification — the algorithmic core',
+   ['// net every user to a single figure, then greedily match',
+    'public List<Transaction> simplify(Map<User, BigDecimal> net) {',
+    '    PriorityQueue<Entry> creditors = new PriorityQueue<>(byAmountDesc);',
+    '    PriorityQueue<Entry> debtors   = new PriorityQueue<>(byAmountDesc);',
+    '    net.forEach((u, amt) -> {',
+    '        if (amt.signum() > 0) creditors.add(new Entry(u, amt));',
+    '        else if (amt.signum() < 0) debtors.add(new Entry(u, amt.negate()));',
+    '    });',
+    '',
+    '    List<Transaction> out = new ArrayList<>();',
+    '    while (!creditors.isEmpty() && !debtors.isEmpty()) {',
+    '        Entry c = creditors.poll(), d = debtors.poll();',
+    '        BigDecimal settled = c.amount.min(d.amount);',
+    '        out.add(new Transaction(d.user, c.user, settled));',
+    '        if (c.amount.compareTo(settled) > 0) creditors.add(c.minus(settled));',
+    '        if (d.amount.compareTo(settled) > 0) debtors.add(d.minus(settled));',
+    '    }',
+    '    return out;',
+    '}'],
+   'This greedy heap approach gives at most n-1 transactions and is what you should write. Be honest that MINIMUM transactions is NP-hard (it is LC 465, solved with bitmask DP for small n) - knowing the distinction is the differentiator.']
+ ],
+ concurrency:[
+  ['Two expenses added to the same group simultaneously','Balance updates must be atomic. Lock per group, or make the balance sheet an append-only ledger of expenses with balances derived on read.'],
+  ['Derived versus stored balances','Storing a running balance is fast and can drift. Deriving from the expense list is always correct and slower. The mature answer: store expenses as the source of truth, cache the balance, and rebuild on demand.'],
+  ['Settle-up racing an expense','Settlement should record the balance it settled against, so a concurrent expense does not silently vanish.']
+ ],
+ extend:[
+  ['"Now support multi-currency"','Money becomes a value object of amount plus currency; expenses store the FX rate used AT THE TIME. Never recompute historic amounts at today rate.'],
+  ['"Add group-level simplification"','SettlementStrategy already isolates this. Swap greedy netting for a per-group variant.'],
+  ['"Show a per-user activity feed"','Observer on expense events, or derive it from the append-only expense log.'],
+  ['"Support recurring expenses"','A scheduled job creating expenses from a template. Say it does not change the core model.']
+ ],
+ cross:[
+  ['Why BigDecimal and not double?','Floating point cannot represent 0.1 exactly, so sums drift. Money must balance to the cent, and BigDecimal with an explicit RoundingMode makes rounding a decision rather than an accident.'],
+  ['100 split three ways — where does the extra cent go?','Somebody gets 33.34. Choose a deterministic rule — the payer, or the first participant — and apply it consistently so the total always reconciles.'],
+  ['Is your simplification optimal?','No. Greedy netting gives at most n-1 transactions, which is good and fast. The true minimum is NP-hard; for small groups you could use bitmask DP, which is LC 465.'],
+  ['A owes B, B owes C, C owes A, all £10. What happens?','It nets to zero. Simplification removes the cycle entirely and produces no transactions, which is the whole value of the feature.'],
+  ['Where does the balance sheet live?','I would treat expenses as the source of truth and the balance as a derived, cached view — so a bug in balance maintenance is recoverable by recomputation.']
+ ],
+ fail:[
+  'Using double for money.',
+  'Ignoring the rounding remainder so totals do not reconcile.',
+  'Claiming greedy settlement is optimal.',
+  'A single balance field per user instead of pairwise balances, losing who owes whom.',
+  'Validation logic duplicated across split types instead of living in each strategy.'
+ ]},
+
+{id:'tictactoe', name:'Tic-Tac-Toe & Chess', tier:'b', flavour:'OOD + algorithm', mins:45,
+ who:'Microsoft · Amazon (hybrid) · Adobe. Tic-tac-toe is the warm-up; chess is the extensibility test.',
+ asked:[
+  'Design tic-tac-toe. Now make the win-check O(1).',
+  'Design a chess game.',
+  'Add undo and redo.',
+  'How do you make it n-by-n, or support four players?'
+ ],
+ clarify:[
+  'Board size — fixed 3x3, or n-by-n with k-in-a-row?',
+  'Two players only, or more?',
+  'Do we need undo/redo, move history, replay?',
+  'Is an AI opponent in scope? (usually say no, then offer minimax if pushed)'
+ ],
+ entities:[
+  ['Game','class','The facade. Holds board, players, turn, GameState.'],
+  ['Board','class','The grid plus win detection.'],
+  ['Cell','class','position and occupant. For chess, holds a Piece.'],
+  ['Player','class','id, name, Symbol or Colour.'],
+  ['GameState','enum / interface','IN_PROGRESS, WIN, DRAW. State pattern if the phases have behaviour.'],
+  ['Move','class','from, to, player, captured. The Command object.'],
+  ['Piece','abstract class','(Chess) King, Queen, Rook... each with its own movement rule.'],
+  ['MoveValidator','interface','(Chess) The axis of change per piece type.'],
+  ['WinStrategy','interface','Row/column/diagonal for TTT; checkmate detection for chess.']
+ ],
+ patterns:[
+  ['Strategy','Movement rules per piece; win-condition per game variant.'],
+  ['Factory','PieceFactory creating pieces from a type character.'],
+  ['Command','Move objects with execute and undo. This is how you get undo/redo for free.'],
+  ['State','Game phase: in-progress, check, checkmate, stalemate.'],
+  ['Observer','Optional: UI or move log subscribing to board changes.']
+ ],
+ code:[
+  ['O(1) win check — the point of LC 348',
+   ['public class TicTacToe {',
+    '    private final int[] rows, cols;',
+    '    private int diag, antiDiag;',
+    '    private final int n;',
+    '',
+    '    // player 1 adds +1, player 2 adds -1. |count| == n means a win.',
+    '    public int move(int r, int c, int player) {',
+    '        int delta = (player == 1) ? 1 : -1;',
+    '        rows[r] += delta;',
+    '        cols[c] += delta;',
+    '        if (r == c)         diag     += delta;',
+    '        if (r + c == n - 1) antiDiag += delta;',
+    '',
+    '        if (Math.abs(rows[r]) == n || Math.abs(cols[c]) == n',
+    '         || Math.abs(diag)    == n || Math.abs(antiDiag) == n) return player;',
+    '        return 0;',
+    '    }',
+    '}'],
+   'The naive answer scans the board after every move, O(n^2). This is O(1) per move with O(n) space, and it is exactly what the Amazon hybrid round wants: a clean design PLUS the algorithmic insight.'],
+  ['Command gives you undo and redo',
+   ['public interface GameCommand {',
+    '    void execute(Board b);',
+    '    void undo(Board b);',
+    '}',
+    '',
+    'public class MoveCommand implements GameCommand {',
+    '    private final Position from, to;',
+    '    private Piece captured;              // remembered so undo can restore it',
+    '',
+    '    public void execute(Board b) {',
+    '        captured = b.pieceAt(to);',
+    '        b.place(to, b.remove(from));',
+    '    }',
+    '    public void undo(Board b) {',
+    '        b.place(from, b.remove(to));',
+    '        if (captured != null) b.place(to, captured);',
+    '    }',
+    '}',
+    '',
+    '// Deque<GameCommand> undoStack, redoStack'],
+   'Remembering the captured piece inside the command is what makes undo correct. Interviewers ask "now add undo" precisely to see whether your move representation is rich enough - a plain from/to pair is not.'],
+  ['Piece movement as a strategy, not a switch',
+   ['public abstract class Piece {',
+    '    protected final Colour colour;',
+    '    public abstract boolean canMove(Board b, Position from, Position to);',
+    '}',
+    '',
+    'public class Rook extends Piece {',
+    '    public boolean canMove(Board b, Position from, Position to) {',
+    '        if (from.row() != to.row() && from.col() != to.col()) return false;',
+    '        return b.isPathClear(from, to) && !b.hasOwnPiece(to, colour);',
+    '    }',
+    '}'],
+   'Adding a new piece is a new class. A switch over a piece-type enum inside Board is the Open/Closed violation this problem is designed to surface.']
+ ],
+ concurrency:[
+  ['Two players moving at once','Turn-based by definition, so enforce it: reject a move from the player whose turn it is not. That check IS the concurrency control.'],
+  ['Online multiplayer','Moves go through a single queue per game, applied in order. The game object is single-threaded; the network layer is not.'],
+  ['Shared game state','If several viewers observe, use an immutable board snapshot per move so readers never see a half-applied move.']
+ ],
+ extend:[
+  ['"Make it n-by-n with k-in-a-row"','The counter trick generalises for k == n. For k < n you need a directional scan from the last move — O(k) rather than O(1). Say that honestly; the naive claim that it still works is a trap.'],
+  ['"Add undo and redo"','Command objects plus two stacks. If your Move already stores the captured piece, this is nearly free — which is the reason to model it that way from the start.'],
+  ['"Add an AI opponent"','Minimax with alpha-beta pruning behind a Player interface, so a human and an AI are interchangeable.'],
+  ['"Support four players"','Symbol becomes a player id and the counters become per-player. Say what breaks: the +1/-1 trick only works for two.']
+ ],
+ cross:[
+  ['How do you check a win in O(1)?','Maintain per-row, per-column and two diagonal counters, incrementing by +1 or -1 by player. A magnitude equal to n means a win. O(1) per move.'],
+  ['Does that generalise to k-in-a-row on an n board?','No. Counters assume a full line. For k < n you scan the four directions outward from the last move, which is O(k) — still far better than rescanning the board.'],
+  ['Where does the movement rule for a piece live?','On the piece. A switch inside Board means every new piece edits Board, which is the violation being tested.'],
+  ['How would you detect checkmate?','King is in check AND no legal move removes the check. Generate legal moves, apply each to a copy, and test. Say it is expensive and that real engines optimise heavily.'],
+  ['What makes this design extensible?','Piece movement, win condition and player type each sit behind their own abstraction, so a variant like Chess960 or four-player changes one place each.']
+ ],
+ fail:[
+  'Rescanning the whole board after every move, then having no better answer when asked.',
+  'A switch over piece type inside Board.',
+  'A Move that stores only from and to, so undo cannot restore a capture.',
+  'Claiming the O(1) counter trick works for arbitrary k-in-a-row.',
+  'No turn validation.'
+ ]},
+
+{id:'notification', name:'Notification System', tier:'b', flavour:'OOD', mins:45,
+ who:'Amazon · Microsoft · Adobe. Bridges directly into the system design track.',
+ asked:[
+  'Design a notification service supporting email, SMS and push.',
+  'How do you stop a user receiving 200 notifications in a minute?',
+  'One channel provider goes down. What happens to the others?',
+  'How do you add a new channel without touching existing code?'
+ ],
+ clarify:[
+  'Which channels, and is the set fixed or extensible?',
+  'Do users have per-channel and per-category preferences?',
+  'Priority levels — does an OTP jump the queue ahead of marketing?',
+  'Delivery guarantees: at-least-once, and do we need read receipts?',
+  'Templating and localisation in scope?'
+ ],
+ entities:[
+  ['NotificationService','class','The facade: send(Notification).'],
+  ['Notification','class','recipient, category, priority, payload, template id.'],
+  ['Channel','interface','send(Notification) — Email, Sms, Push, InApp.'],
+  ['ChannelFactory','class','Resolves a channel from a type.'],
+  ['UserPreferences','class','Per-category, per-channel opt-in plus quiet hours.'],
+  ['RateLimiter','interface','Per-user, per-category throttling.'],
+  ['TemplateEngine','interface','Renders payload into channel-specific content.'],
+  ['RetryPolicy','class','Attempts, backoff, and when to give up.'],
+  ['DeadLetterQueue','class','Where a permanently failing notification goes.'],
+  ['NotificationStatus','enum','PENDING, SENT, DELIVERED, FAILED, SUPPRESSED.']
+ ],
+ patterns:[
+  ['Strategy','One implementation of Channel per delivery mechanism.'],
+  ['Factory','ChannelFactory, so callers never name a concrete channel.'],
+  ['Observer','Subscribers to domain events that trigger notifications.'],
+  ['Decorator','Stacking cross-cutting behaviour: retry wraps rate-limit wraps the raw channel.'],
+  ['Chain of Responsibility','The pre-send pipeline: preferences, then quiet hours, then rate limit, then dedup.'],
+  ['Builder','Notification has many optional fields — a natural Builder.']
+ ],
+ code:[
+  ['Channel as the extension point',
+   ['public interface Channel {',
+    '    ChannelType type();',
+    '    DeliveryResult send(Notification n);',
+    '    boolean supports(Notification n);     // e.g. SMS rejects rich payloads',
+    '}',
+    '',
+    'public class EmailChannel implements Channel {',
+    '    private final EmailClient client;',
+    '    private final TemplateEngine templates;',
+    '',
+    '    public DeliveryResult send(Notification n) {',
+    '        String body = templates.render(n.templateId(), n.payload());',
+    '        return client.send(n.recipient().email(), n.subject(), body);',
+    '    }',
+    '}',
+    '',
+    '// adding WhatsApp = one class + one enum value. Nothing else changes.'],
+   'This is the answer to "add a new channel without touching existing code", and it is why the interviewer asks the question.'],
+  ['The pre-send pipeline as a chain',
+   ['public interface SendFilter {',
+    '    // returns empty to continue, or a reason to suppress',
+    '    Optional<String> reject(Notification n, UserPreferences prefs);',
+    '}',
+    '',
+    'List<SendFilter> pipeline = List.of(',
+    '    new OptOutFilter(),        // user turned this category off',
+    '    new QuietHoursFilter(),    // 22:00-08:00, unless priority == CRITICAL',
+    '    new RateLimitFilter(),     // max N per user per window',
+    '    new DedupFilter()          // same content within the aggregation window',
+    ');',
+    '',
+    'for (SendFilter f : pipeline) {',
+    '    Optional<String> reason = f.reject(n, prefs);',
+    '    if (reason.isPresent()) return DeliveryResult.suppressed(reason.get());',
+    '}'],
+   'Each rule is independently testable and reorderable, and a new rule is a new class. Note the CRITICAL override on quiet hours: an OTP must ignore them, and saying so shows product judgement.'],
+  ['Per-channel isolation so one provider cannot sink the rest',
+   ['// separate queue and thread pool per channel',
+    'Map<ChannelType, ExecutorService> pools = Map.of(',
+    '    EMAIL, boundedPool(8, 500),',
+    '    SMS,   boundedPool(4, 200),',
+    '    PUSH,  boundedPool(16, 1000)',
+    ');',
+    '',
+    'pools.get(n.channel()).submit(() -> {',
+    '    try {',
+    '        retry.execute(() -> channel.send(n));',
+    '    } catch (PermanentFailure e) {',
+    '        dlq.publish(n, e);',
+    '    }',
+    '});'],
+   'This is the bulkhead pattern applied at the LLD level. One queue for all channels means a slow SMS provider stalls every email too - which is the exact failure the interviewer is probing for.']
+ ],
+ concurrency:[
+  ['One slow provider blocking everything','Separate bounded queue and thread pool per channel. Bulkhead isolation.'],
+  ['Duplicate sends on retry','Every notification carries an idempotency key; the channel or the provider dedupes on it. At-least-once delivery makes duplicates inevitable.'],
+  ['Rate-limit counters across threads','An atomic counter per user per window, or a token bucket with compare-and-set. Not a plain HashMap increment.'],
+  ['Aggregation window','Buffer per user, flush on a timer or on count. Needs a thread-safe buffer and a single flusher to avoid double-sending.']
+ ],
+ extend:[
+  ['"Add WhatsApp"','One Channel implementation plus an enum value. Say it out loud — this is the demonstration that the design holds.'],
+  ['"Digest 50 likes into one notification"','A DedupFilter plus an aggregation buffer keyed by user and category, flushed on a window.'],
+  ['"Guarantee OTPs are never delayed"','Priority queues per channel, and a CRITICAL priority that bypasses quiet hours and rate limits.'],
+  ['"Scale to millions per hour"','This is where LLD hands off to system design: the in-process queue becomes Kafka, the pools become consumer groups. The interfaces do not change.']
+ ],
+ cross:[
+  ['How do you add a channel without changing existing code?','Implement Channel and register it in the factory. Nothing that already exists is edited — that is Open/Closed in practice.'],
+  ['A user gets 200 notifications in a minute. Fix it.','Rate-limit filter per user per category, plus an aggregation window that digests repeats, plus quiet hours. And an unsubscribe path — a notification system without one is a product bug.'],
+  ['SMS provider is down. What happens to email?','Nothing, if each channel has its own queue and pool. If they share one, email backs up behind SMS — that is the bulkhead argument.'],
+  ['At-least-once means duplicates. How do you handle that?','An idempotency key on each notification, deduplicated at the channel or by the provider.'],
+  ['Where does this stop being an LLD problem?','When volume forces a real broker and horizontal workers. The Channel and filter interfaces survive the transition unchanged, which is a good sign about the design.']
+ ],
+ fail:[
+  'A switch over channel type instead of a Channel interface.',
+  'One shared queue for all channels.',
+  'No user preferences or opt-out.',
+  'No retry, or retry with no cap and no DLQ.',
+  'Quiet hours applied to OTPs.'
+ ]}
+
+]);
+
+PLAN.lldProblems = PLAN.lldProblems.concat([
+
+{id:'atm', name:'ATM', tier:'b', flavour:'OOD', mins:40,
+ who:'JPM · Amex · Amazon. State plus a small algorithm, and money makes the edge cases real.',
+ asked:[
+  'Design an ATM.',
+  'How do you dispense 3,700 with the notes you have?',
+  'The cash is dispensed but the network drops before the balance updates. What happens?',
+  'Card is inserted but the user walks away. What then?'
+ ],
+ clarify:[
+  'Which operations — withdraw, deposit, balance, transfer?',
+  'Which note denominations, and must we minimise the note count?',
+  'Is the bank backend in scope, or do we stub it?',
+  'Do we handle card retention after three wrong PINs?'
+ ],
+ entities:[
+  ['ATM','class','Context. Holds state, cash dispenser, card reader.'],
+  ['AtmState','interface','Idle / CardInserted / Authenticated / Dispensing / OutOfService.'],
+  ['Card','class','number, expiry. No PIN — that is verified by the bank.'],
+  ['Account','class','id, balance. Lives behind the BankService, not in the ATM.'],
+  ['Transaction','abstract class','Withdraw / Deposit / BalanceEnquiry / Transfer.'],
+  ['CashDispenser','class','Holds note inventory; the Chain of Responsibility root.'],
+  ['NoteDispenser','abstract class','Handler per denomination, chained largest to smallest.'],
+  ['BankService','interface','The external boundary. Stub it and say so.'],
+  ['ReceiptPrinter','class','Optional but shows completeness.']
+ ],
+ patterns:[
+  ['State','ATM behaviour by phase. Ejecting a card mid-dispense must be impossible.'],
+  ['Chain of Responsibility','Note dispensing: the 2000 handler takes what it can, passes the rest down.'],
+  ['Strategy','Optional: note-selection algorithm, greedy versus exact DP.'],
+  ['Template Method','Transaction defines the skeleton — validate, execute, record, print.']
+ ],
+ code:[
+  ['Chain of Responsibility for note dispensing',
+   ['public abstract class NoteDispenser {',
+    '    private NoteDispenser next;',
+    '    private final int denomination;',
+    '    private int count;',
+    '',
+    '    public void dispense(int amount, Map<Integer,Integer> out) {',
+    '        int give = Math.min(amount / denomination, count);',
+    '        if (give > 0) {',
+    '            out.put(denomination, give);',
+    '            count -= give;',
+    '            amount -= give * denomination;',
+    '        }',
+    '        if (amount > 0) {',
+    '            if (next == null) throw new InsufficientNotesException(amount);',
+    '            next.dispense(amount, out);',
+    '        }',
+    '    }',
+    '}',
+    '// chain: 2000 -> 500 -> 200 -> 100'],
+   'Adding a 200-rupee note is one new handler inserted into the chain. Note the failure path: if the remainder cannot be made, throw BEFORE anything physically leaves the machine.'],
+  ['Check first, dispense second — the ordering that matters',
+   ['public void withdraw(int amount) {',
+    '    // 1. can we physically make this amount?',
+    '    Map<Integer,Integer> plan = dispenser.plan(amount);   // throws if not',
+    '    // 2. does the account allow it?',
+    '    bank.debit(account, amount);                          // throws if insufficient',
+    '    // 3. only now move physical cash',
+    '    dispenser.commit(plan);',
+    '    printer.print(receipt(amount));',
+    '}'],
+   'Getting this order wrong is the classic failure: debiting the account and then discovering you cannot make 3,700 from the notes you hold. Plan, then debit, then dispense.']
+ ],
+ concurrency:[
+  ['Cash dispensed, network drops before the debit','This is the real question. Dispense LAST, after the debit succeeds. If the debit succeeds and dispensing then fails physically, you need a reversal — record the transaction as PENDING and reconcile.'],
+  ['Two ATMs, one account','The balance check and debit must be atomic at the bank, not the ATM. Say the ATM is not where the invariant lives.'],
+  ['Note inventory','Decrement atomically with the dispense commit; a plan that is not committed must not reserve notes indefinitely.']
+ ],
+ extend:[
+  ['"Add a 200-rupee note"','One handler in the chain. Nothing else changes.'],
+  ['"Minimise the number of notes"','Greedy works for canonical denominations and fails in general. The exact answer is coin-change DP. Same distinction as the vending machine.'],
+  ['"Support deposits"','A new Transaction subclass; the template method skeleton already fits.'],
+  ['"Card retention after three wrong PINs"','A counter on the session plus a state transition to CardRetained. Show it in the state machine.']
+ ],
+ cross:[
+  ['Where does the PIN get verified?','At the bank, never on the ATM. The ATM forwards an encrypted PIN block. Saying this shows you understand the trust boundary.'],
+  ['Dispense then debit, or debit then dispense?','Debit then dispense. If dispensing fails you can reverse a debit; you cannot un-dispense cash.'],
+  ['Why Chain of Responsibility rather than a loop?','A loop works. The chain makes each denomination independently testable and lets you insert or retire a denomination without touching the others. If they push back, concede the loop is fine — the reasoning is what is scored.'],
+  ['User walks away mid-session.','A session timeout state transition that ejects the card and returns to Idle. Every state must define it.'],
+  ['Is greedy note selection always right?','No — same caveat as change-making. It is correct for real currency systems, wrong for arbitrary denominations.']
+ ],
+ fail:[
+  'Debiting before checking whether the amount can be physically made.',
+  'Storing the balance on the ATM instead of behind the bank service.',
+  'Verifying the PIN locally.',
+  'A switch over an ATM status enum instead of the State pattern.',
+  'No session timeout.'
+ ]},
+
+{id:'orderinv', name:'Order & Inventory (Amazon)', tier:'b', flavour:'OOD + concurrency', mins:50,
+ who:'AMAZON specifically · Flipkart · Expedia. The oversell race is the point.',
+ asked:[
+  'Design the order management system for an e-commerce site.',
+  'Two customers buy the last item at the same instant. What happens?',
+  'Design inventory across multiple warehouses.',
+  'Walk me through the order lifecycle and what can fail at each step.'
+ ],
+ clarify:[
+  'Is overselling ever acceptable? (for physical goods, no)',
+  'Single warehouse or many? Multi-warehouse turns this into allocation.',
+  'Is payment synchronous, or do we reserve then charge?',
+  'Do we support cancellation and partial refunds?',
+  'Cart in scope, or start at checkout?'
+ ],
+ entities:[
+  ['Order','class','id, customer, lineItems, OrderStatus, total.'],
+  ['OrderStatus','enum / State','CREATED, RESERVED, PAID, CONFIRMED, SHIPPED, DELIVERED, CANCELLED.'],
+  ['OrderLine','class','sku, quantity, unitPrice at time of order.'],
+  ['Inventory','class','Per-SKU available and reserved counts. The unit of contention.'],
+  ['Reservation','class','sku, quantity, orderId, expiresAt.'],
+  ['Warehouse','class','Location plus its own inventory.'],
+  ['AllocationStrategy','interface','Which warehouse fulfils this line.'],
+  ['PaymentService','interface','External boundary; charge and refund, both idempotent.'],
+  ['OrderSaga','class','Orchestrates reserve → charge → confirm, with compensations.'],
+  ['PricingStrategy','interface','Base price, discounts, promotions.']
+ ],
+ patterns:[
+  ['State','The order lifecycle, with explicitly allowed transitions.'],
+  ['Saga / orchestration','Reserve, charge, confirm — with a compensating action per step.'],
+  ['Strategy','Allocation across warehouses; pricing and discounting.'],
+  ['Observer','Order status changes triggering notifications.'],
+  ['Command','Optional: each lifecycle step as an executable, compensatable command.']
+ ],
+ code:[
+  ['The oversell race, closed properly',
+   ['// WRONG - the classic read-then-write race',
+    'if (inventory.get(sku) > 0) {',
+    '    inventory.put(sku, inventory.get(sku) - 1);   // two threads both pass the check',
+    '}',
+    '',
+    '// RIGHT (in memory) - atomic conditional decrement',
+    'public boolean tryReserve(String sku, int qty) {',
+    '    AtomicInteger available = stock.get(sku);',
+    '    while (true) {',
+    '        int current = available.get();',
+    '        if (current < qty) return false;',
+    '        if (available.compareAndSet(current, current - qty)) return true;',
+    '    }',
+    '}',
+    '',
+    '// RIGHT (in a database) - one statement, no read-modify-write',
+    '// UPDATE inventory SET available = available - :qty',
+    '//  WHERE sku = :sku AND available >= :qty',
+    '// then check rowsAffected == 1'],
+   'The database form is the one to write on the board. Check rows-affected: one means you got it, zero means you did not, and there is no window between the check and the decrement.'],
+  ['State machine with explicit legal transitions',
+   ['public enum OrderStatus {',
+    '    CREATED   { public Set<OrderStatus> next() { return Set.of(RESERVED, CANCELLED); } },',
+    '    RESERVED  { public Set<OrderStatus> next() { return Set.of(PAID, CANCELLED, EXPIRED); } },',
+    '    PAID      { public Set<OrderStatus> next() { return Set.of(CONFIRMED, REFUNDED); } },',
+    '    CONFIRMED { public Set<OrderStatus> next() { return Set.of(SHIPPED, CANCELLED); } },',
+    '    SHIPPED   { public Set<OrderStatus> next() { return Set.of(DELIVERED); } },',
+    '    DELIVERED { public Set<OrderStatus> next() { return Set.of(); } },',
+    '    CANCELLED { public Set<OrderStatus> next() { return Set.of(); } };',
+    '',
+    '    public abstract Set<OrderStatus> next();',
+    '    public void checkTransition(OrderStatus to) {',
+    '        if (!next().contains(to))',
+    '            throw new IllegalStateException(this + " -> " + to + " not allowed");',
+    '    }',
+    '}'],
+   'Interviewers deliberately ask about illegal transitions — "can a DELIVERED order be cancelled?". Encoding the graph makes the answer structural instead of a scattered if.'],
+  ['Saga with compensation',
+   ['public Order place(Cart cart, String idempotencyKey) {',
+    '    return idempotency.runOnce(idempotencyKey, () -> {',
+    '        Order order = Order.create(cart);',
+    '        List<Runnable> compensations = new ArrayList<>();',
+    '        try {',
+    '            inventory.reserve(order);',
+    '            compensations.add(() -> inventory.release(order));',
+    '',
+    '            payments.charge(order, idempotencyKey);',
+    '            compensations.add(() -> payments.refund(order, idempotencyKey));',
+    '',
+    '            order.transitionTo(CONFIRMED);',
+    '            return order;',
+    '        } catch (Exception e) {',
+    '            Collections.reverse(compensations);',
+    '            compensations.forEach(Runnable::run);   // undo in reverse',
+    '            order.transitionTo(CANCELLED);',
+    '            throw e;',
+    '        }',
+    '    });',
+    '}'],
+   'Three things being tested at once: the idempotency key wrapping the whole operation, compensation in reverse order, and the fact that a refund is a business undo rather than a rollback.']
+ ],
+ concurrency:[
+  ['Two customers, one item left','Atomic conditional decrement. Exactly one succeeds; the other gets a clean out-of-stock. Never read-then-write.'],
+  ['Payment fails after reservation','Compensate by releasing the reservation, and rely on the TTL as a backstop if the compensation itself fails.'],
+  ['User double-clicks Place Order','Idempotency key on the request. The same key returns the same order rather than creating a second.'],
+  ['A flash sale on one SKU','That row becomes a single lock. Options: shard the stock into N buckets and decrement a random one, serialise through a queue, or use a virtual waiting room. Say which and why.'],
+  ['Three warehouses','Do NOT sum three counters and decrement one — that races. Either one logical counter with allocation deciding the warehouse afterwards, or per-warehouse reservation naming the warehouse.']
+ ],
+ extend:[
+  ['"Add partial cancellation of one line"','Line-level status rather than order-level only, with the order status derived from its lines.'],
+  ['"Support pre-orders with no stock"','A reservation type that does not decrement available stock, and an allocation step when stock arrives.'],
+  ['"Add promotions and coupons"','PricingStrategy composition — Decorator stacks discounts without a combinatorial explosion of pricing classes.'],
+  ['"Make it eventually consistent for display"','Split the read model: "only 3 left" can be stale, the reservation cannot. Separating those two is the mature answer.']
+ ],
+ cross:[
+  ['Two customers buy the last item. Exactly what happens?','One atomic conditional update succeeds and affects one row; the other affects zero rows and receives an out-of-stock response. There is no window in which both pass a check.'],
+  ['Is eventual consistency ever acceptable for inventory?','For DISPLAY, yes. For the reservation, never. Distinguishing them is the answer they want.'],
+  ['Can a delivered order be cancelled?','Not by the state machine — that becomes a return, which is a different flow with its own states. Saying that shows you modelled the domain and not just the happy path.'],
+  ['Why saga rather than a distributed transaction?','2PC holds locks across services for the duration of network calls and its coordinator is a single point of failure. A saga trades atomicity for availability and uses compensations.'],
+  ['What if the refund compensation fails?','Retry with backoff, then dead-letter and alert. Some failures need a human — pretending everything auto-resolves is not credible.']
+ ],
+ fail:[
+  'Read-then-write on stock. This is the exact race being tested.',
+  'No idempotency on order placement.',
+  'An order status field with no transition rules.',
+  'Summing stock across warehouses then decrementing one.',
+  'No compensation path when payment fails after reservation.'
+ ]},
+
+{id:'lru', name:'LRU / LFU Cache', tier:'c', flavour:'Amazon hybrid', mins:40,
+ who:'AMAZON hybrid · Microsoft · Uber. Design plus the data-structure insight, in one round.',
+ asked:[
+  'Design an LRU cache with O(1) get and put.',
+  'Now make it LFU.',
+  'Add a TTL per entry.',
+  'Make it thread-safe. Now make it thread-safe without one global lock.'
+ ],
+ clarify:[
+  'Fixed capacity, or memory-bounded?',
+  'Do we need TTL as well as capacity eviction?',
+  'Thread-safe? Single writer or many?',
+  'Do we need statistics — hit rate, evictions?'
+ ],
+ entities:[
+  ['Cache<K,V>','interface','get, put, remove. The seam that lets you swap policies.'],
+  ['EvictionPolicy','interface','recordAccess(key), evictCandidate(). LRU / LFU / FIFO.'],
+  ['Node<K,V>','class','key, value, prev, next. The doubly linked list node.'],
+  ['DoublyLinkedList','class','With sentinel head and tail so there are no null checks.'],
+  ['CacheStats','class','hits, misses, evictions.']
+ ],
+ patterns:[
+  ['Strategy','EvictionPolicy — this is what turns "write an LRU" into a design answer rather than a LeetCode answer.'],
+  ['Decorator','TTL, stats and thread-safety as wrappers around a plain cache.'],
+  ['Template Method','Optional: shared get/put skeleton with policy hooks.']
+ ],
+ code:[
+  ['LRU: hashmap plus doubly linked list, sentinels included',
+   ['public class LruCache<K,V> {',
+    '    private final Map<K, Node<K,V>> map = new HashMap<>();',
+    '    private final Node<K,V> head = new Node<>(null, null);   // sentinels remove',
+    '    private final Node<K,V> tail = new Node<>(null, null);   // every null check',
+    '    private final int capacity;',
+    '',
+    '    { head.next = tail; tail.prev = head; }',
+    '',
+    '    public V get(K key) {',
+    '        Node<K,V> n = map.get(key);',
+    '        if (n == null) return null;',
+    '        moveToFront(n);',
+    '        return n.value;',
+    '    }',
+    '',
+    '    public void put(K key, V value) {',
+    '        Node<K,V> n = map.get(key);',
+    '        if (n != null) { n.value = value; moveToFront(n); return; }',
+    '        if (map.size() == capacity) {',
+    '            Node<K,V> lru = tail.prev;',
+    '            remove(lru);',
+    '            map.remove(lru.key);            // remove from BOTH structures',
+    '        }',
+    '        Node<K,V> fresh = new Node<>(key, value);',
+    '        map.put(key, fresh);',
+    '        addFront(fresh);',
+    '    }',
+    '}'],
+   'The two bugs interviewers watch for: forgetting to remove the evicted key from the map (a slow leak), and hand-rolling null checks instead of using sentinels.'],
+  ['LFU: the frequency-bucket trick',
+   ['// key -> node, key -> freq, freq -> doubly linked list of keys at that freq',
+    'private final Map<K, V> values = new HashMap<>();',
+    'private final Map<K, Integer> freq = new HashMap<>();',
+    'private final Map<Integer, LinkedHashSet<K>> buckets = new HashMap<>();',
+    'private int minFreq;',
+    '',
+    'private void touch(K key) {',
+    '    int f = freq.get(key);',
+    '    buckets.get(f).remove(key);',
+    '    if (buckets.get(f).isEmpty() && minFreq == f) minFreq++;   // the whole trick',
+    '    freq.put(key, f + 1);',
+    '    buckets.computeIfAbsent(f + 1, x -> new LinkedHashSet<>()).add(key);',
+    '}'],
+   'Tracking minFreq is what keeps eviction O(1) — otherwise you scan for the minimum. LinkedHashSet within a bucket breaks frequency ties by recency, which is the standard tie-break.'],
+  ['Thread safety without one global lock',
+   ['// Level 1 - correct, and it serialises everything',
+    'public synchronized V get(K key) { ... }',
+    '',
+    '// Level 2 - segment the cache, lock per segment',
+    'private final LruCache<K,V>[] segments;   // key.hashCode() % n',
+    'public V get(K key) { return segmentFor(key).get(key); }',
+    '',
+    '// Level 3 - what real caches do: approximate LRU',
+    '// Caffeine buffers reads in a ring and applies them in batches, so the',
+    '// hot path never contends on the linked list at all.'],
+   'Interviewers push here. Level 1 is the honest starting point; being able to name segmentation and then approximate LRU is what separates a memorised LeetCode answer from a design answer.']
+ ],
+ concurrency:[
+  ['Every get mutates the recency list','That is why a plain LRU cannot be lock-free — a read is a write. Say this; it is the insight the question is built on.'],
+  ['Segmenting','Partition by key hash, lock per segment. Eviction becomes per-segment, so the policy is approximate globally — an acceptable trade you should name.'],
+  ['Read buffering','Production caches (Caffeine) record accesses into a buffer and replay them in batches, keeping reads contention-free.'],
+  ['TTL expiry','Lazy on read plus a periodic sweeper, the same pairing as the seat hold.']
+ ],
+ extend:[
+  ['"Add TTL"','A Decorator wrapping the cache: check expiry on read, and sweep periodically. The eviction policy is untouched.'],
+  ['"Make it LFU"','Swap the EvictionPolicy implementation. If your first answer put the linked list inside the cache class, this is a rewrite — which is why the policy is an interface.'],
+  ['"Add hit-rate statistics"','Another decorator. Do not thread counters through the core class.'],
+  ['"Make it distributed"','This is where it becomes a system design question: consistent hashing, invalidation, and the fact that per-node LRU no longer gives global LRU.']
+ ],
+ cross:[
+  ['Why a doubly linked list rather than singly?','Eviction and promotion both need O(1) removal of a node given only that node, which requires the previous pointer.'],
+  ['Why not just LinkedHashMap with accessOrder?','You can, and for a real answer say so — override removeEldestEntry and it is five lines. Interviewers usually want the hand-rolled version to see the pointer work.'],
+  ['Why can a read not be lock-free?','Because get() reorders the recency list, so a read mutates shared state. That is the whole reason production caches buffer reads.'],
+  ['LFU eviction in O(1) — how?','Frequency buckets plus a tracked minFreq. Increment moves the key up a bucket; if the min bucket empties, minFreq increases by one.'],
+  ['Which would you actually use in production?','Caffeine. It uses a W-TinyLFU admission policy that beats both plain LRU and plain LFU on real workloads. Naming it signals you have used caches rather than only implemented them.']
+ ],
+ fail:[
+  'Forgetting to remove the evicted key from the hashmap.',
+  'Singly linked list, so eviction is O(n).',
+  'Putting the eviction policy inside the cache class, so LFU means a rewrite.',
+  'Claiming get() can be lock-free.',
+  'No sentinel nodes, then drowning in null checks under time pressure.'
+ ]},
+
+{id:'filesystem', name:'In-Memory File System', tier:'c', flavour:'Amazon hybrid', mins:45,
+ who:'AMAZON · Google · Microsoft. A tree problem wearing a design costume.',
+ asked:[
+  'Design an in-memory file system.',
+  'Implement ls, mkdir, addContentToFile, readContentFromFile.',
+  'Add search with wildcards.',
+  'How would you add permissions?'
+ ],
+ clarify:[
+  'Do we need permissions, symlinks, or just files and directories?',
+  'Is ls sorted? Does ls on a file return just that file?',
+  'Are paths always absolute?',
+  'Thread-safe?'
+ ],
+ entities:[
+  ['FileSystem','class','The facade holding the root node.'],
+  ['FsNode','abstract class','name, parent, createdAt. The Composite base.'],
+  ['Directory','class','extends FsNode, holds Map<String, FsNode> children.'],
+  ['File','class','extends FsNode, holds content.'],
+  ['Path','value object','Parsing and normalising, so string handling is not scattered.'],
+  ['Permission','class','Optional extension: owner, mode bits.']
+ ],
+ patterns:[
+  ['Composite','THE pattern here. Directory and File share a base type so a directory holds either.'],
+  ['Visitor','Optional: traversal operations like search, du, find, without editing the node classes.'],
+  ['Facade','FileSystem hiding traversal from callers.'],
+  ['Iterator','Walking the tree lazily.']
+ ],
+ code:[
+  ['Composite — the whole design in one shape',
+   ['public abstract class FsNode {',
+    '    protected final String name;',
+    '    protected Directory parent;',
+    '    protected FsNode(String name) { this.name = name; }',
+    '    public abstract boolean isDirectory();',
+    '    public abstract int size();          // recursive for directories',
+    '}',
+    '',
+    'public class Directory extends FsNode {',
+    '    private final Map<String, FsNode> children = new TreeMap<>();  // TreeMap = ls sorted free',
+    '    public boolean isDirectory() { return true; }',
+    '    public int size() {',
+    '        return children.values().stream().mapToInt(FsNode::size).sum();',
+    '    }',
+    '}',
+    '',
+    'public class File extends FsNode {',
+    '    private final StringBuilder content = new StringBuilder();',
+    '    public boolean isDirectory() { return false; }',
+    '    public int size() { return content.length(); }',
+    '}'],
+   'TreeMap rather than HashMap is a small choice worth stating out loud: ls must return lexicographic order, and TreeMap gives it for free instead of sorting on every call.'],
+  ['Path traversal with mkdir -p semantics',
+   ['private Directory traverse(String path, boolean createMissing) {',
+    '    Directory cur = root;',
+    '    for (String part : path.split("/")) {',
+    '        if (part.isEmpty()) continue;             // leading slash, double slash',
+    '        FsNode next = cur.child(part);',
+    '        if (next == null) {',
+    '            if (!createMissing) throw new NoSuchFileException(path);',
+    '            next = cur.addChild(new Directory(part));',
+    '        }',
+    '        if (!next.isDirectory()) throw new NotADirectoryException(part);',
+    '        cur = (Directory) next;',
+    '    }',
+    '    return cur;',
+    '}'],
+   'One traversal method with a flag serves mkdir, ls, and read. Writing three near-identical walkers is the duplication interviewers notice.']
+ ],
+ concurrency:[
+  ['Two threads creating the same directory','computeIfAbsent on the children map makes creation atomic. Check-then-put races.'],
+  ['Reading while another thread writes a file','Either a lock per file, or copy-on-write content so readers always see a consistent snapshot.'],
+  ['Locking granularity','A lock on the whole filesystem is correct and useless. Lock the directory being mutated, and take locks in path order to avoid deadlock.']
+ ],
+ extend:[
+  ['"Add permissions"','A Permission on FsNode plus a check in the facade before every operation. Composite means one check point covers files and directories alike.'],
+  ['"Add symlinks"','A third FsNode subtype holding a target path, with cycle detection during traversal. Say the cycle detection out loud.'],
+  ['"Add search with wildcards"','A Visitor walking the tree with a matcher. Do not add a search method to every node class.'],
+  ['"Compute directory size"','Already there — the recursive size() falls straight out of Composite, which is why the pattern earns its place.']
+ ],
+ cross:[
+  ['Why Composite here?','Because a directory contains files AND directories, and callers should not care which. One base type makes recursion natural — size, search and delete are all one method.'],
+  ['Why TreeMap for children?','ls must be sorted. TreeMap keeps that invariant instead of sorting on every listing.'],
+  ['How do you avoid three copies of path parsing?','One traverse method with a create-missing flag, plus a Path value object owning the parsing. String splitting scattered across methods is where the bugs live.'],
+  ['ls on a file rather than a directory?','Returns just that file name. An edge case explicitly worth confirming during clarification — it is the one LC 588 tests.'],
+  ['How would you persist this?','Serialise the tree, or keep a write-ahead log of operations and replay. The in-memory design does not change; a Repository interface is the seam.']
+ ],
+ fail:[
+  'Separate unrelated File and Directory classes with no shared base, forcing instanceof everywhere.',
+  'Path parsing duplicated in every method.',
+  'HashMap for children, then forgetting ls must be sorted.',
+  'No handling of intermediate directories in mkdir.',
+  'Adding a search method to every node class instead of using a visitor.'
+ ]},
+
+{id:'ridehail', name:'Ride-Hailing (machine coding)', tier:'c', flavour:'Machine coding, 90 min', mins:90,
+ who:'UBER — their actual round · Flipkart · Ola. You must FINISH.',
+ asked:[
+  'Build a ride-hailing service: riders, drivers, matching, trip lifecycle.',
+  'Runnable, tested code in 90 minutes.',
+  'Add surge pricing.',
+  'A driver declines. What happens next?'
+ ],
+ clarify:[
+  'How is a driver matched — nearest, or first to accept?',
+  'Can a driver decline? (that turns matching into an offer loop, not one decision)',
+  'Do we model real geography, or is a 2D grid acceptable? (say grid, and say why)',
+  'Is payment in scope? (usually stub it)',
+  'How much do we need to persist? (nothing — in memory)'
+ ],
+ entities:[
+  ['RideService','class','The facade: requestRide, acceptRide, startTrip, endTrip.'],
+  ['Rider / Driver','class','id, name, current Location, status.'],
+  ['DriverStatus','enum','OFFLINE, AVAILABLE, OFFERED, ON_TRIP.'],
+  ['Trip','class','rider, driver, source, destination, TripStatus, fare.'],
+  ['TripStatus','enum / State','REQUESTED, MATCHED, STARTED, COMPLETED, CANCELLED.'],
+  ['Location','record','lat, lng — or grid x, y for a machine-coding round.'],
+  ['MatchingStrategy','interface','nearest, highest-rated, batched.'],
+  ['PricingStrategy','interface','base plus distance, with a surge multiplier.'],
+  ['DriverIndex','class','Spatial lookup. A grid of buckets is enough; say H3 is what production uses.']
+ ],
+ patterns:[
+  ['Strategy','Matching and pricing — the two things they will ask you to swap.'],
+  ['State','Trip lifecycle with legal transitions.'],
+  ['Observer','Notifying rider and driver on status changes.'],
+  ['Factory','Optional, for creating trips.']
+ ],
+ code:[
+  ['Ship this skeleton in the first 20 minutes',
+   ['public class RideService {',
+    '    private final DriverIndex index;',
+    '    private final MatchingStrategy matcher;',
+    '    private final PricingStrategy pricing;',
+    '    private final Map<String, Trip> trips = new ConcurrentHashMap<>();',
+    '',
+    '    public Trip requestRide(Rider rider, Location from, Location to) {',
+    '        List<Driver> nearby = index.within(from, RADIUS_KM);',
+    '        Driver chosen = matcher.choose(nearby, from)',
+    '                .orElseThrow(() -> new NoDriverAvailableException(from));',
+    '        if (!chosen.tryOffer()) return requestRide(rider, from, to);  // someone beat us',
+    '        Trip trip = new Trip(rider, chosen, from, to, pricing.quote(from, to));',
+    '        trips.put(trip.id(), trip);',
+    '        return trip;',
+    '    }',
+    '}',
+    '',
+    '// then main() with a demo run, THEN enrich'],
+   'In a machine-coding round the order matters more than the design. A running end-to-end path at minute 20 beats a beautiful class diagram at minute 85.'],
+  ['The double-assignment race',
+   ['public class Driver {',
+    '    private final AtomicReference<DriverStatus> status =',
+    '            new AtomicReference<>(DriverStatus.AVAILABLE);',
+    '',
+    '    public boolean tryOffer() {',
+    '        return status.compareAndSet(AVAILABLE, OFFERED);',
+    '    }',
+    '    public boolean accept() {',
+    '        return status.compareAndSet(OFFERED, ON_TRIP);',
+    '    }',
+    '    public void decline() {',
+    '        status.compareAndSet(OFFERED, AVAILABLE);   // back in the pool',
+    '    }',
+    '}'],
+   'Two riders must never be matched to one driver. compareAndSet on the driver status is the whole answer, and it is the correctness question the round is built around.'],
+  ['Spatial lookup without over-engineering',
+   ['public class GridIndex implements DriverIndex {',
+    '    private final double cell;   // e.g. 1 km',
+    '    private final Map<Cell, Set<Driver>> buckets = new ConcurrentHashMap<>();',
+    '',
+    '    public List<Driver> within(Location l, double km) {',
+    '        // own cell plus neighbours - never scan every driver',
+    '        return cellsAround(l, km).stream()',
+    '                .flatMap(c -> buckets.getOrDefault(c, Set.of()).stream())',
+    '                .filter(d -> d.location().distanceTo(l) <= km)',
+    '                .toList();',
+    '    }',
+    '}'],
+   'A grid is entirely acceptable in a 90-minute round. Say the production answer is H3 or S2, and that you are choosing a grid deliberately for time — that reads as judgement, not ignorance.']
+ ],
+ concurrency:[
+  ['Two riders matched to one driver','compareAndSet on driver status. Exactly one offer wins.'],
+  ['Driver never responds to the offer','Timeout, say 15 seconds, then compareAndSet OFFERED back to AVAILABLE and offer the next candidate. The offer loop is the product.'],
+  ['Location updates at high frequency','A ConcurrentHashMap of buckets with the driver moved between cells on update. Do not persist every ping.'],
+  ['Trip state transitions','Guard them so endTrip cannot fire before startTrip.']
+ ],
+ extend:[
+  ['"Add surge pricing"','A PricingStrategy reading the supply/demand ratio for the cell. Smoothed over a window, or the price flaps and riders revolt.'],
+  ['"Add ride pooling"','Trip gains multiple riders and an ordered list of waypoints; matching becomes a route-compatibility check. Say it is a genuinely harder problem.'],
+  ['"Add driver ratings into matching"','A different MatchingStrategy. Nothing else changes — that is the payoff.'],
+  ['"Scale to a city"','Hand-off to system design: the grid becomes H3, the in-memory index becomes Redis, matching becomes batched every few seconds rather than greedy per request.']
+ ],
+ cross:[
+  ['How do you find nearby drivers without scanning everyone?','Bucket drivers into grid cells and query the cell plus its neighbours. Production uses H3 hexagons because neighbour distance is uniform.'],
+  ['Two riders request at the same instant and one driver is nearest.','compareAndSet on the driver status. The loser re-runs matching against the remaining pool.'],
+  ['The driver does not accept.','A timeout returns them to AVAILABLE and the next candidate is offered. Matching is a sequence of offers, not a single decision — modelling it as one decision is the common mistake.'],
+  ['Why a grid and not a quadtree?','Uniform cells are simpler and adequate at this time budget. A quadtree adapts to density, which matters when a city centre is a thousand times denser than the suburbs. Naming the trade-off is the point.'],
+  ['You have 15 minutes left and pooling is not done.','Say so, state what you would do, and make sure what exists runs and is tested. A finished subset beats an unfinished superset in this round, always.']
+ ],
+ fail:[
+  'Designing for 60 minutes and coding for 30. This round is scored on finishing.',
+  'Scanning every driver to find the nearest.',
+  'No answer for the double-assignment race.',
+  'Modelling matching as one decision rather than an offer loop with timeouts.',
+  'Building persistence nobody asked for.'
+ ]},
+
+{id:'ratelimiter', name:'Rate Limiter / Logger (as objects)', tier:'c', flavour:'Amazon hybrid', mins:35,
+ who:'Amazon · Uber · Google. The LLD half of the system design session.',
+ asked:[
+  'Design a rate limiter as a class.',
+  'Implement a token bucket.',
+  'Design a logger that accepts a message at most once every 10 seconds.',
+  'Now make it work across 50 servers.'
+ ],
+ clarify:[
+  'Per user, per IP, per API key?',
+  'Must it be exact, or is approximate acceptable?',
+  'Single process, or distributed?',
+  'What do we do when the limit is hit — reject, queue, or throttle?'
+ ],
+ entities:[
+  ['RateLimiter','interface','tryAcquire(key) — the seam that lets you swap algorithms.'],
+  ['TokenBucketLimiter','class','capacity, refillRate, lastRefill per key.'],
+  ['SlidingWindowLimiter','class','Weighted previous and current window counts.'],
+  ['FixedWindowLimiter','class','The naive one. Implement it to show you know why it is wrong.'],
+  ['Bucket','class','Per-key state. The unit of contention.'],
+  ['ClockSource','interface','Injected so tests are not slow and flaky.']
+ ],
+ patterns:[
+  ['Strategy','RateLimiter implementations behind one interface.'],
+  ['Decorator','Layering a limiter over any service call.'],
+  ['Factory','Choosing a limiter per endpoint or per tier.']
+ ],
+ code:[
+  ['Token bucket with lazy refill',
+   ['public class TokenBucket {',
+    '    private final long capacity;',
+    '    private final double refillPerSecond;',
+    '    private double tokens;',
+    '    private long lastRefillNanos;',
+    '    private final Clock clock;                     // INJECTED - testability',
+    '',
+    '    public synchronized boolean tryAcquire(int permits) {',
+    '        refill();',
+    '        if (tokens >= permits) { tokens -= permits; return true; }',
+    '        return false;',
+    '    }',
+    '',
+    '    private void refill() {',
+    '        long now = clock.nanoTime();',
+    '        double add = (now - lastRefillNanos) / 1e9 * refillPerSecond;',
+    '        tokens = Math.min(capacity, tokens + add);   // lazy: no background thread',
+    '        lastRefillNanos = now;',
+    '    }',
+    '}'],
+   'Lazy refill on access, not a scheduled thread topping up a million buckets. Injecting the clock means a test can assert refill behaviour without sleeping — mention it, because interviewers notice untestable time handling.'],
+  ['Why fixed window is wrong, in code',
+   ['// FIXED WINDOW: limit 100/min',
+    '// 100 requests at 11:00:59 and 100 more at 11:01:00',
+    '// = 200 in one second, and every one is "legal"',
+    '',
+    '// SLIDING WINDOW COUNTER - weighted blend, tiny memory',
+    'public boolean allow(String key) {',
+    '    long now = clock.millis();',
+    '    long windowStart = now - (now % windowMs);',
+    '    double elapsed = (now - windowStart) / (double) windowMs;',
+    '    Counts c = counts.get(key);',
+    '    double estimate = c.previous * (1 - elapsed) + c.current;',
+    '    if (estimate >= limit) return false;',
+    '    c.current++;',
+    '    return true;',
+    '}'],
+   'Being able to state the boundary-burst problem AND write the fix is what separates this from a memorised definition.']
+ ],
+ concurrency:[
+  ['Many threads hitting one key','synchronized on the bucket, not on the limiter. Per-key locking keeps unrelated users independent.'],
+  ['A map of millions of buckets','Use ConcurrentHashMap with computeIfAbsent, and evict idle buckets or you leak memory forever. Interviewers ask about this.'],
+  ['Distributed across 50 servers','Central Redis with an atomic INCR and expiry, or a Lua script for the token bucket. Local counters with periodic sync are approximate but survive Redis being down.'],
+  ['Fail-open','If the limiter itself fails, let traffic through with a conservative local fallback. A limiter that causes an outage is worse than no limiter.']
+ ],
+ extend:[
+  ['"Different limits per API tier"','Configuration keyed by tier, resolved by the factory. No code change to add a tier.'],
+  ['"Expensive endpoints cost more"','Weighted permits — tryAcquire(10) for a heavy call. The bucket already supports it.'],
+  ['"Make it distributed"','Redis INCR with TTL, or a Lua script for atomic token-bucket refill-and-take. Name the extra round trip as the cost.'],
+  ['"Add a logger that rate-limits identical messages"','LC 359: a map of message to next-allowed timestamp. Same shape, and mention the memory leak if you never evict.']
+ ],
+ cross:[
+  ['Fixed window — show me the flaw.','A 100-per-minute limit permits 200 in one second across the boundary: 100 at 11:00:59 and 100 at 11:01:00. That is why sliding window or token bucket exists.'],
+  ['Why lazy refill rather than a scheduler?','A background thread refilling a million buckets is enormous waste. Computing elapsed time on access is exact and free.'],
+  ['Where do you put the lock?','On the bucket, one per key. Locking the limiter serialises every user against every other user.'],
+  ['Millions of keys — what breaks?','Unbounded memory. Evict idle buckets with an LRU or a TTL. This is the follow-up people miss.'],
+  ['What if Redis is down in the distributed version?','Fail open with a conservative local limit. State it explicitly — availability of your API matters more than perfect enforcement.']
+ ],
+ fail:[
+  'Answering with fixed window and not knowing the boundary burst.',
+  'A background refill thread per bucket.',
+  'Locking the whole limiter instead of the bucket.',
+  'Unbounded bucket map with no eviction.',
+  'Using System.currentTimeMillis() directly, making the class untestable.'
+ ]}
+
+]);
+
+/* Amazon Leadership Principles - a parallel workstream, not a soft round. */
+PLAN.lldLp = [
+  ['LP stories 1–3 — ownership · dive deep · deliver results','Real numbers. Written down, not remembered.'],
+  ['LP stories 4–6 — customer obsession · invent and simplify · bias for action',''],
+  ['LP stories 7–9 — earn trust · have backbone and disagree · learn and be curious',''],
+  ['LP stories 10–12 — hire and develop · frugality · think big',''],
+  ['LP stories 13–15 — highest standards · are right a lot · best employer',''],
+  ['LP: "your biggest failure" — rehearsed cold','This one catches people. Prepare it specifically.'],
+  ['LP: "when you disagreed with a manager" — rehearsed cold','So does this one.'],
+  ['LP full rehearsal — all 15 under two minutes each, "I" not "we"','Record it. Count how often you say "we".']
+];
+
+PLAN.lldLpNote = 'LP is roughly half of Amazon\'s signal and the bar-raiser can reject you on it alone. It is the single most common way strong coders fail Amazon. Two stories per Sunday from week 2, reaching 15 by week 13. Each with real numbers, each rehearsed to under two minutes, each saying "I" not "we" — Amazon scores your actions, not your team\'s.';
+
 
 /* ================================================================= TECH ===
    The gradient INVERTS here: the deepest tech questioning is at the BOTTOM of
@@ -3696,18 +5185,6 @@ PLAN.strategy = [
    '<li><b>Headcount and timing.</b> Loops get cancelled, teams freeze, bars move. A rejection is not a verdict on your ability.</li>'+
    '<li><b>Correlation.</b> Interviewing at ten companies does not give you ten independent draws. Same person, same weaknesses, every loop.</li></ul>'}
 ];
-
-/* --- LP granularity: 0.30 of Amazon's score cannot hang on one checkbox --- */
-PLAN.lld.c = PLAN.lld.c.concat([
-  ['LP stories 1–3 — ownership · dive deep · deliver results','concept','Real numbers. Written, not remembered.'],
-  ['LP stories 4–6 — customer obsession · invent and simplify · bias for action','concept',''],
-  ['LP stories 7–9 — earn trust · have backbone and disagree · learn and be curious','concept',''],
-  ['LP stories 10–12 — hire and develop · frugality · think big','concept',''],
-  ['LP stories 13–15 — highest standards · are right a lot · best employer','concept',''],
-  ['LP: "your biggest failure" — rehearsed cold','concept','This one catches people. Prepare it specifically.'],
-  ['LP: "when you disagreed with a manager" — rehearsed cold','concept','So does this one.'],
-  ['LP full rehearsal — all 15 under 2 minutes each, "I" not "we"','concept','Record it. Count how often you say "we".']
-]);
 
 /* --- recorded mocks: performance, not knowledge. Google weights these 25%. --- */
 PLAN.mocks = [

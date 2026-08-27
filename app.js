@@ -205,12 +205,14 @@ function sdItems() {
 }
 function lldItems() {
   var out = [];
-  ['b', 'c'].forEach(function (blk) {
-    PLAN.lld[blk].forEach(function (p, i) {
-      out.push({ key: 'ld-' + blk + '-' + i, lc: null, name: p[0], note: p[2],
-        diff: p[1], kind: /LP|STAR|Leadership/i.test(p[0]) ? 'lp' : 'lld',
-        group: 'LLD · block ' + blk.toUpperCase() });
-    });
+  PLAN.lldProblems.forEach(function (p) {
+    out.push({ key: 'ld-' + p.id, lc: null, name: p.name, note: p.who,
+      diff: p.flavour, kind: 'lld',
+      group: 'LLD · block ' + p.tier.toUpperCase() });
+  });
+  PLAN.lldLp.forEach(function (r, i) {
+    out.push({ key: 'lp-' + i, lc: null, name: r[0], note: r[1],
+      diff: '', kind: 'lp', group: 'Amazon Leadership Principles' });
   });
   return out;
 }
@@ -371,17 +373,24 @@ function navModel(tab) {
   }
 
   if (tab === 'lld') {
+    var ref = [
+      { id: 'flavours',    n: '', label: 'The three flavours',   sub: 'get this wrong and you lose the round' },
+      { id: 'script',      n: '', label: 'The 60-minute script', sub: 'minute by minute' },
+      { id: 'patterns',    n: '', label: 'Requirement → pattern', sub: PLAN.lldPatterns.length + ' rows' },
+      { id: 'solid',       n: '', label: 'SOLID as refactors',   sub: 'violation and fix, in code' },
+      { id: 'concurrency', n: '', label: 'Concurrency in LLD',   sub: 'the Amazon differentiator' },
+      { id: 'checklist',   n: '', label: 'Class design checklist', sub: PLAN.lldChecklist.length + ' checks' },
+      { id: 'rules',       n: '', label: 'Machine-coding rules', sub: 'how to finish' }
+    ];
+    var pb = [], pc = [];
+    PLAN.lldProblems.forEach(function (p) {
+      (p.tier === 'b' ? pb : pc).push({ id: p.id, n: '', label: p.name, sub: p.flavour + ' · ' + p.mins + 'm' });
+    });
     return [
-      { g: 'Reference', items: [
-        { id: 'flavours', n: '', label: 'The three flavours', sub: 'OOD · machine coding · hybrid' },
-        { id: 'patterns', n: '', label: 'Requirement → pattern', sub: '12 rows' },
-        { id: 'solid', n: '', label: 'SOLID as refactors', sub: 'violation and fix' },
-        { id: 'rules', n: '', label: 'Machine-coding rules', sub: 'how to finish' }
-      ]},
-      { g: 'Problems', items: [
-        { id: 'b', n: '', label: 'Block B · tier 1–2', sub: PLAN.lld.b.length + ' items' },
-        { id: 'c', n: '', label: 'Block C · top tier', sub: PLAN.lld.c.length + ' items' }
-      ]}
+      { g: 'Reference', items: ref },
+      { g: 'Block B · tier 1–2', items: pb },
+      { g: 'Block C · top tier', items: pc },
+      { g: 'Amazon', items: [{ id: 'lp', n: '', label: 'Leadership Principles', sub: PLAN.lldLp.length + ' items' }] }
     ];
   }
 
@@ -747,57 +756,165 @@ function renderSd() {
 }
 
 /* --------------------------------------------------------------- LLD --- */
+function codeBlocks(rows, heading, intro) {
+  if (!rows || !rows.length) return '';
+  var h = '<h2 class="pane-h2">' + esc(heading) + ' <span class="h2-count">' + rows.length + '</span></h2>' +
+    (intro ? '<p class="pane-p">' + esc(intro) + '</p>' : '');
+  rows.forEach(function (c) {
+    h += '<div class="codeblock"><div class="code-t">' + esc(c[0]) + '</div>' +
+      '<pre><code>' + esc(c[1].join('\n')) + '</code></pre>' +
+      (c[2] ? '<div class="code-why">' + esc(c[2]) + '</div>' : '') + '</div>';
+  });
+  return h;
+}
+
+function twoColTable(rows, heads, boldFirst) {
+  var h = '<div class="tbl-wrap"><table><thead><tr>';
+  heads.forEach(function (x) { h += '<th>' + esc(x) + '</th>'; });
+  h += '</tr></thead><tbody>';
+  rows.forEach(function (r) {
+    h += '<tr><td class="' + (boldFirst ? 'fire' : 'trig') + '">' + esc(r[0]) + '</td>' +
+      '<td class="trig">' + esc(r[1]) + '</td>' +
+      (r.length > 2 ? '<td class="canon">' + esc(r[2]) + '</td>' : '') + '</tr>';
+  });
+  return h + '</tbody></table></div>';
+}
+
 function renderLld() {
   var id = selected('lld'), h = '';
 
+  function head(eyebrow, title, sub) {
+    return '<div class="pane-head"><div class="eyebrow">' + esc(eyebrow) + '</div><h1>' + esc(title) + '</h1>' +
+      (sub ? '<p class="pane-sub">' + esc(sub) + '</p>' : '') + '</div>';
+  }
+
   if (id === 'flavours') {
-    h += '<div class="pane-head"><div class="eyebrow">LLD</div><h1>The three flavours</h1>' +
-      '<p class="pane-sub">Three different rounds wear this name, and confusing them is how people lose the round.</p></div>' +
+    h += head('LLD', 'The three flavours',
+      'Three different rounds wear this name. Confusing them is how people lose it before writing a line.') +
       '<div class="tbl-wrap"><table><thead><tr><th>Flavour</th><th>Who</th><th>Format</th><th>What scores</th></tr></thead><tbody>';
     PLAN.lldFlavours.forEach(function (r) {
       h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="canon">' + esc(r[1]) + '</td>' +
         '<td class="trig">' + esc(r[2]) + '</td><td>' + esc(r[3]) + '</td></tr>';
     });
-    h += '</tbody></table></div>' +
-      '<h2 class="pane-h2">The framework</h2><div class="exit">' + esc(PLAN.lldFramework) + '</div>';
+    h += '</tbody></table></div><h2 class="pane-h2">The framework</h2><div class="exit">' +
+      esc(PLAN.lldFramework) + '</div>';
 
-  } else if (id === 'patterns') {
-    h += '<div class="pane-head"><div class="eyebrow">LLD</div><h1>Requirement → pattern</h1>' +
-      '<p class="pane-sub">About eight of the 23 GoF patterns actually appear. Learn these and stop.</p></div>' +
-      triTable(PLAN.lldPatterns, ['You hear', 'Reach for', 'Where it shows up']);
-
-  } else if (id === 'solid') {
-    h += '<div class="pane-head"><div class="eyebrow">LLD</div><h1>SOLID as refactors</h1>' +
-      '<p class="pane-sub">Be able to show a 10-line violation and its fix for each. Definitions score nothing.</p></div>' +
-      '<div class="tbl-wrap"><table><thead><tr><th></th><th>Principle</th><th>The violation to be able to write</th></tr></thead><tbody>';
-    PLAN.lldSolid.forEach(function (r) {
-      h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td><td>' + esc(r[2]) + '</td></tr>';
+  } else if (id === 'script') {
+    h += head('LLD', 'The 60-minute script',
+      'Run this every time. The last row is the highest-scoring thirty seconds of the round.') +
+      '<div class="tbl-wrap"><table><thead><tr><th>Clock</th><th>Phase</th><th>What you actually do</th></tr></thead><tbody>';
+    PLAN.lldScript.forEach(function (r) {
+      h += '<tr><td class="canon">' + esc(r[0]) + '</td><td class="fire">' + esc(r[1]) + '</td>' +
+        '<td class="trig">' + esc(r[2]) + '</td></tr>';
     });
     h += '</tbody></table></div>';
 
+  } else if (id === 'patterns') {
+    h += head('LLD', 'Requirement → pattern',
+      'About eight of the 23 GoF patterns actually appear. Learn these and stop.') +
+      triTable(PLAN.lldPatterns, ['You hear', 'Reach for', 'Where it shows up']);
+
+  } else if (id === 'solid') {
+    h += head('LLD', 'SOLID as refactors',
+      'Be able to write the violation and the fix. Definitions score nothing.');
+    PLAN.lldSolid.forEach(function (r) {
+      h += '<h2 class="pane-h2">' + esc(r[0]) + ' &middot; ' + esc(r[1]) + '</h2>' +
+        '<p class="pane-p">' + esc(r[2]) + '</p>' +
+        '<div class="codeblock"><pre><code>' + esc(r[3].join('\n')) + '</code></pre></div>';
+    });
+
+  } else if (id === 'concurrency') {
+    h += head('LLD', 'Concurrency in LLD',
+      'The single biggest separator at Amazon. Raise the race before they ask about it.') +
+      twoColTable(PLAN.lldConcurrency, ['The race', 'How you close it'], true);
+
+  } else if (id === 'checklist') {
+    h += head('LLD', 'Class design checklist',
+      'Run down this list before you say you are done.') +
+      twoColTable(PLAN.lldChecklist, ['Check', 'Why'], true);
+
   } else if (id === 'rules') {
-    h += '<div class="pane-head"><div class="eyebrow">LLD</div><h1>Machine-coding rules</h1>' +
-      '<p class="pane-sub">An unfinished elegant design scores below a finished plain one.</p></div>' +
-      '<ol class="rules">';
+    h += head('LLD', 'Machine-coding rules',
+      'An unfinished elegant design scores below a finished plain one.') + '<ol class="rules">';
     PLAN.lldRules.forEach(function (r) { h += '<li>' + esc(r) + '</li>'; });
     h += '</ol>';
 
-  } else {
-    var blk = (id === 'c') ? 'c' : 'b';
-    h += '<div class="pane-head"><div class="eyebrow">LLD &middot; problems</div><h1>' +
-      (blk === 'b' ? 'Block B · tier 1–2' : 'Block C · top tier') + '</h1>' +
-      '<p class="pane-sub">' + (blk === 'b'
-        ? 'Amazon · Adobe · Microsoft · JPM — whiteboard OOD.'
-        : 'Amazon hybrid · Uber and Flipkart machine coding · the Amazon LP story bank.') + '</p></div>';
-    PLAN.lld[blk].forEach(function (r, i) {
-      var key = 'ld-' + blk + '-' + i, p = state.problems[key] || {};
+  } else if (id === 'lp') {
+    h += head('Amazon', 'Leadership Principles', 'Roughly half of Amazon’s signal.') +
+      '<div class="learn">' + esc(PLAN.lldLpNote) + '</div>';
+    PLAN.lldLp.forEach(function (r, i) {
+      var key = 'lp-' + i, p = state.problems[key] || {};
       h += '<div class="prow' + (p.done ? ' done' : '') + '" data-open="' + key + '">' +
         '<button class="cb" data-check="' + key + '">' + (p.done ? '✓' : '') + '</button>' +
-        '<span class="tag ' + esc(String(r[1]).split(' ')[0].toLowerCase()) + '">' + esc(r[1]) + '</span>' +
         '<span class="p-name">' + esc(r[0]) + '</span>' +
-        (r[2] ? '<span class="p-note">' + esc(r[2]) + '</span>' : '') +
+        (r[1] ? '<span class="p-note">' + esc(r[1]) + '</span>' : '') +
         '<span class="dot ' + esc(p.status || '') + '"></span></div>';
     });
+
+  } else {
+    var pr = null;
+    PLAN.lldProblems.forEach(function (x) { if (x.id === id) pr = x; });
+    if (!pr) pr = PLAN.lldProblems[0];
+    var key = 'ld-' + pr.id, p = state.problems[key] || {};
+
+    h += '<div class="pane-head">' +
+      '<div class="eyebrow">LLD &middot; ' + esc(pr.flavour) + ' &middot; ' + pr.mins + ' min &middot; ' +
+      '<span class="chip tier' + (pr.tier === 'b' ? '1' : '3') + '">' +
+      (pr.tier === 'b' ? 'tier 1–2' : 'top tier') + '</span></div>' +
+      '<h1>' + esc(pr.name) + '</h1>' +
+      '<div class="pane-actions">' +
+      '<button class="btn ' + (p.done ? 'ok on' : 'primary') + '" data-check="' + key + '">' +
+      (p.done ? '✓ Done' : 'Mark done') + '</button>' +
+      '<button class="btn" data-open="' + key + '">Log / status</button>' +
+      '<span class="dot ' + esc(p.status || '') + '"></span></div></div>';
+
+    if (pr.who) h += '<div class="sd-who"><i>Who asks it</i>' + esc(pr.who) + '</div>';
+
+    h += '<h2 class="pane-h2">Asked as</h2>' + bulletList(pr.asked, 'asked');
+    h += '<h2 class="pane-h2">Clarify before you draw anything</h2>' + bulletList(pr.clarify);
+
+    if (pr.entities && pr.entities.length) {
+      h += '<h2 class="pane-h2">Entities <span class="h2-count">' + pr.entities.length + '</span></h2>' +
+        '<p class="pane-p">Nouns become classes, verbs become methods. Put cardinality on every relationship.</p>' +
+        '<div class="tbl-wrap"><table><thead><tr><th>Class</th><th>Kind</th><th>Role</th></tr></thead><tbody>';
+      pr.entities.forEach(function (r) {
+        h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="canon">' + esc(r[1]) + '</td>' +
+          '<td class="trig">' + esc(r[2]) + '</td></tr>';
+      });
+      h += '</tbody></table></div>';
+    }
+    if (pr.patterns && pr.patterns.length) {
+      h += '<h2 class="pane-h2">Patterns, and exactly where</h2>' +
+        twoColTable(pr.patterns, ['Pattern', 'Applied to'], true);
+    }
+    h += codeBlocks(pr.code, 'Code you must be able to write',
+      'The comments mark where candidates go wrong.');
+
+    if (pr.concurrency && pr.concurrency.length) {
+      h += '<h2 class="pane-h2">Concurrency <span class="h2-count">' + pr.concurrency.length + '</span></h2>' +
+        '<p class="pane-p">Raise these before you are asked. At Amazon this is the difference between a hire and a no-hire.</p>' +
+        twoColTable(pr.concurrency, ['The race', 'How you close it'], true);
+    }
+    if (pr.extend && pr.extend.length) {
+      h += '<h2 class="pane-h2">"Now add X" <span class="h2-count">' + pr.extend.length + '</span></h2>' +
+        '<p class="pane-p">Showing one extension is the highest-scoring thirty seconds of the round.</p>' +
+        twoColTable(pr.extend, ['They ask for', 'You answer'], true);
+    }
+    if (pr.cross && pr.cross.length) {
+      h += '<h2 class="pane-h2">Cross-questions <span class="h2-count">' + pr.cross.length + '</span></h2>';
+      pr.cross.forEach(function (r) {
+        h += '<div class="qa static"><div class="qa-body">' +
+          '<b class="qa-q">' + esc(r[0]) + '</b>' +
+          '<span class="qa-f">' + esc(r[1]) + '</span></div></div>';
+      });
+    }
+    if (pr.fail && pr.fail.length) {
+      h += '<h2 class="pane-h2">What sinks candidates here</h2>' + bulletList(pr.fail, 'fail');
+    }
+
+    h += '<div class="field pane-notes"><label>Your design + what you got wrong</label>' +
+      '<textarea data-note="' + key + '" placeholder="Every LLD session ends with code that runs.">' +
+      esc(state.notes[key] || '') + '</textarea></div>';
   }
 
   h += pagerFor('lld');

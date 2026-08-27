@@ -120,6 +120,157 @@ function partTwo() {
   return out.join('\n');
 }
 
+/* ------------------------------------------------------------- PART III --- */
+function partThree() {
+  var out = [];
+  function w(s) { out.push(s == null ? '' : s); }
+  var code = 0, cross = 0;
+  PLAN.lldProblems.forEach(function (p) { code += (p.code || []).length; cross += p.cross.length; });
+
+  w('# PART III — LLD / OOD / MACHINE CODING');
+  w('');
+  w('**Three different rounds wear this name**, and confusing them is how people lose it before writing a line.');
+  w('');
+  w('| Flavour | Who | Format | What scores |');
+  w('|---|---|---|---|');
+  PLAN.lldFlavours.forEach(function (r) {
+    w('| **' + cell(r[0]) + '** | ' + cell(r[1]) + ' | ' + cell(r[2]) + ' | ' + cell(r[3]) + ' |');
+  });
+  w('');
+  w('**' + PLAN.lldProblems.length + ' problems · ' + code + ' code patterns · ' + cross + ' cross-questions.**');
+  w('');
+  w('---');
+  w('');
+  w('## THE 60-MINUTE SCRIPT');
+  w('');
+  w('| Clock | Phase | What you actually do |');
+  w('|---|---|---|');
+  PLAN.lldScript.forEach(function (r) {
+    w('| ' + cell(r[0]) + ' | **' + cell(r[1]) + '** | ' + cell(r[2]) + ' |');
+  });
+  w('');
+  w('## REQUIREMENT → PATTERN');
+  w('');
+  w('| You hear | Reach for | Where it shows up |');
+  w('|---|---|---|');
+  PLAN.lldPatterns.forEach(function (r) {
+    w('| ' + cell(r[0]) + ' | **' + cell(r[1]) + '** | ' + cell(r[2]) + ' |');
+  });
+  w('');
+  w('## SOLID AS REFACTORS');
+  w('');
+  PLAN.lldSolid.forEach(function (r) {
+    w('### ' + r[0] + ' · ' + r[1]);
+    w('');
+    w(r[2]);
+    w('');
+    w('```java');
+    r[3].forEach(function (l) { w(l); });
+    w('```');
+    w('');
+  });
+  w('## CONCURRENCY IN LLD');
+  w('');
+  w('The single biggest separator at Amazon. Raise the race before they ask.');
+  w('');
+  w('| The race | How you close it |');
+  w('|---|---|');
+  PLAN.lldConcurrency.forEach(function (r) { w('| **' + cell(r[0]) + '** | ' + cell(r[1]) + ' |'); });
+  w('');
+  w('## CLASS DESIGN CHECKLIST');
+  w('');
+  w('| Check | Why |');
+  w('|---|---|');
+  PLAN.lldChecklist.forEach(function (r) { w('| **' + cell(r[0]) + '** | ' + cell(r[1]) + ' |'); });
+  w('');
+  w('## MACHINE-CODING RULES');
+  w('');
+  PLAN.lldRules.forEach(function (r, i) { w((i + 1) + '. ' + r); });
+  w('');
+  w('---');
+  w('');
+
+  var lastTier = null;
+  PLAN.lldProblems.forEach(function (p) {
+    if (p.tier !== lastTier) {
+      lastTier = p.tier;
+      w('## ' + (p.tier === 'b'
+        ? 'BLOCK B · TIER 1–2 — Amazon · Adobe · Microsoft · JPM'
+        : 'BLOCK C · TOP TIER — Amazon hybrid · Uber / Flipkart machine coding'));
+      w('');
+    }
+    w('### ' + p.name + '  *(' + p.flavour + ', ' + p.mins + ' min)*');
+    w('');
+    w('**Who asks it.** ' + p.who);
+    w('');
+    w('**Asked as:**');
+    w('');
+    p.asked.forEach(function (a) { w('- ' + a); });
+    w('');
+    w('**Clarify before you draw anything:**');
+    w('');
+    p.clarify.forEach(function (a) { w('- ' + a); });
+    w('');
+    w('**Entities**');
+    w('');
+    w('| Class | Kind | Role |');
+    w('|---|---|---|');
+    p.entities.forEach(function (r) { w('| **' + cell(r[0]) + '** | ' + cell(r[1]) + ' | ' + cell(r[2]) + ' |'); });
+    w('');
+    w('**Patterns, and exactly where**');
+    w('');
+    w('| Pattern | Applied to |');
+    w('|---|---|');
+    p.patterns.forEach(function (r) { w('| **' + cell(r[0]) + '** | ' + cell(r[1]) + ' |'); });
+    w('');
+    (p.code || []).forEach(function (c) {
+      w('**' + c[0] + '**');
+      w('');
+      w('```java');
+      c[1].forEach(function (l) { w(l); });
+      w('```');
+      w('');
+      if (c[2]) { w('> ' + c[2]); w(''); }
+    });
+    if (p.concurrency && p.concurrency.length) {
+      w('**Concurrency** — raise these before you are asked');
+      w('');
+      w('| The race | How you close it |');
+      w('|---|---|');
+      p.concurrency.forEach(function (r) { w('| ' + cell(r[0]) + ' | ' + cell(r[1]) + ' |'); });
+      w('');
+    }
+    if (p.extend && p.extend.length) {
+      w('**"Now add X"** — the highest-scoring thirty seconds');
+      w('');
+      w('| They ask for | You answer |');
+      w('|---|---|');
+      p.extend.forEach(function (r) { w('| ' + cell(r[0]) + ' | ' + cell(r[1]) + ' |'); });
+      w('');
+    }
+    w('**Cross-questions**');
+    w('');
+    w('| They ask | The answer spine |');
+    w('|---|---|');
+    p.cross.forEach(function (r) { w('| ' + cell(r[0]) + ' | ' + cell(r[1]) + ' |'); });
+    w('');
+    w('**What sinks candidates here:**');
+    w('');
+    p.fail.forEach(function (a) { w('- ' + a); });
+    w('');
+    w('---');
+    w('');
+  });
+
+  w('## AMAZON LEADERSHIP PRINCIPLES');
+  w('');
+  w(PLAN.lldLpNote);
+  w('');
+  PLAN.lldLp.forEach(function (r) { w('- **' + r[0] + '**' + (r[1] ? ' — ' + r[1] : '')); });
+  w('');
+  return out.join(String.fromCharCode(10));
+}
+
 /* -------------------------------------------------------------- PART IV --- */
 function partFour() {
   var out = [];
@@ -205,9 +356,11 @@ function splice(text, startMarker, endMarker, replacement) {
 }
 
 md = splice(md, '# PART II — SYSTEM DESIGN', '# PART III — LLD', partTwo());
+md = splice(md, '# PART III — LLD', '# PART IV — TECH', partThree());
 md = splice(md, '# PART IV — TECH', '# PART V — HOW THIS SHEET MAPS', partFour());
 fs.writeFileSync('recognition-sheet.md', md, 'utf8');
 
 console.log('regenerated from data.js:');
 console.log('  Part II —', PLAN.sd.length, 'system design sessions');
+console.log('  Part III —', PLAN.lldProblems.length, 'LLD problems');
 console.log('  Part IV —', PLAN.tech.length, 'tech modules');

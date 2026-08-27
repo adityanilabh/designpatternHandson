@@ -131,7 +131,7 @@ function esc(x) {
   console.log('Tech: all', ctxT.PLAN.tech.length, 'modules render ·', qaSeen, '/', qaTotal, 'Q&A across pages');
 
   /* 5. lld + reference + strategy pages */
-  for (var pair of [['lld', ['flavours','patterns','solid','rules','b','c']],
+  for (var pair of [['lld', ['flavours','script','patterns','solid','concurrency','checklist','rules','lp','parking','elevator','vending','booking','splitwise','tictactoe','notification','atm','orderinv','lru','filesystem','ridehail','ratelimiter']],
                     ['reference', ['templates','triggers','pool','reading']],
                     ['strategy', ['0','1','2','3','4','5']]]) {
     for (var id of pair[1]) {
