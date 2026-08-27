@@ -419,8 +419,8 @@ function navModel(tab) {
       var pr = weekProgress(wk), open = weekUnlocked(wk.n);
       byPhase[wk.phase].push({
         id: String(wk.n),
-        n: 'W' + wk.n,
-        label: (open ? '' : '✕ ') + fmtDate(wk.from),
+        n: '',
+        label: (open ? '' : '✕ ') + 'Week ' + wk.n,
         sub: open ? (pr.core + '/' + pr.coreTotal + ' core' + (pr.complete ? ' ✓' : '')) : 'locked'
       });
     });
@@ -1559,7 +1559,8 @@ function renderWeekly() {
     '<div class="eyebrow">Weekly goal &middot; week ' + wk.n + ' of ' + WEEKS +
     ' &middot; <span class="chip ph' + wk.phase + '">phase ' + wk.phase + '</span></div>' +
     '<h1>Week ' + wk.n + '</h1>' +
-    '<p class="pane-sub">' + fmtDate(wk.from) + ' → ' + fmtDate(wk.to) + '</p>';
+    '<p class="pane-sub">Gated by completion, not by the calendar. ' +
+    'If you stay on schedule this lands around ' + fmtDate(wk.from) + ' – ' + fmtDate(wk.to) + '.</p>';
 
   if (!open) {
     var blocker = wk.n - 1;
