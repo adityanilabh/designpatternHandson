@@ -382,6 +382,26 @@ function navModel(tab) {
     return [{ g: 'Phase 1 · the JPM offer', items: g1 }, { g: 'Phase 2', items: g2 }];
   }
 
+  if (tab === 'method') {
+    return [
+      { g: 'The procedure', items: [
+        { id: 'why',        n: '1', label: 'Why this section exists', sub: 'the volatility problem' },
+        { id: 'altitude',   n: '2', label: 'Altitude control',        sub: 'the most common loss' },
+        { id: 'decompose',  n: '3', label: 'Decomposition',           sub: 'unknown → known parts' },
+        { id: 'primitives', n: '4', label: 'The primitive catalogue', sub: PLAN.method.primitives.rows.length + ' building blocks' },
+        { id: 'failures',   n: '5', label: 'Failure generator',       sub: '11 questions, any system' },
+        { id: 'ambiguity',  n: '6', label: 'The first three minutes', sub: 'when you do not understand' },
+        { id: 'domain',     n: '7', label: 'Unknown domain',          sub: 'translate, do not learn' },
+        { id: 'product',    n: '8', label: 'Product thinking',        sub: 'scored, rarely prepared' }
+      ]},
+      { g: 'Practice', items: [
+        { id: 'worked', n: '', label: 'A worked round',    sub: 'the method, beat by beat' },
+        { id: 'blind',  n: '', label: 'Blind prompt bank', sub: '60 prompts, no solutions' },
+        { id: 'rubric', n: '', label: 'The rubric',        sub: 'score yourself out of 20' }
+      ]}
+    ];
+  }
+
   if (tab === 'lp') {
     var hi = [], med = [], lo = [];
     PLAN.lp.principles.forEach(function (p) {
@@ -1154,6 +1174,171 @@ function renderTech() {
   $('#view-tech').innerHTML = h;
 }
 
+/* --------------------------------------------------------- The Method --- */
+function mHead(eyebrow, title, sub) {
+  return '<div class="pane-head"><div class="eyebrow">' + esc(eyebrow) + '</div><h1>' + esc(title) + '</h1>' +
+    (sub ? '<p class="pane-sub">' + esc(sub) + '</p>' : '') + '</div>';
+}
+function numTable(rows, heads) {
+  var h = '<div class="tbl-wrap"><table><thead><tr>';
+  heads.forEach(function (x) { h += '<th>' + esc(x) + '</th>'; });
+  h += '</tr></thead><tbody>';
+  rows.forEach(function (r) {
+    h += '<tr><td class="fire">' + esc(r[0]) + '</td>';
+    for (var i = 1; i < r.length; i++) {
+      h += '<td class="' + (i === r.length - 1 && r.length > 2 ? 'canon' : 'trig') + '">' + esc(r[i]) + '</td>';
+    }
+    h += '</tr>';
+  });
+  return h + '</tbody></table></div>';
+}
+
+function renderMethod() {
+  var id = selected('method'), M = PLAN.method, h = '';
+
+  if (id === 'why') {
+    h += mHead('The Method', 'Why this section exists',
+      'Every other section teaches machinery through named problems. Real rounds hand you a system nobody has blogged about.');
+    h += '<div class="learn">' + esc(M.altitude.evidence) + '</div>';
+    h += '<h2 class="pane-h2">The claim</h2>' +
+      '<p class="pane-p">The <b>problem</b> is volatile. The <b>machinery</b> is not. An audio-buffer pipeline is bounded ' +
+      'buffers with backpressure. A playlist mixer is a k-way merge with a ratio strategy and a filter chain. A locker ' +
+      'system is atomic allocation with an expiring token. None of those appear on a prep list; all of them are made of ' +
+      'parts you already have.</p>' +
+      '<p class="pane-p">This section is the procedure for getting from an unheard-of prompt to those parts. Work it in ' +
+      'order, mechanically, especially when it feels slow.</p>';
+    h += '<h2 class="pane-h2">The honest limit</h2><div class="exit">The method is teachable and it is written down here. ' +
+      'The <b>fluency is not</b> — that comes from running unseen prompts under a clock, recorded, scored against the ' +
+      'rubric. Ten of those is worth more than the next fifty named problems.</div>';
+
+  } else if (id === 'altitude') {
+    h += mHead('The Method', 'Altitude control', M.altitude.intro);
+    h += '<div class="lp-weak">' + esc(M.altitude.evidence) + '</div>';
+    h += '<h2 class="pane-h2">The three levels</h2>' +
+      '<div class="tbl-wrap"><table><thead><tr><th>Level</th><th>What lives here</th><th>Prompt sounds like</th>' +
+      '<th>You are drifting if you…</th></tr></thead><tbody>';
+    M.altitude.levels.forEach(function (r) {
+      h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td>' +
+        '<td class="canon">' + esc(r[2]) + '</td><td class="canon">' + esc(r[3]) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    h += '<h2 class="pane-h2">How to tell which one they want</h2>' +
+      numTable(M.altitude.signals, ['Signal', 'Level', 'What to do']);
+    h += '<h2 class="pane-h2">The check — ask this in the first minute</h2>' +
+      '<div class="soln-quote">' + esc(M.altitude.theCheck) + '</div>';
+    h += '<h2 class="pane-h2">Recovering when you are at the wrong level</h2>' +
+      numTable(M.altitude.recovery, ['Situation', 'What to do']);
+    h += '<h2 class="pane-h2">The specific trap</h2><div class="lp-weak">' + esc(M.altitude.drift) + '</div>';
+
+  } else if (id === 'decompose') {
+    h += mHead('The Method', 'Decomposition', M.decompose.intro);
+    h += '<h2 class="pane-h2">System design — in this order</h2>' +
+      numTable(M.decompose.hld, ['Step', 'What you do']);
+    h += '<h2 class="pane-h2">Object design — in this order</h2>' +
+      numTable(M.decompose.lld, ['Step', 'What you do']);
+    h += '<h2 class="pane-h2">When the domain is unfamiliar</h2><div class="exit">' +
+      esc(M.decompose.unknownShape) + '</div>';
+
+  } else if (id === 'primitives') {
+    h += mHead('The Method', 'The primitive catalogue', M.primitives.intro);
+    h += '<div class="learn">' + esc(M.primitives.note) + '</div>';
+    h += '<div class="tbl-wrap"><table><thead><tr><th>Primitive</th><th>What it is for</th>' +
+      '<th>Reach for it when</th><th>WRONG choice when</th><th>It costs you</th></tr></thead><tbody>';
+    M.primitives.rows.forEach(function (r) {
+      h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td>' +
+        '<td class="canon">' + esc(r[2]) + '</td><td class="wrong-cell">' + esc(r[3]) + '</td>' +
+        '<td class="canon">' + esc(r[4]) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+
+  } else if (id === 'failures') {
+    h += mHead('The Method', 'Failure generator', M.failures.intro);
+    h += '<div class="learn"><b>How to run it.</b> ' + esc(M.failures.how) + '</div>';
+    h += '<h2 class="pane-h2">The eleven questions</h2>' +
+      numTable(M.failures.loop, ['', 'Ask', 'What it forces you to answer']);
+    h += '<h2 class="pane-h2">The offline family</h2>' +
+      '<p class="pane-p">' + esc(M.failures.offlineFamily.intro) + '</p>' +
+      numTable(M.failures.offlineFamily.rows, ['Aspect', 'The question']);
+    h += '<h2 class="pane-h2">You will not have time for all of it</h2>' +
+      '<div class="exit">' + esc(M.failures.pickTwo) + '</div>';
+
+  } else if (id === 'ambiguity') {
+    h += mHead('The Method', 'The first three minutes', M.ambiguity.intro);
+    h += '<h2 class="pane-h2">The protocol</h2>' + numTable(M.ambiguity.steps, ['Step', 'What you say']);
+    h += '<h2 class="pane-h2">What not to do</h2>' + bulletList(M.ambiguity.dontDo, 'fail');
+    h += '<h2 class="pane-h2">When the requirements are handed to you</h2>' +
+      '<div class="lp-weak">' + esc(M.ambiguity.whenGivenRequirements) + '</div>';
+
+  } else if (id === 'domain') {
+    h += mHead('The Method', 'Unknown domain', M.domain.intro);
+    h += '<h2 class="pane-h2">Translate it, do not learn it</h2>' +
+      numTable(M.domain.translate, ['Ask', 'What it maps to']);
+    h += '<h2 class="pane-h2">Say it out loud</h2><div class="soln-quote">' + esc(M.domain.script) + '</div>';
+    h += '<h2 class="pane-h2">Rules</h2>' + bulletList(M.domain.rules);
+
+  } else if (id === 'product') {
+    h += mHead('The Method', 'Product thinking', M.product.intro);
+    h += '<h2 class="pane-h2">The frame</h2>' + numTable(M.product.frame, ['Ask yourself', 'Because']);
+    h += '<h2 class="pane-h2">Worked answers</h2>';
+    M.product.examples.forEach(function (r) {
+      h += '<div class="qa static"><div class="qa-body"><b class="qa-q">' + esc(r[0]) + '</b>' +
+        '<span class="qa-f">' + esc(r[1]) + '</span></div></div>';
+    });
+    h += '<h2 class="pane-h2">The tell</h2><div class="lp-weak">' + esc(M.product.tell) + '</div>';
+
+  } else if (id === 'worked') {
+    h += mHead('The Method', 'A worked round', M.worked.prompt);
+    h += '<div class="learn">' + esc(M.worked.note) + '</div>';
+    M.worked.beats.forEach(function (b) {
+      h += '<h2 class="pane-h2">' + esc(b[0]) + '</h2>' +
+        '<div class="lp-said">' + esc(b[1]) + '</div>' +
+        '<div class="lp-why"><i>what the method is doing here</i>' + esc(b[2]) + '</div>';
+    });
+    h += '<h2 class="pane-h2">What the method did</h2><div class="exit">' + esc(M.worked.whatTheMethodDid) + '</div>';
+
+  } else if (id === 'blind') {
+    var total = 0;
+    M.blind.groups.forEach(function (g) { total += g[2].length; });
+    h += mHead('The Method', 'Blind prompt bank',
+      total + ' prompts, no solutions — deliberately. Solutions would turn this back into a list of named problems.');
+    h += '<h2 class="pane-h2">How to work them</h2>' + bulletList(M.blind.rules);
+    M.blind.groups.forEach(function (g, gi) {
+      h += '<h2 class="pane-h2">' + esc(g[0]) + ' <span class="h2-count">' + g[2].length + '</span></h2>' +
+        '<p class="pane-p">' + esc(g[1]) + '</p>';
+      g[2].forEach(function (p, i) {
+        var key = 'bp-' + gi + '-' + i, st = state.problems[key] || {};
+        h += '<div class="prow' + (st.done ? ' done' : '') + '" data-open="' + key + '">' +
+          '<button class="cb" data-check="' + key + '">' + (st.done ? '✓' : '') + '</button>' +
+          '<span class="p-name">' + esc(p) + '</span>' +
+          '<span class="dot ' + esc(st.status || '') + '"></span></div>';
+      });
+    });
+    h += '<button class="btn primary" id="pick-blind" style="margin-top:24px">Pick one at random</button> ' +
+      '<span id="picked-blind" class="mono" style="margin-left:10px"></span>';
+
+  } else {
+    h += mHead('The Method', 'The rubric', M.rubric.intro);
+    h += '<div class="tbl-wrap"><table><thead><tr><th>Row</th><th>Pts</th><th>What earns it</th></tr></thead><tbody>';
+    M.rubric.rows.forEach(function (r) {
+      h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="canon">' + esc(r[1]) + '</td>' +
+        '<td class="trig">' + esc(r[2]) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    h += '<h2 class="pane-h2">Bands</h2>' + numTable(M.rubric.bands, ['Score', 'Read']);
+    h += '<h2 class="pane-h2">Keep a log</h2><div class="exit">' + esc(M.rubric.log) + '</div>';
+  }
+
+  h += pagerFor('method');
+  $('#view-method').innerHTML = h;
+
+  var pb = $('#pick-blind');
+  if (pb) pb.onclick = function () {
+    var all = [];
+    M.blind.groups.forEach(function (g) { g[2].forEach(function (p) { all.push(p); }); });
+    $('#picked-blind').textContent = '→ ' + all[Math.floor(Math.random() * all.length)];
+  };
+}
+
 /* ---------------------------------------------------------- Amazon LP --- */
 function lpHead(eyebrow, title, sub) {
   return '<div class="pane-head"><div class="eyebrow">' + esc(eyebrow) + '</div><h1>' + esc(title) + '</h1>' +
@@ -1753,7 +1938,7 @@ function renderHeader() {
   $('#tab-due').textContent = overdue;
 }
 var RENDER = {
-  dashboard: renderDashboard, dsa: renderDsa, sd: renderSd, lld: renderLld,
+  dashboard: renderDashboard, method: renderMethod, dsa: renderDsa, sd: renderSd, lld: renderLld,
   tech: renderTech, lp: renderLp, revision: renderRevision, companies: renderCompanies,
   reference: renderReference, log: renderLog, strategy: renderStrategy
 };

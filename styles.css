@@ -844,3 +844,11 @@ h3.prac-h {
   color: var(--ink); letter-spacing: -.005em;
 }
 h3.prac-h:first-of-type { margin-top: 20px; }
+
+/* --- The Method --- */
+.soln-quote {
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  padding: 16px 19px; border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 15px; line-height: 1.72; color: var(--ink);
+}
+td.wrong-cell { color: var(--bad); font-size: 13px; }

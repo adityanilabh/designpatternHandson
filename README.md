@@ -22,6 +22,24 @@ Three files you read, one app you use.
 
 ---
 
+## For problems you have never seen
+
+Every other section teaches machinery through **named** problems. Real rounds do not oblige — two Amazon LLD rounds in the wild were "mix songs from a DJ service and a recommendation service" and "handle audio buffers across stages at X frames per second." Neither is on any prep list.
+
+**The Method** tab is the procedure for that case:
+
+- **Altitude control** — the most common way to lose a design round, and one question in the first minute prevents it
+- **Decomposition** — a mechanical 8-step (HLD) / 7-step (LLD) procedure from unknown prompt to known parts
+- **22 primitives** — every system is an assembly of these, each with what it is *for* and when it is the **wrong** choice
+- **A failure generator** — 11 questions you run over any system, so "what if the device is offline?" is something you raise, not something you were lucky to have prepared
+- **The first three minutes** — what to do when you do not understand the question
+- **Unknown domain** — translate it, do not learn it
+- **Product thinking** — scored at Amazon, almost never prepared
+- **A worked round**, beat by beat, on a real Alexa question
+- **57 blind prompts with no solutions**, and a 20-point rubric
+
+> The method is written down. The **fluency is not** — that comes from running unseen prompts under a clock, recorded, and scoring yourself. Ten of those beats the next fifty named problems.
+
 ## The one idea
 
 > You read a question you have never seen, and within 60 seconds you say *"this is X wearing a costume."*
@@ -78,6 +96,8 @@ No single curve peaks in January. That is why the tech track is front-loaded int
 | Pattern rows (individually drillable) | 176 |
 | DSA questions — block B / block C | 283 / 218 |
 | System design sessions | 22 |
+| The Method — altitude, decomposition, primitives, failure generator | 192 rows |
+| Blind prompts (no solutions) | 57 |
 | Amazon LP — principles, probes, anti-patterns, story bank | 238 rows |
 | Design patterns (intent, UML, runnable code, gotchas) | 13 |
 | LLD problems (entities, code, concurrency, extensions, cross-Q) | 13 |
