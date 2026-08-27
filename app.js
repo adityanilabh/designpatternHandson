@@ -389,7 +389,8 @@ function navModel(tab) {
     return [{ g: 'Reference', items: [
       { id: 'templates', n: '', label: 'Template library', sub: PLAN.templates.length + ' templates' },
       { id: 'triggers', n: '', label: 'All triggers', sub: 'one searchable index' },
-      { id: 'pool', n: '', label: 'Blind hard pool', sub: PLAN.hardPool.length + ' problems' }
+      { id: 'pool', n: '', label: 'Blind hard pool', sub: PLAN.hardPool.length + ' problems' },
+      { id: 'reading', n: '', label: 'Reading list', sub: 'primers and references' }
     ]}];
   }
 
@@ -555,13 +556,35 @@ function renderDashboard() {
 }
 
 /* --------------------------------------------------------------- DSA --- */
+/* ------------------------------------------------------- problem links --- */
+/* LeetCode slugs derive from the title; PLAN.lcSlug overrides the ones that
+   would 404 (bundled rows, edited headings). GfG has no derivable slug, so
+   those go through search, which always resolves. */
+function lcUrl(lc, name) {
+  var slug = (PLAN.lcSlug && PLAN.lcSlug[lc]) ||
+    String(name || '').toLowerCase()
+      .replace(/[^a-z0-9 -]/g, '').trim().replace(/\s+/g, '-');
+  return 'https://leetcode.com/problems/' + slug + '/';
+}
+function gfgUrl(lc, name) {
+  var term = (PLAN.gfgName && PLAN.gfgName[lc]) || name || '';
+  return 'https://www.geeksforgeeks.org/search/?gq=' + encodeURIComponent(term);
+}
+function problemLinks(lc, name) {
+  if (lc == null) return '<span class="p-lc">—</span>';
+  return '<a class="p-lc lnk" href="' + lcUrl(lc, name) + '" target="_blank" rel="noopener"' +
+    ' title="Open LC ' + lc + ' on LeetCode">LC ' + lc + '</a>' +
+    '<a class="p-gfg lnk" href="' + gfgUrl(lc, name) + '" target="_blank" rel="noopener"' +
+    ' title="Find this on GeeksforGeeks">GfG</a>';
+}
+
 function questionRow(key, q) {
   var p = state.problems[key] || {};
   var diffCls = { E: 'e', M: 'm', H: 'h' }[q[2]] || '';
   return '<div class="prow' + (p.done ? ' done' : '') + '" data-open="' + key + '">' +
     '<button class="cb" data-check="' + key + '">' + (p.done ? '✓' : '') + '</button>' +
     '<span class="diff ' + diffCls + '">' + esc(q[2] || '') + '</span>' +
-    '<span class="p-lc">' + (q[0] ? 'LC ' + q[0] : '—') + '</span>' +
+    problemLinks(q[0], q[1]) +
     '<span class="p-name">' + esc(q[1]) + '</span>' +
     (q[3] ? '<span class="p-note">' + esc(q[3]) + '</span>' : '') +
     '<span class="dot ' + esc(p.status || '') + '"></span></div>';
@@ -633,6 +656,19 @@ function triTable(rows, heads) {
   return h + '</tbody></table></div>';
 }
 
+/* a reading list: direct links open the page, non-links open a search */
+function readingList(rows, heading) {
+  if (!rows || !rows.length) return '';
+  var h = '<h2 class="pane-h2">' + esc(heading || 'Read more') +
+    ' <span class="h2-count">' + rows.length + '</span></h2><ul class="readlist">';
+  rows.forEach(function (r) {
+    var url = r[2] ? r[1] : 'https://www.google.com/search?q=' + encodeURIComponent(r[1]);
+    h += '<li><a href="' + url + '" target="_blank" rel="noopener" class="lnk">' + esc(r[0]) + '</a>' +
+      (r[2] ? '' : '<span class="read-find">search</span>') + '</li>';
+  });
+  return h + '</ul>';
+}
+
 function bulletList(items, cls) {
   if (!items || !items.length) return '';
   var h = '<ul class="sd-list ' + (cls || '') + '">';
@@ -699,6 +735,8 @@ function renderSd() {
   if (s.fail && s.fail.length) {
     h += '<h2 class="pane-h2">What sinks candidates here</h2>' + bulletList(s.fail, 'fail');
   }
+
+  h += readingList((PLAN.sdRead || {})[s.n], 'Read more');
 
   h += '<div class="field pane-notes"><label>Your one-page design + cross-question answers</label>' +
     '<textarea data-note="' + key + '" placeholder="A weekend that produced nothing you can re-read did not happen.">' +
@@ -821,6 +859,8 @@ function renderTech() {
       bulletList(m.traps, 'fail');
   }
 
+  h += readingList((PLAN.techRead || {})[m.id], 'Read more');
+
   h += '<div class="field pane-notes"><label>Hands-on artefact / notes</label>' +
     '<textarea data-note="mod-' + m.id + '" placeholder="What you actually built or broke. Not a summary of what you read.">' +
     esc(state.notes['mod-' + m.id] || '') + '</textarea></div>';
@@ -851,7 +891,7 @@ function renderRevision() {
       g[1].forEach(function (r) {
         h += '<div class="prow" data-open="' + r.key + '">' +
           '<button class="cb" data-rev="' + r.key + ':' + r.ri + '"></button>' +
-          '<span class="p-lc">' + (r.it.lc ? 'LC ' + r.it.lc : '—') + '</span>' +
+          problemLinks(r.it.lc, r.it.name) +
           '<span class="p-name">' + esc(r.it.name) + '</span>' +
           '<span class="p-note">' + esc(r.it.group) + '</span>' +
           '<span class="p-cap">' + fmtDate(r.due) + '</span></div>';
@@ -941,7 +981,7 @@ function renderCompanies() {
             var pp = state.problems[x.key] || {};
             h += '<div class="prow' + (pp.done ? ' done' : '') + '" data-open="' + x.key + '">' +
               '<button class="cb" data-check="' + x.key + '">' + (pp.done ? '✓' : '') + '</button>' +
-              '<span class="p-lc">' + (x.lc ? 'LC ' + x.lc : '—') + '</span>' +
+              problemLinks(x.lc, x.name) +
               '<span class="p-name">' + esc(x.name) + '</span>' +
               (x.note ? '<span class="p-note">' + esc(x.note) + '</span>' : '') +
               '<span class="dot ' + esc(pp.status || '') + '"></span></div>';
@@ -985,6 +1025,14 @@ function renderReference() {
         '<button class="btn sm ok ' + (st === 'fast' ? 'on' : '') + '" data-tpl="' + i + ':fast">&lt;3 min</button>' +
         '</div></div>';
     });
+
+  } else if (id === 'reading') {
+    h += '<div class="pane-head"><div class="eyebrow">Reference</div><h1>Reading list</h1>' +
+      '<p class="pane-sub">The general references. Per-session and per-module reading sits on each ' +
+      'system design session and each tech module.</p></div>' +
+      readingList(PLAN.readGeneral, 'Start here') +
+      '<p class="pane-p" style="margin-top:26px">Rows marked <b>search</b> are things worth reading whose exact ' +
+      'URL is not stable enough to hard-code, so they open a search instead of a dead link.</p>';
 
   } else if (id === 'pool') {
     h += '<div class="pane-head"><div class="eyebrow">Reference</div><h1>Blind hard pool</h1>' +
@@ -1091,6 +1139,9 @@ function openDrawer(key) {
   $('#dr-title').textContent = (it.lc ? 'LC ' + it.lc + ' · ' : '') + it.name;
 
   var h = '';
+  if (it.lc != null) {
+    h += '<div class="dr-links">' + problemLinks(it.lc, it.name) + '</div>';
+  }
   if (it.note) h += '<div class="learn">' + esc(it.note) + '</div>';
 
   h += '<div class="field"><label>Status</label><div class="btnrow">' +
@@ -1266,6 +1317,8 @@ document.addEventListener('click', function (e) {
     window.scrollTo(0, 0);
     return;
   }
+
+  if (t.closest && t.closest('a.lnk')) { e.stopPropagation(); return; }
 
   if ((a = t.closest('[data-check]'))) {
     e.stopPropagation();

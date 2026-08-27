@@ -132,7 +132,7 @@ function esc(x) {
 
   /* 5. lld + reference + strategy pages */
   for (var pair of [['lld', ['flavours','patterns','solid','rules','b','c']],
-                    ['reference', ['templates','triggers','pool']],
+                    ['reference', ['templates','triggers','pool','reading']],
                     ['strategy', ['0','1','2','3','4','5']]]) {
     for (var id of pair[1]) {
       var sel = {}; sel[pair[0]] = id;

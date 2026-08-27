@@ -106,6 +106,17 @@ Weighting is deliberately uneven: Graphs, Trees and DP carry 150 of the 501 DSA 
 
 ---
 
+## Links out
+
+Every problem row carries two links:
+
+- **`LC 121`** — opens the problem on LeetCode. Slugs are derived from the title, with 385 explicit overrides for the rows where derivation would 404 (bundled headings, shortened titles).
+- **`GfG`** — opens a GeeksforGeeks search. GfG has **no problem numbers** and its slugs carry an opaque numeric suffix that cannot be derived, so these go through search, which always resolves. 113 problems have a curated GfG search term where GfG names it differently — LC 53 is "Kadane's Algorithm", LC 121 is "Stock buy and sell".
+
+Every system design session and every tech module ends with a **Read more** list. Rows marked `search` are worth reading but have no stable URL, so they open a search instead of a dead link — 100 direct links, 24 search rows. The general primers live under **Reference → Reading list**.
+
+> Links are unverified by machine. If one 404s, say so and it gets fixed.
+
 ## The revision tracker
 
 Open any item → set **Status**: **Clean** (correct, in time, fully explainable) / **Ugly** (correct but slow or guessing) / **Failed**.

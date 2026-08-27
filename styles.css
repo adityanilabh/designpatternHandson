@@ -717,3 +717,27 @@ body.has-nav .prose li { margin-bottom: 10px; }
 }
 .codeblock pre::-webkit-scrollbar { height: 9px; }
 .codeblock pre::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px; }
+
+/* --- clickable problem links --- */
+a.lnk { text-decoration: none; cursor: pointer; }
+a.p-lc:hover { text-decoration: underline; }
+.p-gfg {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+  color: var(--ink-3); border: 1px solid var(--line); border-radius: 4px;
+  padding: 1px 5px; flex: 0 0 auto; letter-spacing: .02em;
+}
+.p-gfg:hover { color: var(--ok); border-color: var(--ok); }
+.dr-links { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.dr-links .p-lc { font-size: 14px; }
+
+/* --- reading lists --- */
+ul.readlist { margin: 6px 0 4px; padding-left: 20px; }
+ul.readlist li { font-size: 14px; line-height: 1.75; margin-bottom: 7px; }
+ul.readlist li::marker { color: var(--accent); }
+ul.readlist a { color: var(--accent); text-decoration: none; }
+ul.readlist a:hover { text-decoration: underline; }
+.read-find {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .04em;
+  color: var(--ink-3); border: 1px solid var(--line); border-radius: 4px;
+  padding: 1px 5px; margin-left: 8px; vertical-align: 1px;
+}
