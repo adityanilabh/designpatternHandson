@@ -8525,6 +8525,760 @@ PLAN.sdSolution[12] = {
  ]
 };
 
+
+PLAN.sdSolution[9] = {
+ req:{
+  functional:[
+   'Post content, and see a feed of posts from accounts you follow.',
+   'Follow and unfollow.',
+   'Paginate backwards through the feed.',
+   'Ranked or chronological — confirm which, it changes the read path completely.'
+  ],
+  nonFunctional:[
+   'Feed load under 200ms at p99. Nobody waits for a timeline.',
+   'Read-heavy, roughly 100:1.',
+   'Eventual consistency is fine — a post appearing a few seconds late is acceptable.',
+   'Must survive an account with 100 million followers.'
+  ]
+ },
+ estimate:[
+  ['Users','300M DAU, 2 posts/day','600M posts/day ≈ 7,000 writes/sec.'],
+  ['Reads','300M × 10 refreshes/day','3B reads/day ≈ 35,000 QPS, peak maybe 100,000.'],
+  ['Fan-out on write','7,000 × 200 avg followers','1.4M feed-row writes/sec. THIS is the number that decides the design.'],
+  ['Celebrity','one post, 100M followers','100M writes for a single action. Pure fan-out-on-write is impossible here — say so before they ask.'],
+  ['Feed storage','300M users × 500 ids × 8 bytes','~1.2 TB in Redis if you cap feeds. Cap them; nobody scrolls 10,000 posts.']
+ ],
+ api:[
+  ['POST /v1/posts','{ text, mediaIds[] }','201 { postId, createdAt }','Write once. Fan-out happens async.'],
+  ['GET /v1/feed?cursor=&limit=20','—','200 { items[], nextCursor }','CURSOR, not offset. A feed is prepended constantly.'],
+  ['POST /v1/follow','{ targetUserId }','204','Triggers an async backfill of that user recent posts.'],
+  ['DELETE /v1/follow/{id}','—','204','Lazy removal — filter at read rather than rewriting every feed.'],
+  ['GET /v1/users/{id}/posts','—','200 { items[], nextCursor }','The profile timeline. Simple, always a pull.']
+ ],
+ dataModel:[
+  ['post','id (snowflake, time-sortable) PK · author_id · text · media[] · created_at','A time-sortable id means the feed sorts without a secondary index.'],
+  ['follow','follower_id + followee_id PK · created_at','Two indexes: by follower (who do I follow) and by followee (fan-out audience).'],
+  ['user_flags','user_id PK · follower_count · is_celebrity','is_celebrity is derived from follower_count crossing a threshold. It is the switch between push and pull.'],
+  ['feed (Redis)','LIST or ZSET per user, capped at ~500 post IDs','IDs ONLY, never post bodies. Hydrated on read.'],
+  ['post_cache (Redis)','post_id → serialized post','What hydration reads. One copy, so edits and deletes work.']
+ ],
+ arch:[
+  '   write path',
+  '   ┌────────┐   ┌──────────────┐   ┌───────────┐',
+  '   │ Client │──▶│  Post service│──▶│ post store│',
+  '   └────────┘   └──────┬───────┘   └───────────┘',
+  '                       │ outbox',
+  '                       ▼',
+  '                 ┌──────────┐',
+  '                 │  Kafka   │',
+  '                 └────┬─────┘',
+  '                      ▼',
+  '            ┌─────────────────────┐',
+  '            │  Fan-out workers    │',
+  '            │  is_celebrity ?     │',
+  '            └──────┬───────┬──────┘',
+  '           no      │       │   yes',
+  '        ┌──────────┘       └──────────┐',
+  '        ▼                             ▼',
+  '  ┌──────────────┐             ┌──────────────┐',
+  '  │ push id into │             │ DO NOTHING   │  ◄── the celebrity answer',
+  '  │ each follower│             │ (pull later) │',
+  '  │ feed (Redis) │             └──────────────┘',
+  '  └──────────────┘',
+  '',
+  '   read path',
+  '   ┌────────┐   ┌────────────────────────────────────┐',
+  '   │ Client │──▶│         Feed service               │',
+  '   └────────┘   │  1. read precomputed feed (Redis)  │',
+  '                │  2. pull recent posts from the few │',
+  '                │     celebrities this user follows  │',
+  '                │  3. merge by time, take top N      │',
+  '                │  4. hydrate ids from post_cache    │',
+  '                │  5. filter deleted / blocked       │',
+  '                └────────────────────────────────────┘'
+ ],
+ flows:[
+  ['Post — the write path',[
+   '1. Write the post row with a snowflake id. Return immediately.',
+   '2. Emit PostCreated via the outbox.',
+   '3. Fan-out worker reads the author follower count.',
+   '4. NOT a celebrity: push the post id onto each follower feed list, trimming to 500.',
+   '5. IS a celebrity: do nothing. Their posts are pulled at read time.',
+   '6. Prioritise ACTIVE followers. Someone who has not opened the app in a month does not need their feed updated in the next second — backfill them lazily on their next read.'
+  ]],
+  ['Read — the feed',[
+   '1. Read the precomputed feed list from Redis (ids only).',
+   '2. Fetch recent posts from the handful of celebrities this user follows — usually a few, never thousands.',
+   '3. Merge both by timestamp, take the top N.',
+   '4. Hydrate ids from the post cache in one batch call.',
+   '5. Filter at read: deleted posts, blocked authors, unfollowed-since. This is why you store IDs, not copies.',
+   '6. Return with a cursor of (timestamp, post_id).'
+  ]]
+ ],
+ deepDive:[
+  ['The celebrity problem, which is the whole question',
+   'Pure fan-out on WRITE gives instant reads and dies on a 100M-follower account: one post becomes 100 million writes, the queue backs up for hours, and everyone else feed is delayed behind it.\n\nPure fan-out on READ is the mirror: writes are free, but a user following 2,000 accounts triggers 2,000 queries per refresh at 100k QPS.\n\nHYBRID is what every real system does. Push for normal accounts, pull for celebrities, merge at read. The threshold is a tunable — say 10,000 followers — and stating that it is tunable rather than a constant is part of the answer.\n\nThe merge is cheap because a user follows very few celebrities. Fetching 5 celebrity timelines and merging with a precomputed list is a small, bounded operation.'],
+  ['Why the feed stores IDs and not posts',
+   'Storing whole posts in every follower feed is enormous duplication — one post copied 200 times on average — and it makes edits and deletes impossible, because you would have to find and rewrite 200 million rows.\n\nWith IDs, deletion is a read-time filter: hydrate, find the post is gone, drop it. Edits are automatic because there is one copy. The cost is a hydration round trip, which is a single batched cache read.\n\nCap the feed at ~500 ids. Nobody scrolls past that, and older content falls back to a pull query against the accounts you follow.'],
+  ['Cursor pagination, and why offset breaks',
+   'A feed is prepended constantly. With OFFSET, by the time the user asks for page 2, five new posts have arrived and shifted everything — so page 2 repeats items from page 1 and skips others. Users see duplicates and gaps.\n\nA cursor of (created_at, post_id) is stable: "give me items strictly older than this exact point". New posts arriving above do not affect it. The post_id tiebreaker matters because two posts can share a timestamp.'],
+  ['Ranking, without wrecking the latency budget',
+   'If the feed is ranked rather than chronological, do NOT rank at retrieval. Retrieve a cheap candidate set — the precomputed feed plus celebrity pulls, a few hundred items — then score only those with a model at request time.\n\nRanking the whole corpus per request is the mistake. Candidate generation then re-ranking is the standard two-stage shape, and naming it that way signals you have seen a real ranking system.']
+ ],
+ scaling:[
+  ['Fan-out worker throughput','Partition Kafka by author_id, scale consumers. Prioritise active followers; backfill inactive ones lazily.'],
+  ['Redis feed storage','Shard by user_id. Feeds are per-user and never queried across users, so this shards perfectly.'],
+  ['Hydration read volume','Batch the id → post lookups. One MGET, not N gets.'],
+  ['A viral post','Hot key in the post cache. Replicate it, or serve from a local in-process cache with a short TTL.'],
+  ['New user with an empty feed','Backfill asynchronously from the accounts they just followed; serve a pull-based feed until it completes.'],
+  ['Follower-count skew','The is_celebrity flag IS the mitigation. Recompute it on a schedule, not per post.']
+ ],
+ tradeoffs:[
+  ['Fan-out','Hybrid','Pure write, or pure read','Write dies on celebrities; read dies on users who follow thousands. Hybrid costs you a merge step.'],
+  ['Feed contents','Post IDs','Full posts','Deletes and edits become possible, and storage drops by ~200x. Costs a hydration round trip.'],
+  ['Pagination','Cursor','Offset','A prepended feed makes offset show duplicates and skip items.'],
+  ['Consistency','Eventual','Strong','A post appearing two seconds late is invisible to users. Strong consistency here would cost enormously for no benefit.'],
+  ['Feed length','Capped at ~500','Unbounded','Nobody scrolls further, and the cap bounds memory. Older content falls back to a pull.']
+ ],
+ angle:[
+  ['Amazon','Will ask the celebrity question directly and expect you to raise it unprompted. Then "what happens when the fan-out workers fall behind?" — the answer is prioritise active users, backfill the rest. Also expect deletion: "you deleted a post already in 200M feeds."'],
+  ['Microsoft / Adobe','More likely to focus on the pagination correctness and the data model. Be ready to draw why offset produces duplicates.'],
+  ['Uber','Will push on the latency budget and on the ranking split — candidate generation versus scoring — and on what you cache where.'],
+  ['Meta-style','If asked, expect much deeper ranking discussion. For your ladder, the hybrid fan-out plus cursor pagination is the depth that matters.']
+ ]
+};
+
+PLAN.sdSolution[10] = {
+ req:{
+  functional:[
+   'One-to-one and group messaging.',
+   'Delivery states: sent, delivered, read.',
+   'Message history, retrievable on a new device.',
+   'Online / last-seen presence.',
+   'Deliver to a recipient who is currently offline.'
+  ],
+  nonFunctional:[
+   'Message delivery under 500ms when both parties are online.',
+   'Ordered per conversation. Global ordering is neither needed nor achievable.',
+   'No message ever silently lost.',
+   'Millions of concurrent persistent connections.'
+  ]
+ },
+ estimate:[
+  ['Users','50M DAU, 40 messages/day','2B messages/day ≈ 23,000 writes/sec.'],
+  ['Connections','10M concurrent WebSockets','At ~10k connections per gateway node that is ~1,000 nodes. Connections, not messages, are the real cost.'],
+  ['Storage','2B × 300 bytes','~600 GB/day. Retention policy is a product decision worth asking about.'],
+  ['Fan-out','a 1,000-member group','One write, 1,000 deliveries. Groups are a feed problem in miniature.']
+ ],
+ api:[
+  ['WS connect','auth token','—','Registers (user, device) → gateway node in the connection registry.'],
+  ['WS send','{ convId, clientMsgId, body }','ack { serverMsgId, seq }','clientMsgId makes send idempotent across reconnects.'],
+  ['WS receive','—','{ convId, seq, from, body, sentAt }','Pushed by the server.'],
+  ['POST /v1/conversations/{id}/read','{ upToSeq }','204','Read receipts are just another message type.'],
+  ['GET /v1/conversations/{id}/messages?before=seq','—','200 { items[], prevCursor }','History fetch on a new device or a scroll-back.']
+ ],
+ dataModel:[
+  ['conversation','id PK · type (dm/group) · created_at','A DM is a group of two. Modelling them the same avoids two code paths.'],
+  ['participant','conv_id + user_id PK · joined_at · last_read_seq','last_read_seq is what powers unread counts and read receipts.'],
+  ['message','conv_id + seq PK · sender_id · body · created_at','PARTITION BY conv_id, CLUSTER BY seq. A wide-column store is the natural fit — append-heavy with range reads inside one partition.'],
+  ['conv_seq','conv_id PK · last_seq','Atomic increment gives a per-conversation monotonic sequence. Do NOT use wall-clock time for ordering.'],
+  ['connection registry (Redis)','user:device → gateway_node, TTL','Refreshed by heartbeat. Expiry means offline.'],
+  ['offline_queue','user_id + device_id → pending message ids','Drained on reconnect. Per DEVICE, not per user.']
+ ],
+ arch:[
+  '   ┌──────────┐                              ┌──────────┐',
+  '   │ Device A │                              │ Device B │',
+  '   └────┬─────┘                              └────▲─────┘',
+  '        │ WebSocket                               │ WebSocket',
+  '        ▼                                         │',
+  '   ┌─────────────┐                          ┌─────┴───────┐',
+  '   │ Gateway N1  │                          │ Gateway N3  │',
+  '   └──────┬──────┘                          └─────▲───────┘',
+  '          │  2. lookup B in registry              │',
+  '          │  ┌──────────────────────┐             │',
+  '          ├─▶│ Connection registry  │             │',
+  '          │  │ user:dev → node, TTL │             │',
+  '          │  └──────────────────────┘             │',
+  '          │  3. forward to N3 ────────────────────┘',
+  '          │',
+  '          │  1. persist FIRST',
+  '          ▼',
+  '   ┌──────────────┐      ┌───────────────────┐',
+  '   │ Message svc  │─────▶│ conv_seq (atomic) │',
+  '   └──────┬───────┘      └───────────────────┘',
+  '          ▼',
+  '   ┌──────────────────────────┐     ┌──────────────────┐',
+  '   │ Wide-column store        │     │  Offline queue   │',
+  '   │ part: conv_id  clus: seq │     │  (B not present) │',
+  '   └──────────────────────────┘     └──────────────────┘'
+ ],
+ flows:[
+  ['A sends to B, both online',[
+   '1. A sends over its WebSocket with a clientMsgId.',
+   '2. Gateway N1 calls the message service.',
+   '3. Atomically increment conv_seq to get the next sequence number.',
+   '4. PERSIST the message. Only then acknowledge to A — an ack before persistence is a lie.',
+   '5. Look up B in the connection registry: found on gateway N3.',
+   '6. Forward to N3 over an internal RPC; N3 pushes down B socket.',
+   '7. B device sends a delivered receipt, which is itself a message.'
+  ]],
+  ['B is offline',[
+   '1. Registry lookup misses, or the TTL has expired.',
+   '2. Write the message id into B offline queue, per device.',
+   '3. Optionally trigger a mobile push notification.',
+   '4. On reconnect, B sends its last-seen seq; the server streams everything after it, in order.',
+   '5. B dedups on serverMsgId in case of overlap.'
+  ]],
+  ['A group of 1,000',[
+   '1. ONE message row, in the conversation partition. Never 1,000 copies of the body.',
+   '2. Per-participant delivery state, which is cheap.',
+   '3. Deliver to the members currently connected; queue for the rest.',
+   '4. For very large groups, stop pushing entirely and let clients pull on open — the same hybrid argument as a news feed.'
+  ]]
+ ],
+ deepDive:[
+  ['Cross-node delivery, which is the actual question',
+   'A is on gateway 1, B is on gateway 3. Neither node knows about the other connection. This is the problem the design exists to solve.\n\nThe answer is a CONNECTION REGISTRY: a Redis map from (user, device) to gateway node, written on connect, refreshed by heartbeat, expiring on disconnect. Sending means looking up the recipient node and forwarding over an internal RPC or a per-node pub/sub channel.\n\nThe naive alternative — broadcast every message to every gateway and let the right one deliver it — works at ten nodes and collapses at a thousand, because every node processes every message. Say why you rejected it.'],
+  ['Ordering, and why timestamps are wrong',
+   'Ordering matters PER CONVERSATION, not globally. Nobody cares whether your message to Alice preceded someone else message to Bob.\n\nUse a per-conversation monotonic SEQUENCE from an atomic increment. Wall-clock timestamps fail because gateway clocks drift by milliseconds and two messages can share one — you then have no deterministic order and different devices render the conversation differently.\n\nThe client buffers on a gap: if it holds seq 5 and 7, it waits briefly for 6 before rendering. That is what makes out-of-order network delivery invisible.'],
+  ['Multi-device, which people forget',
+   'A user has a phone, a laptop and a tablet. The registry key must be (user, DEVICE), not user — otherwise you deliver to one device and the others never see it.\n\nEach device tracks its own last-read sequence, so history sync on a new device is "give me everything after seq 0" and reconnect is "give me everything after seq N". Same mechanism, different starting point.\n\nRead receipts get interesting: if you read on your phone, is it read on your laptop? That is a product decision. Say so rather than assuming.'],
+  ['Presence, the classic scaling trap',
+   'Naive presence is a write per user per state change broadcast to every contact. At 50M users that is catastrophic and buys almost nothing.\n\nDo it with heartbeats: the client pings every ~30 seconds, the registry entry carries a TTL, and absence of a heartbeat means offline. Push presence changes ONLY to users currently viewing that contact, not to everyone who has ever messaged them.\n\nAnd accept staleness: last seen being 30 seconds out of date is invisible. Real-time global presence is the trap.']
+ ],
+ scaling:[
+  ['Connection count','Horizontal gateway nodes, ~10k connections each. This is the dominant cost, not message volume.'],
+  ['A gateway dying with 10k connections','Clients reconnect with jittered backoff — without jitter you get a thundering herd. The offline queue covers the gap.'],
+  ['Message store writes','Wide-column, partitioned by conv_id. Append-heavy with range reads is the ideal LSM workload.'],
+  ['Very large groups','Stop pushing past a threshold and let clients pull on open.'],
+  ['Registry load','Shard by user id; it is a simple KV workload with TTLs.'],
+  ['History reads','Bounded by partition and cursor. Never scan a conversation from the beginning.']
+ ],
+ tradeoffs:[
+  ['Transport','WebSocket','Long polling','Bidirectional and low latency. Mention long polling as the fallback for hostile networks.'],
+  ['Store','Wide-column','Relational','Partition by conversation, cluster by sequence. Append-heavy with in-partition range reads.'],
+  ['Routing','Registry + direct forward','Broadcast to all gateways','Broadcast makes every node process every message.'],
+  ['Ordering','Per-conversation sequence','Server timestamp','Clock skew across gateways gives no deterministic order.'],
+  ['Presence','Heartbeat + TTL, scoped push','Real-time global broadcast','Global presence is enormously expensive for a feature nobody checks precisely.'],
+  ['E2E encryption','Ask whether it is in scope','Assume it','It removes server-side search, spam filtering, and makes multi-device sync a key-management problem. Naming that trade-off is the point.']
+ ],
+ angle:[
+  ['Amazon','"User A is on one server, user B on another — how does the message get there?" is close to guaranteed. Then the offline case, then multi-device.'],
+  ['Microsoft','Teams-flavoured: large groups, threading, and history sync across devices. Expect a push on the group fan-out threshold.'],
+  ['Uber','Rider–driver chat is bounded and short-lived, so they will care about connection lifecycle and what happens when a driver loses signal in a tunnel.'],
+  ['Adobe','Less likely. If asked, expect focus on the data model and the ordering guarantee.']
+ ]
+};
+
+PLAN.sdSolution[14] = {
+ req:{
+  functional:[
+   'Rider requests a ride from A to B.',
+   'Match a nearby available driver.',
+   'Driver accepts or declines; on decline or timeout, offer the next.',
+   'Track the trip through its lifecycle and price it.',
+   'Drivers report location continuously.'
+  ],
+  nonFunctional:[
+   'Matching within a few seconds.',
+   'Two riders must NEVER be matched to the same driver.',
+   'Handle enormous location write volume.',
+   'Degrade sensibly when a whole city loses connectivity.'
+  ]
+ },
+ estimate:[
+  ['Active drivers','1M, reporting every 4 seconds','250,000 location writes/sec. THIS is the number that shapes the design.'],
+  ['Ride requests','20M rides/day','≈ 230/sec average, several thousand at peak in a dense city.'],
+  ['Nearby query','per request, ~2km radius','Must not scan 1M drivers. Geo index, always.'],
+  ['Location durability','—','Do NOT persist every ping. It is high-churn, low-value, disposable data. Saying that early is a strong signal.']
+ ],
+ api:[
+  ['POST /v1/rides','Idempotency-Key + { pickup, dropoff }','201 { rideId, status: SEARCHING }','Returns immediately; matching is async.'],
+  ['GET /v1/rides/{id}','—','200 { status, driver?, eta? }','Client polls or holds a socket.'],
+  ['POST /v1/drivers/location','{ lat, lng, heading }','204','Fire and forget. Never blocks on durability.'],
+  ['POST /v1/offers/{id}/accept','—','200 { rideId }','Atomic. Exactly one driver can win an offer.'],
+  ['POST /v1/offers/{id}/decline','—','204','Returns the driver to the pool and offers the next candidate.']
+ ],
+ dataModel:[
+  ['driver_state (Redis)','driver_id → { status, cellId, lat, lng, updatedAt } TTL ~60s','In memory, TTL-expiring. A driver who stops reporting simply vanishes from matching, which is correct.'],
+  ['geo_index (Redis)','cellId → SET of driver_ids','H3 or a grid cell. Query own cell plus neighbours, never a scan.'],
+  ['ride','id PK · rider_id · driver_id NULL · status · pickup · dropoff · fare_minor · created_at','The durable record. Partition by ride id or city.'],
+  ['offer','id PK · ride_id · driver_id · expires_at · status','Short-lived. The offer loop lives here.'],
+  ['trip_event','ride_id + seq · type · at · location','Append-only lifecycle log. This is the audit trail and the source of disputes.'],
+  ['Sampled location history','ride_id + ts → point, every ~5s during a trip','For the route map and disputes. A tiny fraction of the raw ping volume.']
+ ],
+ arch:[
+  '   ┌────────┐                        ┌─────────┐',
+  '   │ Rider  │                        │ Driver  │',
+  '   └───┬────┘                        └────┬────┘',
+  '       │ request                          │ location every 4s',
+  '       ▼                                  ▼',
+  '  ┌─────────────────┐            ┌────────────────────┐',
+  '  │  Ride service   │            │ Location ingest    │',
+  '  └────────┬────────┘            │ (fire and forget)  │',
+  '           │                     └─────────┬──────────┘',
+  '           │ 1. find candidates             │',
+  '           ▼                                ▼',
+  '  ┌──────────────────────────────────────────────────┐',
+  '  │      Geo index  (Redis, H3 cells)                │',
+  '  │      cell → {drivers}    driver → {status,pos}   │',
+  '  │      TTL ~60s: stale drivers disappear           │',
+  '  └────────────────────┬─────────────────────────────┘',
+  '                       │ 2. nearest suitable',
+  '                       ▼',
+  '           ┌────────────────────────┐',
+  '           │   Matching / offer     │',
+  '           │   CAS driver status:   │  ◄── the correctness core',
+  '           │   AVAILABLE → OFFERED  │',
+  '           └───────┬────────────────┘',
+  '            accept │        │ decline / 15s timeout',
+  '                   ▼        └──────▶ next candidate',
+  '           ┌────────────────┐',
+  '           │  Trip service  │──▶ trip_event log ──▶ Kafka ──▶ pricing,',
+  '           └────────────────┘                              analytics, payouts'
+ ],
+ flows:[
+  ['Request a ride',[
+   '1. POST /rides with an idempotency key. Persist the ride as SEARCHING, return immediately.',
+   '2. Matching service queries the geo index: the pickup cell plus its neighbours.',
+   '3. Filter to AVAILABLE drivers, rank by ETA (not straight-line distance — a river changes the answer).',
+   '4. Take the top candidate and compareAndSet their status AVAILABLE → OFFERED. If it fails, someone else won: take the next.',
+   '5. Push the offer to the driver with a 15-second expiry.',
+   '6. Accept: CAS OFFERED → ON_TRIP, assign to the ride, notify the rider.',
+   '7. Decline or timeout: CAS OFFERED → AVAILABLE and offer the next candidate. Track decline rate.',
+   '8. Radius exhausted: widen it, then eventually tell the rider no cars are available.'
+  ]],
+  ['Location updates — the high-volume path',[
+   '1. Driver posts location every 4 seconds.',
+   '2. Ingest updates the in-memory driver record and moves them between geo cells if needed.',
+   '3. Refresh the TTL. No durable write on this path at all.',
+   '4. During an active trip only, sample every ~5 seconds into durable storage for the route map.'
+  ]]
+ ],
+ deepDive:[
+  ['Geo indexing, and why H3',
+   'A bounding-box SQL query scans a million rows per request. Unusable.\n\nBucket drivers into CELLS and query the pickup cell plus its neighbours. Four options: GEOHASH is simple, string-prefix based, and has awkward boundary behaviour where adjacent cells share no prefix. QUADTREE adapts to density, which matters when a city centre is a thousand times denser than the suburbs. S2 uses Hilbert-curve ordering on a sphere. H3 is Uber own hexagonal grid.\n\nHexagons matter because all six neighbours are EQUIDISTANT. With squares you have four edge neighbours and four diagonal ones at 1.41x the distance, so "adjacent" is ambiguous and radius queries are lopsided. Naming H3 and that reason in an Uber interview is exactly the expected answer.\n\nAlways query neighbours too: the nearest driver is frequently just over a cell boundary.'],
+  ['The double-assignment race',
+   'Two riders request simultaneously and the same driver is nearest to both. If both offers go out, one driver gets two rides.\n\nThe fix is an atomic state transition on the DRIVER: compareAndSet AVAILABLE → OFFERED. Exactly one caller wins; the loser moves to the next candidate. In a database this is UPDATE driver SET status = OFFERED WHERE id = ? AND status = AVAILABLE, checking rows-affected.\n\nThis is the correctness core of the whole design. Raise it before being asked.'],
+  ['Matching is an offer LOOP, not a decision',
+   'The common mistake is modelling matching as one decision: find the nearest driver, assign, done. Real systems offer, wait, and move on.\n\nOffer with a timeout (~15s). On decline or expiry, return the driver to the pool and offer the next. Track decline rates, because a driver declining everything is a product problem.\n\nThe optimisation worth naming: BATCH matching. Instead of greedily matching each request as it arrives, collect requests over a few seconds and solve the assignment across the batch. It produces measurably better global matches than greedy — a rider slightly further away may free a driver who is much better for someone else.'],
+  ['Location volume, and what you refuse to store',
+   '250,000 writes per second of location data. The instinct to put it in the primary database is the failure.\n\nLocation is high-churn, low-value and disposable. It lives in memory with a TTL. A driver who stops reporting simply expires out of the index, which is exactly the behaviour you want — no separate liveness check needed.\n\nIf you need history, SAMPLE it: every fifth ping during an active trip, written asynchronously. That is a tiny fraction of the raw volume and it is enough for the route map and for disputes.\n\nAnd when a city loses connectivity, TTLs expire and drivers vanish from the index. That is correct, but riders then see no availability — so you need a degraded-mode message rather than an infinite spinner. Mentioning that unprompted lands well.']
+ ],
+ scaling:[
+  ['250k location writes/sec','In-memory geo store, sharded by cell. No durable write on the hot path.'],
+  ['Matching throughput','Shard by city or region. Matching is inherently local — a London request never touches Manchester data.'],
+  ['Hot cell (a stadium emptying)','Cell subdivision, or cap candidates per query and rank a sample.'],
+  ['Ride store','Partition by city and time. Historical rides are cold and can move to cheaper storage.'],
+  ['Surge computation','Supply/demand ratio per cell on a rolling window, computed by a stream job, SMOOTHED — instant surge changes flap and riders revolt.'],
+  ['Multi-region','Naturally partitioned by geography. This is one of the few designs where multi-region is easy — say so.']
+ ],
+ tradeoffs:[
+  ['Geo index','H3 hexagons','Geohash, quadtree, S2','Uniform neighbour distance and no diagonal ambiguity. Geohash is acceptable if you name the boundary problem.'],
+  ['Location storage','In-memory, TTL','Durable per ping','Disposable data. Durability here buys nothing and costs enormously.'],
+  ['Matching','Offer loop with timeout','Single assignment','Drivers decline. A single assignment cannot model that.'],
+  ['Ranking','ETA','Straight-line distance','A river or a motorway makes straight-line distance wrong. ETA needs the road graph.'],
+  ['Optimisation','Batch matching','Greedy per request','Better global assignment. Costs a few seconds of added latency — a real trade-off worth stating.'],
+  ['Driver assignment','CAS on driver status','Lock the driver row','Same guarantee, no lock held across a network call to the driver app.']
+ ],
+ angle:[
+  ['UBER','Their own domain and they will go deep. Guaranteed: "how do you find nearby drivers without scanning" (H3, and say why hexagons), "two riders, one driver" (CAS), and "the driver does not respond" (offer loop with timeout). Batch matching as the optimisation is a strong extra. Expect surge and the smoothing question.'],
+  ['Amazon','Delivery-partner assignment is the same machine — orders instead of riders, agents instead of drivers, plus CAPACITY: one agent carrying several orders turns matching into batching with constraints.'],
+  ['Flipkart / Swiggy','Food delivery flavour. Adds pickup-time prediction and multi-order batching, which is the genuinely harder variant.'],
+  ['Google','Unlikely to ask this as system design at L4. If it comes up it will be the geo-indexing algorithm rather than the architecture.']
+ ]
+};
+
+
+PLAN.sdSolution[13] = {
+ req:{
+  functional:[
+   'Search products or content by free text, with relevance ranking.',
+   'Typeahead suggestions as the user types.',
+   'Filters and facets — category, price, rating.',
+   'Send notifications across email, push and SMS.',
+   'Per-user notification preferences and quiet hours.'
+  ],
+  nonFunctional:[
+   'Typeahead under 100ms or it feels broken — this is the hardest constraint here.',
+   'Search under 300ms including ranking.',
+   'Index freshness of minutes is acceptable; instant is not required.',
+   'Notification delivery is at-least-once, so consumers must be idempotent.'
+  ]
+ },
+ estimate:[
+  ['Searches','10M/day','≈ 115/sec average, maybe 500 peak. Modest.'],
+  ['Typeahead','10M searches × ~20 keystrokes','200M requests/day ≈ 2,300/sec average. 20x the search volume — debouncing on the client is not optional.'],
+  ['Catalogue','50M products','Index maybe 200 GB. Fits comfortably on a small Elasticsearch cluster.'],
+  ['Notifications','50M users × 2/day','100M/day ≈ 1,200/sec, spiky around campaigns.'],
+  ['The conclusion','—','Typeahead volume dominates everything. Design the read path for it first and the rest follows.']
+ ],
+ api:[
+  ['GET /v1/search?q=&filters=&cursor=','—','200 { items[], facets{}, nextCursor }','Cursor pagination; search results shift as the index updates.'],
+  ['GET /v1/suggest?q=','—','200 { suggestions[] }','Must be under 100ms. No ranking at request time.'],
+  ['POST /v1/notifications','{ userId, category, templateId, payload, priority }','202 { notificationId }','202 — accepted, not delivered. Be honest in the contract.'],
+  ['GET /v1/preferences','—','200 { perCategory{}, quietHours, channels[] }','Read by the pre-send pipeline.'],
+  ['PUT /v1/preferences','{ ... }','204','Unsubscribe path. A notification system without one is a product bug.']
+ ],
+ dataModel:[
+  ['product (source of truth)','id PK · title · description · category · price · rating · updated_at','Relational. The index is DERIVED from this and will drift — plan the rebuild.'],
+  ['search index (Elasticsearch)','inverted index: term → doc ids, plus stored fields for facets','Not a system of record. Rebuildable from the product table.'],
+  ['suggest trie (in memory)','prefix node → precomputed top-k completions','The top-k is PRECOMPUTED. That is what buys the 100ms.'],
+  ['notification','id PK · user_id · category · channel · status · dedupe_key · created_at','dedupe_key UNIQUE gives idempotent delivery.'],
+  ['user_preferences','user_id PK · category → channels[] · quiet_hours · global_cap','Cached in-process; never a network read per notification.'],
+  ['delivery_attempt','notification_id + attempt · channel · result · at','Append-only. Answers "did they actually get it?"']
+ ],
+ arch:[
+  '   SEARCH',
+  '   ┌────────┐   ┌───────────────┐   ┌──────────────────┐',
+  '   │ Client │──▶│ Search service│──▶│  Elasticsearch   │',
+  '   └───┬────┘   └───────────────┘   └────────▲─────────┘',
+  '       │                                     │ near-real-time',
+  '       │ /suggest (debounced 150ms)          │ indexer',
+  '       ▼                                     │',
+  '   ┌────────────────────┐            ┌───────┴────────┐',
+  '   │ Suggest service    │            │  Kafka (CDC)   │',
+  '   │ in-memory trie,    │            └───────▲────────┘',
+  '   │ top-k PRECOMPUTED  │                    │',
+  '   └────────────────────┘            ┌───────┴────────┐',
+  '            ▲                        │ product store  │ ◄── source of truth',
+  '            │ rebuilt every few min  └────────────────┘',
+  '   ┌────────┴─────────┐',
+  '   │  Batch trie build│',
+  '   └──────────────────┘',
+  '',
+  '   NOTIFICATIONS',
+  '   ┌────────────┐   ┌────────────────────────────────┐',
+  '   │  Producer  │──▶│  Pre-send pipeline (chain)     │',
+  '   └────────────┘   │  opt-out → quiet hours →       │',
+  '                    │  rate limit → dedup            │',
+  '                    └───────────────┬────────────────┘',
+  '                                    ▼',
+  '              ┌─────────────────────────────────────────┐',
+  '              │  SEPARATE queue + pool PER CHANNEL       │ ◄── bulkhead',
+  '              │  ┌────────┐ ┌────────┐ ┌──────────────┐ │',
+  '              │  │ email  │ │  push  │ │     sms      │ │',
+  '              │  └───┬────┘ └───┬────┘ └──────┬───────┘ │',
+  '              └──────┼──────────┼─────────────┼─────────┘',
+  '                     ▼          ▼             ▼',
+  '                  provider   provider      provider',
+  '                     │          │             │  failure',
+  '                     └──────────┴─────────────┴────▶ DLQ'
+ ],
+ flows:[
+  ['Typeahead — the 100ms path',[
+   '1. Client DEBOUNCES ~150ms of no typing before firing. This alone removes most of the 2,300/sec.',
+   '2. Request hits the edge cache — common prefixes repeat enormously across users.',
+   '3. On miss, the suggest service walks the in-memory trie to the prefix node.',
+   '4. Return the PRECOMPUTED top-k stored on that node. No ranking, no scoring, no database.',
+   '5. Personalisation, if any, re-ranks only those ~20 results — never the retrieval.'
+  ]],
+  ['Search',[
+   '1. Parse the query, apply filters as Elasticsearch filter clauses (cacheable, not scored).',
+   '2. Retrieve a candidate set with BM25 relevance.',
+   '3. Re-rank the top ~100 with business signals — popularity, margin, availability.',
+   '4. Compute facet counts from the same query.',
+   '5. Return with a cursor.'
+  ]],
+  ['Send a notification',[
+   '1. Producer posts; return 202 immediately.',
+   '2. Pre-send chain: opted out? in quiet hours (unless CRITICAL)? over the rate limit? a duplicate within the aggregation window?',
+   '3. Any filter rejecting means SUPPRESSED, with the reason recorded — suppression is not failure and should be visible.',
+   '4. Enqueue onto the channel-specific queue.',
+   '5. Worker sends via the provider with a dedupe key.',
+   '6. Retry with backoff on transient failure; DLQ after N attempts.'
+  ]]
+ ],
+ deepDive:[
+  ['How typeahead stays under 100ms',
+   'The rule is that NO ranking happens at request time. A trie node stores its top-k completions already sorted, computed by a batch job from search logs and product popularity. A lookup is O(length of prefix) plus reading a small precomputed list.\n\nThe cost is freshness: a newly trending term does not suggest until the next rebuild. Say the number — "suggestions lag reality by about five minutes". If that is unacceptable, maintain a small real-time overlay index merged at query time, and be explicit that you are adding complexity to buy freshness.\n\nMemory is fine: a few million prefixes with top-10 each fits in a couple of GB, and the whole structure is read-only between rebuilds so it needs no locking.'],
+  ['The index is derived, and it WILL drift',
+   'Elasticsearch is not a system of record. The product table is. The index is fed by change data capture into Kafka, and consumers apply updates near-real-time.\n\nTwo things follow. You must own a REBUILD path — reindex from the source into a new index and swap an alias atomically — because drift is inevitable and eventually you will need to fix it wholesale. And you must accept lag: a price change takes seconds to appear in search. For a price that is usually fine; for stock availability it may not be, which is why the product page reads stock from a different source.'],
+  ['Bulkheads in the notification pipeline',
+   'One shared queue for all channels means a slow SMS provider stalls email too. Separate queue and thread pool per channel is the bulkhead pattern applied at the system level, and it is the specific failure interviewers probe.\n\nAdd a circuit breaker per provider: when SMS is failing consistently, stop trying, fail fast, and let the DLQ collect. Retrying into a dead provider consumes workers that email needs.\n\nAnd priority: an OTP must not queue behind a marketing campaign. Either a separate high-priority queue per channel, or a priority queue with strict ordering. Say which.'],
+  ['Preventing notification spam, which is a product problem',
+   '"A user gets 200 notifications in a minute" is a design failure, not a load problem. Four controls, all of them cheap.\n\nPER-USER RATE LIMIT across all producers — the global cap matters more than any single producer limit. AGGREGATION: buffer per user per category for a window and send one digest instead of fifty. QUIET HOURS with an explicit CRITICAL override, because an OTP at 2am is correct and a marketing push is not. And an UNSUBSCRIBE path that actually works.\n\nRaising the global cap unprompted is a strong signal, because it is the control that requires thinking across producers rather than within one.']
+ ],
+ scaling:[
+  ['Typeahead QPS','Client debounce, then edge cache, then in-memory trie. Three layers before anything expensive.'],
+  ['Search index size','Shard by document; Elasticsearch does this natively. Replicas for read throughput.'],
+  ['Reindexing 50M products','Build into a new index, swap the alias atomically. Never reindex in place.'],
+  ['Notification bursts','Queue absorbs them. Scale workers up to the partition count; beyond that, add partitions.'],
+  ['A failing provider','Circuit breaker plus DLQ. Do not let it consume the worker pool.'],
+  ['Preference lookups','In-process cache with a short TTL. Never a network read per notification.']
+ ],
+ tradeoffs:[
+  ['Typeahead','Precomputed top-k trie','Rank at query time','100ms is unachievable with request-time ranking. Costs freshness.'],
+  ['Index freshness','Near-real-time (minutes)','Synchronous indexing','Synchronous indexing couples the write path to the search cluster availability.'],
+  ['Search store','Elasticsearch, derived','Relational full-text','Relevance ranking and faceting are what it is for. Accept it is not a system of record.'],
+  ['Notification queues','One per channel','One shared','Bulkhead. A slow SMS provider must not stall email.'],
+  ['Delivery guarantee','At-least-once + dedupe key','Exactly-once','Exactly-once across an external provider does not exist. Idempotency at the consumer does.'],
+  ['Spam control','Global per-user cap','Per-producer limits only','Producers do not know about each other. Only a global cap actually protects the user.']
+ ],
+ angle:[
+  ['Amazon','Search suggestions is a favourite — expect the 100ms budget and "how does a new product appear in suggestions?". On notifications: "a user got 200 in a minute, fix it", and the aggregation answer.'],
+  ['Microsoft / Adobe','More likely to probe the index rebuild and the relevance model. Have the alias-swap answer.'],
+  ['Uber','Notification flavour: trip updates with strict ordering and priority. "The push provider is down — does the rider still get told their driver arrived?"'],
+  ['JPM / Amex','Would care about the audit trail: can you prove a customer was notified, and when.']
+ ]
+};
+
+PLAN.sdSolution[15] = {
+ req:{
+  functional:[
+   'Ingest metrics from thousands of hosts and services.',
+   'Query them for dashboards and alerts.',
+   'Alert when an SLO is at risk.',
+   'Retain high resolution briefly and low resolution for a long time.',
+   'Distributed tracing across services.'
+  ],
+  nonFunctional:[
+   'Ingest must not lose data during a spike — that is exactly when you need it.',
+   'Dashboard queries in a couple of seconds.',
+   'The monitoring system must not depend on the systems it monitors.',
+   'Cost-efficient: observability commonly costs more than the workload it watches.'
+  ]
+ },
+ estimate:[
+  ['Series','10,000 hosts × 1,000 metrics','10M active time series.'],
+  ['Sample rate','every 10 seconds','1M samples/sec.'],
+  ['Raw size','16 bytes/sample','16 MB/sec = 1.4 TB/day. Unaffordable at that rate.'],
+  ['Compressed','Gorilla-style delta-of-delta ≈ 1.4 bytes','~120 GB/day. That compression is why time-series databases exist — say it.'],
+  ['Cardinality','—','The real limit is not volume, it is DISTINCT SERIES. Add user_id as a label and 10M becomes 10 billion. This is the number that kills these systems.']
+ ],
+ api:[
+  ['POST /api/v1/write','Prometheus remote-write protobuf','204','Or scraped rather than pushed — see the trade-off.'],
+  ['GET /api/v1/query?query=&time=','PromQL','200 { result[] }','Instant query for a single point in time.'],
+  ['GET /api/v1/query_range?query=&start=&end=&step=','PromQL','200 { matrix[] }','What a dashboard actually calls.'],
+  ['POST /api/v1/alerts','{ expr, for, labels, annotations }','201','Alert rule definition, version-controlled alongside code.'],
+  ['GET /api/v1/traces/{traceId}','—','200 { spans[] }','Trace lookup by id propagated in headers.']
+ ],
+ dataModel:[
+  ['series','series_id PK · metric_name · labels (sorted, hashed)','The label set IS the identity. Sorting before hashing means the same set always yields the same id.'],
+  ['samples','series_id + timestamp → value','Columnar, chunked by time window. Delta-of-delta on timestamps, XOR on values.'],
+  ['index','label pair → posting list of series_ids','An inverted index over labels. This is what a PromQL selector queries.'],
+  ['downsampled','series_id + bucket → { min, max, avg, count }','5m and 1h rollups. Dashboards over a month read these, never raw.'],
+  ['spans','trace_id + span_id · parent · service · op · start · duration','Partition by trace_id so one trace is one partition read.'],
+  ['Retention','raw 24h · 5m for 30d · 1h for 1y','State the tiers. Retention is a cost decision, not a technical one.']
+ ],
+ arch:[
+  '   ┌──────────────┐ ┌──────────────┐ ┌──────────────┐',
+  '   │  Service A   │ │  Service B   │ │   Host N     │',
+  '   │  /metrics    │ │  /metrics    │ │  exporter    │',
+  '   └──────▲───────┘ └──────▲───────┘ └──────▲───────┘',
+  '          │ scrape 10s     │                │',
+  '          └────────────────┴────────────────┘',
+  '                           │',
+  '                  ┌────────┴─────────┐',
+  '                  │  Collector /     │  (per region, sharded',
+  '                  │  scraper fleet   │   by target hash)',
+  '                  └────────┬─────────┘',
+  '                           │ remote write',
+  '                           ▼',
+  '                  ┌──────────────────┐',
+  '                  │  Ingest + WAL    │ ◄── WAL first, so a crash',
+  '                  └────────┬─────────┘     loses nothing',
+  '                           ▼',
+  '        ┌──────────────────────────────────────┐',
+  '        │  TSDB  ── head block (memory, 2h)    │',
+  '        │        └▶ compacted blocks (disk)    │',
+  '        │        └▶ downsampled 5m / 1h        │',
+  '        │        └▶ object store (cold, 1y)    │',
+  '        └───────────────┬──────────────────────┘',
+  '                        │',
+  '        ┌───────────────┼───────────────┐',
+  '        ▼               ▼               ▼',
+  '  ┌──────────┐   ┌────────────┐   ┌──────────────┐',
+  '  │ Dashboard│   │ Alert eval │   │  Trace store │',
+  '  └──────────┘   └─────┬──────┘   └──────────────┘',
+  '                       ▼',
+  '                 ┌────────────┐',
+  '                 │  Pager     │ ◄── plus a DEAD MAN switch:',
+  '                 └────────────┘     alert when the heartbeat STOPS'
+ ],
+ flows:[
+  ['Ingest',[
+   '1. Collector scrapes each target every 10 seconds (pull), or receives a push for short-lived jobs.',
+   '2. Append to a write-ahead log FIRST — a crash must not lose the last two hours.',
+   '3. Write into the in-memory head block, which holds the current 2-hour window.',
+   '4. Every 2 hours, compact the head to an immutable on-disk block with the compressed encoding.',
+   '5. A background job produces 5m and 1h rollups from compacted blocks.',
+   '6. Blocks past the local retention move to object storage.'
+  ]],
+  ['Query a dashboard panel',[
+   '1. Parse the PromQL selector.',
+   '2. Resolve matching series from the label inverted index.',
+   '3. Choose the resolution from the time range: last hour reads raw, last month reads the 1h rollup. Never scan raw for a month.',
+   '4. Read the relevant chunks, decompress, apply the aggregation.',
+   '5. Return the matrix.'
+  ]],
+  ['Alerting',[
+   '1. Evaluate each rule on a schedule against the TSDB.',
+   '2. A rule must be firing for its "for" duration before it alerts — this is what suppresses flapping.',
+   '3. Group and deduplicate related alerts so one incident is one page, not forty.',
+   '4. Route by severity; respect silences during known maintenance.',
+   '5. Separately, a DEAD MAN switch alerts when the heartbeat stops — otherwise a dead monitoring system looks like perfect health.'
+  ]]
+ ],
+ deepDive:[
+  ['Cardinality, which is the defining failure of this domain',
+   'A time series is identified by its metric name plus its full label set. Every distinct combination is a separate series with its own index entry and its own in-memory chunk.\n\nSo http_requests{method, status, endpoint} with 4 methods, 5 statuses and 100 endpoints is 2,000 series — fine. Add user_id and it becomes 2,000 × the number of users. Memory and the index explode and the system falls over.\n\nThe rule: labels must be LOW cardinality and BOUNDED. High-cardinality dimensions — user id, request id, trace id, full URL with parameters — belong in logs or traces, never in metrics.\n\nRaising this unprompted is the single strongest signal in this design. In practice you also enforce it: per-metric series limits, and rejecting writes that would breach them, so one bad deploy cannot take down monitoring for everyone.'],
+  ['Why a purpose-built TSDB and not Postgres',
+   'Time series have properties you can exploit. Timestamps arrive at regular intervals, so DELTA-OF-DELTA encoding stores almost nothing — the change in the interval, which is usually zero. Values change slowly, so XOR against the previous value leaves mostly zero bits. Together these take 16 bytes per sample down to roughly 1.4.\n\nThat is a 10x storage difference, and it is the whole reason these databases exist. A relational store gives you none of it, and its per-row index overhead on 1M inserts/sec is fatal.\n\nWrites are also append-only and almost always for "now", so the head block can live in memory and be compacted in bulk — no random writes at all.'],
+  ['Alert on symptoms, not causes',
+   '"CPU above 80%" is a bad alert. It is a cause, it is frequently fine, and it fires when nothing is wrong. Alerts that fire without user impact get ignored, and then the real one is ignored too.\n\nAlert on SLO burn rate: you have an error budget, and the alert asks how fast you are consuming it. Burning a month of budget in an hour is a page; burning it slowly over a week is a ticket. That framing gives you severity for free.\n\nAnd the dead man switch. If your monitoring dies, every metric looks healthy because none are arriving. An alert that fires when the heartbeat STOPS, monitored externally, is the only thing that catches it.'],
+  ['Metrics, logs and traces are three different systems',
+   'Metrics are cheap aggregates that answer IS IT BROKEN. Logs are expensive detailed events that answer WHAT EXACTLY HAPPENED. Traces are sampled causal paths that answer WHERE DID THE TIME GO.\n\nThe order of use matters and interviewers ask it: metrics to confirm and localise (which service, which endpoint, p99 versus p50), traces to find where the latency lives, logs last for the specific failing request. Cheapest to most expensive.\n\nFor traces, sampling is unavoidable at volume. HEAD-based sampling decides at the start and throws away the interesting ones. TAIL-based decides after seeing the whole trace, so you keep the slow and failed ones — far more useful, and more expensive because you must buffer. Name the trade-off.']
+ ],
+ scaling:[
+  ['1M samples/sec ingest','Shard the collector fleet by target hash; each shard owns a disjoint set of series.'],
+  ['Query over a month','Downsampled tiers. Reading raw for a month is the mistake that makes dashboards time out.'],
+  ['Cardinality growth','Per-metric series limits, enforced at ingest. Reject rather than degrade.'],
+  ['Long retention cost','Tier to object storage and drop raw after the high-resolution window.'],
+  ['Alert evaluation load','Alerts are just queries. Stagger evaluation and cache subexpressions.'],
+  ['Trace volume','Tail-based sampling with a keep-all rule for errors and slow traces.']
+ ],
+ tradeoffs:[
+  ['Storage','Purpose-built TSDB','Relational','10x compression from delta-of-delta plus XOR, and no per-row index overhead.'],
+  ['Collection','Pull (scrape)','Push','Pull gives you target liveness for free — a target that cannot be scraped is itself a signal. Push is needed for short-lived jobs, so support both.'],
+  ['Retention','Tiered with downsampling','Uniform','Nobody needs 10-second resolution from six months ago. Tiering is the main cost lever.'],
+  ['Trace sampling','Tail-based','Head-based','Keeps the slow and failed traces, which are the ones you want. Costs buffering.'],
+  ['Alerting','SLO burn rate','Threshold on resources','Symptoms over causes. Threshold alerts train people to ignore alerts.'],
+  ['Cardinality','Hard limits at ingest','Best-effort guidance','Guidance does not survive a bad deploy at 3am.']
+ ],
+ angle:[
+  ['Uber / Apple','Most likely to ask this. Expect cardinality directly, and the metrics-vs-logs-vs-traces distinction.'],
+  ['Amazon','Will frame it as "how would you know this design you just built is broken?" — which is really asking for SLOs, symptom alerts and the dead man switch.'],
+  ['JPM / Amex','Care about audit and retention: how long, provable, and who can query it.'],
+  ['Any interviewer','If you have run production, lead with a real alert that woke you and what you changed. Concrete beats architectural here.']
+ ]
+};
+
+PLAN.sdSolution[16] = {
+ req:{
+  functional:[
+   'Upload a video, possibly several GB.',
+   'Transcode into multiple resolutions and bitrates.',
+   'Stream with adaptive quality.',
+   'Search and browse the catalogue.',
+   'Resume an interrupted upload.'
+  ],
+  nonFunctional:[
+   'Playback starts within about 2 seconds.',
+   'No rebuffering on a variable connection.',
+   'Uploads survive a dropped connection.',
+   'Cost-controlled — video egress is usually the largest line item in the business.'
+  ]
+ },
+ estimate:[
+  ['Uploads','500 hours/minute (YouTube scale)','Pick your own scale and say it. At 1 hour ≈ 3 GB source, that is 1.5 TB/minute inbound.'],
+  ['Transcoding','5 renditions per source','Roughly 5x the source in CPU, and ~15 GB stored per source hour. Transcoding, not storage, is the expensive part.'],
+  ['Viewing','100M concurrent at 5 Mbps','500 Tbps aggregate. This CANNOT come from your origin — it is the reason the CDN exists.'],
+  ['Cache hit ratio','95% at the edge','Origin then serves 5%. The economics of the whole system live in that number.']
+ ],
+ api:[
+  ['POST /v1/uploads','{ filename, sizeBytes, contentType }','201 { uploadId, partUrls[] }','Returns PRESIGNED URLs. The bytes never touch your servers.'],
+  ['PUT {presignedPartUrl}','part bytes','200 { etag }','Direct to object storage. Retry a single part on failure.'],
+  ['POST /v1/uploads/{id}/complete','{ parts[] }','202 { videoId, status: PROCESSING }','202 — transcoding has not happened yet.'],
+  ['GET /v1/videos/{id}/manifest.m3u8','—','200 HLS manifest','Lists renditions and segments. The client picks based on bandwidth.'],
+  ['GET /v1/videos/{id}','—','200 { title, status, renditions[] }','status tells the client which qualities exist yet.']
+ ],
+ dataModel:[
+  ['video','id PK · owner_id · title · status · duration · created_at','status: UPLOADING, PROCESSING, READY, FAILED.'],
+  ['rendition','video_id + profile PK · bitrate · resolution · manifest_path · status','Rows appear as each transcode completes, which is what lets playback start early.'],
+  ['segment (object store)','videos/{id}/{profile}/seg-00001.ts','Content-addressed paths so the CDN caches cleanly.'],
+  ['upload_session','id PK · video_id · parts[] · expires_at','Tracks which parts landed, for resume.'],
+  ['view_event (stream)','video_id · user · ts · position · quality','Async. Never on the playback path.'],
+  ['Metadata store','relational','Small. The blobs are in object storage; separating the two is the core structural decision.']
+ ],
+ arch:[
+  '   UPLOAD',
+  '   ┌────────┐   1. request presigned URLs   ┌──────────────┐',
+  '   │ Client │──────────────────────────────▶│  Upload API  │',
+  '   └───┬────┘                               └──────────────┘',
+  '       │ 2. PUT parts DIRECTLY (bytes never touch your servers)',
+  '       ▼',
+  '   ┌──────────────────┐',
+  '   │  Object store    │',
+  '   └────────┬─────────┘',
+  '            │ 3. complete → event',
+  '            ▼',
+  '     ┌────────────┐      ┌──────────────────────────┐',
+  '     │   Queue    │─────▶│  Transcoding workers     │',
+  '     └────────────┘      │  (GPU/CPU, autoscaled)   │',
+  '                         │  240p 480p 720p 1080p 4K │',
+  '                         └────────────┬─────────────┘',
+  '                                      │ segments + manifest',
+  '                                      ▼',
+  '                            ┌──────────────────┐',
+  '                            │  Object store    │',
+  '                            └────────┬─────────┘',
+  '   PLAYBACK                          │ origin',
+  '   ┌────────┐   ┌──────────┐   ┌─────▼──────┐',
+  '   │ Viewer │──▶│   CDN    │──▶│  Origin    │',
+  '   └───▲────┘   │  edge    │   │  shield    │ ◄── absorbs edge misses',
+  '       │        └──────────┘   └────────────┘',
+  '       │  adaptive bitrate: client measures bandwidth,',
+  '       └─ switches rendition at the next segment boundary'
+ ],
+ flows:[
+  ['Upload a 5 GB file',[
+   '1. Client asks for an upload session; server returns presigned URLs for each ~10 MB part.',
+   '2. Client PUTs parts directly to object storage, in parallel. Your servers never see the bytes.',
+   '3. A part fails? Retry only that part. This is why a dropped connection at 90% does not restart the upload.',
+   '4. Client calls complete with the part etags; storage assembles the object.',
+   '5. Emit VideoUploaded onto the queue.'
+  ]],
+  ['Transcode',[
+   '1. Worker picks up the job and probes the source.',
+   '2. Transcode the LOWEST rendition first and publish it — playback can begin while higher qualities are still processing.',
+   '3. Segment each rendition into ~4-6 second chunks and write an HLS manifest.',
+   '4. Update the rendition row as each completes; the master manifest grows.',
+   '5. Idempotency matters: at-least-once delivery means a job can run twice. Key output paths by (video, profile) so a rerun overwrites rather than duplicates.'
+  ]],
+  ['Playback',[
+   '1. Client fetches the master manifest listing available renditions.',
+   '2. Starts at a conservative bitrate for fast startup.',
+   '3. Measures throughput while downloading each segment.',
+   '4. Switches rendition at the next SEGMENT BOUNDARY — that is why segments are short.',
+   '5. Segments come from the CDN edge; a miss goes to the origin shield, and only then to origin.',
+   '6. Fire view events asynchronously. Playback never waits on analytics.'
+  ]]
+ ],
+ deepDive:[
+  ['Never proxy the bytes',
+   'The single most important decision in this design: uploads and downloads must not pass through your application servers. A 5 GB upload through your API means holding a connection for minutes, buffering gigabytes, and scaling your fleet to bandwidth rather than to requests.\n\nPresigned URLs let the client talk directly to object storage with a time-limited, scope-limited credential. Your service does authorisation ONCE, when it issues the URL, and then gets out of the way.\n\nThe same applies to playback: the CDN serves segments, and your service only issues signed manifest URLs. If a candidate routes video bytes through their service, that is the thing to correct first.'],
+  ['Chunked, resumable uploads',
+   'A single PUT of 5 GB fails at 90% and the user starts over. They will not try twice.\n\nSplit into parts of roughly 10 MB, upload them independently and in parallel, and track which have landed. A failure retries ONE part. A closed laptop resumes from the parts already stored.\n\nThe session needs an expiry and a cleanup job, or abandoned multipart uploads accumulate and cost real money — a detail worth mentioning because it is the kind of thing that shows operational experience.'],
+  ['Adaptive bitrate, and why segments are short',
+   'The video is encoded at several bitrates and each is cut into 4-6 second segments. The manifest lists them. The client measures its own throughput and picks the next segment from whichever rendition it can sustain.\n\nSegment length is the trade-off. Short segments mean the client can adapt quickly and startup is fast, but there are more requests and more per-request overhead. Long segments are efficient and adapt sluggishly, so a bandwidth drop causes a visible stall. Four to six seconds is the usual compromise, and being able to explain WHY is the point.\n\nStarting at a low bitrate and stepping up gives fast startup — users tolerate a moment of soft video far better than three seconds of spinner.'],
+  ['The CDN economics, and the cold viral video',
+   'At 500 Tbps aggregate, origin cannot serve viewers. A 95% edge hit ratio means origin handles 5%, and that ratio is the difference between a viable business and an impossible one. Netflix went further and put caches inside ISP networks — that is what Open Connect is.\n\nThe failure case: a video goes viral and is in NO edge cache. Every request misses through to origin simultaneously — a stampede at CDN scale. Mitigations: ORIGIN SHIELDING, a mid-tier cache that absorbs misses from many edges so origin sees one request instead of hundreds; and pre-warming for predictable launches.\n\nAnd authorisation: the CDN does not check permissions. Signed URLs with short expiry are the permission. Signing only the manifest is not enough if the segments are publicly addressable — sign the segments too, or an unauthorised viewer just reads the manifest and fetches them directly.']
+ ],
+ scaling:[
+  ['Upload bandwidth','Direct to object storage. Your fleet scales with requests, not bytes.'],
+  ['Transcoding cost','The dominant compute cost. Autoscale workers on queue depth, use spot capacity, and transcode lazily for content nobody watches.'],
+  ['Playback egress','CDN, then ISP-embedded caches at extreme scale. This is the largest cost line.'],
+  ['Cold viral content','Origin shielding plus pre-warming.'],
+  ['Storage growth','Tier old renditions to colder storage; delete the highest bitrates for content nobody watches.'],
+  ['Metadata queries','Small relational store with a cache. Never the bottleneck.']
+ ],
+ tradeoffs:[
+  ['Upload path','Presigned direct-to-storage','Through your service','Your servers would scale with bandwidth rather than requests.'],
+  ['Upload shape','Chunked, resumable','Single PUT','A 5 GB upload failing at 90% is a lost user.'],
+  ['Transcoding','Async, lowest rendition first','Synchronous','Playback can start in minutes rather than after every rendition completes.'],
+  ['Delivery','CDN with origin shield','Direct from origin','Origin cannot serve the aggregate bandwidth. The shield handles the stampede.'],
+  ['Segment length','4–6 seconds','1s or 30s','Balances adaptation speed against request overhead.'],
+  ['Authorisation','Signed URLs, manifest AND segments','Check at delivery','The CDN never checks permissions — the signature IS the permission.']
+ ],
+ angle:[
+  ['Amazon','Prime Video flavour. Expect the upload path first, then "how does playback start before transcoding finishes", then DRM if they go deep.'],
+  ['Adobe','Media is their domain — expect real depth on the transcoding pipeline, codecs and rendition ladders.'],
+  ['Uber / Apple','Less likely, but the CDN and cold-cache-stampede discussion transfers to any large static asset.'],
+  ['If you got this and it went quiet','This is the design where a non-interactive interviewer is common — there is a lot of expected surface and candidates recite it. Differentiate on the WRITE path under load, the transcoding cost, and the cold viral case, which most people skip.']
+ ]
+};
+
 /* ============================================================ TEMPLATES === */
 
 PLAN.templates = [

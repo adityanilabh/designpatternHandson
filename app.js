@@ -612,8 +612,9 @@ function chunkTo(items, fromW, toW) {
 }
 function phaseRangeFor(p) { return p === 1 ? [1, 6] : p === 2 ? [7, 13] : [14, 22]; }
 
-function G(key, type, label, note, group) {
-  return { key: key, type: type, label: label, note: note || '', group: group };
+function G(key, type, label, note, group, lc, name) {
+  return { key: key, type: type, label: label, note: note || '', group: group,
+           lc: (lc === undefined ? null : lc), name: name || label };
 }
 
 var _weekCache = null;
@@ -631,7 +632,7 @@ function buildWeeks() {
     PLAN.sections.filter(function (s) { return s.phase === ph; }).forEach(function (s) {
       s.b.forEach(function (q, ix) {
         items.push(G('ds-' + s.id + '-b-' + ix, 'problem',
-          (q[0] ? 'LC ' + q[0] + ' · ' : '') + q[1], q[3], 'DSA §' + s.n + ' ' + s.name));
+          q[1], q[3], 'DSA §' + s.n + ' ' + s.name, q[0], q[1]));
       });
     });
     var r = phaseRangeFor(ph), map = chunkTo(items, r[0], r[1]);
@@ -645,7 +646,7 @@ function buildWeeks() {
   PLAN.sections.forEach(function (s) {
     s.c.forEach(function (q, ix) {
       cItems.push(G('ds-' + s.id + '-c-' + ix, 'problem',
-        (q[0] ? 'LC ' + q[0] + ' · ' : '') + q[1], q[3], 'DSA §' + s.n + ' ' + s.name + ' · block C'));
+        q[1], q[3], 'DSA §' + s.n + ' ' + s.name + ' · block C', q[0], q[1]));
     });
   });
   /* Block C is the whole point of phase 3, so it is CORE there - not an
@@ -692,7 +693,7 @@ function buildWeeks() {
         set.groups.forEach(function (g, gi) {
           g[2].forEach(function (r2, ix) {
             items.push(G('pp-' + m.id + '-' + gi + '-' + ix, 'problem',
-              (r2[0] ? 'LC ' + r2[0] + ' · ' : '') + r2[1], r2[3], 'Tech practice · ' + m.name));
+              r2[1], r2[3], 'Tech practice · ' + m.name, r2[0], r2[1]));
           });
         });
       }
@@ -732,7 +733,7 @@ function buildWeeks() {
   PLAN.companies.forEach(function (c) {
     (c.pack || []).forEach(function (q, ix) {
       packs.push(G('pk-' + c.id + '-' + ix, 'problem',
-        (q[0] ? 'LC ' + q[0] + ' · ' : '') + q[1], q[3], c.name + ' pack'));
+        q[1], q[3], c.name + ' pack', q[0], q[1]));
     });
   });
   var pMap = chunkTo(packs, 4, 22);
@@ -1524,7 +1525,8 @@ function goalRow(g) {
   } else {
     h += '<button class="cb" data-tplq="' + esc(g.key) + '">' + (done ? '✓' : '') + '</button>';
   }
-  h += '<span class="wk-src">' + esc(g.group) + '</span>' +
+  h += (g.lc != null ? problemLinks(g.lc, g.name) : '') +
+    '<span class="wk-src">' + esc(g.group) + '</span>' +
     '<span class="p-name">' + esc(g.label) + '</span>' +
     (g.note ? '<span class="p-note">' + esc(g.note) + '</span>' : '') + '</div>';
   return h;
