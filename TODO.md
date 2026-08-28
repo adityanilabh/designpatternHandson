@@ -8,22 +8,26 @@ Ordered by what unblocks the most work.
 
 ---
 
-## 1 · Create the Supabase project — blocks Stage 3 (auth) onward
+## 1 · Supabase project — ✅ CREATED. Three small steps left.
 
-- [ ] Sign up / log in at <https://supabase.com/dashboard>
-- [ ] **New project** → name it `target-ladder`, region **closest to you** (Mumbai / `ap-south-1` if offered — it decides every request's latency)
-- [ ] Save the database password somewhere safe. It is shown **once** and you need it for backups later.
-- [ ] Go to **Project Settings → API** and copy these two values back to me:
+- [x] Project created
+- [ ] **Copy the keys into the app.** `cp .env.example .env.local`, then fill in
+      the two values from **Settings → API** (newer dashboards: **Settings →
+      API Keys / Data API**). Restart `npm run dev` afterwards — Next only reads
+      env files at boot.
+- [ ] **Add the redirect URLs** now, or OAuth will fail later with a confusing
+      error. **Authentication → URL Configuration**:
+      - Site URL: `http://localhost:3000`
+      - Additional redirect URLs: `http://localhost:3000/**`
+        (add the Vercel URL here too once item 4 is done)
+- [ ] **Find your database password.** Shown once at creation. If you did not
+      save it: **Settings → Database → Reset database password**. Needed for
+      migrations and backups.
 
-```
-NEXT_PUBLIC_SUPABASE_URL   = https://<project-ref>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY = eyJ...
-```
-
-> **The anon key is safe to share and safe to commit** — it is public by design,
-> and Row Level Security is what protects the data.
-> **The `service_role` key is NOT.** Never paste it to me, never commit it. If it
-> leaks, it bypasses every security policy in the database.
+> The anon / publishable key is **public by design** — it ships to every
+> visitor's browser, and Row Level Security is what protects the data.
+> The **`service_role` / secret key is not.** Never paste it to me, never commit
+> it. It bypasses every security policy in the database.
 
 Free tier is comfortably enough: at 100 users / 20 arenas you use roughly **26 MB
 of the 500 MB** database and **~157 MB of ~5 GB** monthly egress.

@@ -981,3 +981,10 @@ a.btn { text-decoration: none; display: inline-block; }
 .cb:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px;
 }
+
+/* Signed-in identity in the header. */
+.authbox { display: flex; align-items: center; gap: 8px; }
+.authname {
+  font-size: 12.5px; color: var(--ink-2); max-width: 130px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

@@ -8,6 +8,7 @@ import { overdueCount } from '@/lib/reviews';
 import { rawDayNumber, currentPhase, fmtPct, barWidth } from '@/lib/calendar';
 import PLAN from '@/content/meta';
 import StorageModal from './StorageModal';
+import AuthButton from './AuthButton';
 
 /* Progress numbers come from localStorage, which the server cannot know. They
    render as placeholders until the store rehydrates, otherwise the server HTML
