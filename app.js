@@ -46,6 +46,9 @@ function toast(msg) {
   clearTimeout(t._t); t._t = setTimeout(function () { t.hidden = true; }, 2200);
 }
 function pct(x) { return Math.round(x * 100); }
+/* Bar width. A non-zero score always gets a visible sliver, so "I ticked
+   something and the bar did not move" cannot happen. */
+function barW(x) { return (x > 0 ? Math.max(0.6, x * 100).toFixed(1) : '0') + '%'; }
 /* Math.round(0.0035 * 100) is 0, which reads as "nothing registered".
    Show one decimal below 10% so early progress is visible and honest. */
 function fmtPct(x) {
@@ -287,7 +290,9 @@ function bucketItems() {
   allItems().forEach(function (it) {
     if (it.kind === 'pack') return;
     if (b[it.kind]) b[it.kind].push(it);
-    if (it.kind === 'lp') b.lld.push(it);
+    /* An SD session titled "mock" is both a mock and system design coverage,
+       so it counts in each. Nothing else is double-counted — behavioural
+       stories belong to `lp` alone, never to `lld`. */
     if (it.kind === 'mock' && it.key.indexOf('sd-') === 0) b.sd.push(it);
   });
   return b;
@@ -849,7 +854,7 @@ function renderDashboard() {
     stat(Math.round(s.mins / 60) + 'h', 'logged time') +
     stat(s.logged, 'log entries') +
     '</div><div class="co-bar" style="margin-top:16px"><i style="width:' +
-    pct(s.done / (s.total || 1)) + '%"></i></div></div>';
+    barW(s.done / (s.total || 1)) + '"></i></div></div>';
 
   h += '<div class="card"><div class="card-head"><h2>The 43 / 57 split</h2><span class="spacer"></span>' +
     '<span class="dim">~506 hours over 22 weeks</span></div>' +
@@ -896,6 +901,14 @@ function renderDashboard() {
   $('#view-dashboard').innerHTML = h;
   var sd = $('#startdate');
   if (sd) sd.onchange = function () {
+    /* The date input can be cleared, which yields ''. Every calendar helper
+       parses the start date, so an empty one turns the whole app to NaN — and
+       it would be persisted. Refuse it and put the old date back. */
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(sd.value)) {
+      sd.value = state.startDate;
+      toast('Start date cannot be empty.');
+      return;
+    }
     state.startDate = sd.value; _weekCache = null; save(); renderAll();
   };
 }
@@ -2603,8 +2616,8 @@ function renderHeader() {
   $('#m-done').textContent = s.done;
   $('#m-due').textContent = overdue;
   var p = s.done / (s.total || 1);
-  $('#m-bar').style.width = pct(p) + '%';
-  $('#m-pct').textContent = pct(p) + '%';
+  $('#m-bar').style.width = barW(p);
+  $('#m-pct').textContent = fmtPct(p);
   $('#tab-due').textContent = overdue;
 }
 var RENDER = {
