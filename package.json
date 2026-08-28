@@ -10,7 +10,9 @@
     "sheet": "tsx scripts/gen-sheet.ts",
     "verify:content": "tsx scripts/verify-content.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify:lib": "tsx scripts/verify-lib.ts",
+    "verify": "npm run verify:content && npm run verify:lib && npm test"
   },
   "dependencies": {
     "next": "16.3.3",
@@ -25,6 +27,6 @@
     "eslint-config-next": "16.3.3",
     "tsx": "^4.23.12",
     "typescript": "^5",
-    "vitest": "^4.1.11"
+    "vitest": "^2.1.9"
   }
 }
