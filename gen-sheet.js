@@ -2,8 +2,13 @@
    from data.js, so the sheet and the tracker cannot drift.
    Run:  node gen-sheet.js                                                    */
 var fs = require('fs');
+var path = require('path');
+/* Paths are resolved against this file, not the working directory, so the
+   generator runs the same from the repo root or from anywhere else. */
+var DATA = path.join(__dirname, 'legacy', 'data.js');
+var SHEET = path.join(__dirname, 'recognition-sheet.md');
 var PLAN;
-eval(fs.readFileSync('data.js', 'utf8'));
+eval(fs.readFileSync(DATA, 'utf8'));
 
 function cell(s) { return String(s == null ? '' : s).replace(/\|/g, '\\|'); }
 
@@ -697,7 +702,7 @@ function partFour() {
 }
 
 /* --------------------------------------------------------------- splice --- */
-var md = fs.readFileSync('recognition-sheet.md', 'utf8');
+var md = fs.readFileSync(SHEET, 'utf8');
 
 function splice(text, startMarker, endMarker, replacement) {
   var a = text.indexOf(startMarker);
@@ -710,7 +715,7 @@ md = splice(md, '# PART I — DSA', '# PART II — SYSTEM DESIGN', partOne());
 md = splice(md, '# PART II — SYSTEM DESIGN', '# PART III — LLD', partTwo());
 md = splice(md, '# PART III — LLD', '# PART IV — TECH', partThree());
 md = splice(md, '# PART IV — TECH', '# PART V — HOW THIS SHEET MAPS', partFour());
-fs.writeFileSync('recognition-sheet.md', md, 'utf8');
+fs.writeFileSync(SHEET, md, 'utf8');
 
 console.log('regenerated from data.js:');
 console.log('  Part I   —', PLAN.sections.length, 'DSA sections');
