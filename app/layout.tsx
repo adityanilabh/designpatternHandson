@@ -17,7 +17,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     /* data-theme is set by ThemeScript before paint; dark is the default so a
        reader with no stored preference never gets a white flash. */
     <html lang="en" data-theme="dark" suppressHydrationWarning>
-      <body>
+      {/* has-nav switches globals.css into reading mode — larger table cells,
+          Q&A and prose. The legacy tracker toggled it per tab; here every tab
+          is a full page, so it is always on. */}
+      <body className="has-nav">
         <ThemeScript />
         <TopBar />
         <Tabs />

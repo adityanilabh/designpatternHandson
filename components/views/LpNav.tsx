@@ -16,9 +16,14 @@ export default function LpNav() {
   const link = (href: string, label: string, sub?: string, n?: string, cls = '') => {
     const on = pathname === href;
     return (
-      <Link key={href} href={href} className={`nav-i ${cls}${on ? ' on' : ''}`}>
+      <Link
+        key={href}
+        href={href}
+        className={`nav-item${cls ? ' ' + cls : ''}${on ? ' on' : ''}`}
+        aria-current={on ? 'page' : undefined}
+      >
         {n && <span className="nav-n">{n}</span>}
-        <span className="nav-l">{label}{sub && <span className="nav-s">{sub}</span>}</span>
+        <span className="nav-lbl">{label}{sub && <span>{sub}</span>}</span>
       </Link>
     );
   };
@@ -30,21 +35,21 @@ export default function LpNav() {
 
   return (
     <aside className="sidenav">
-      <div className="nav-group">
-        <div className="nav-g">Companies</div>
+      <div className="nav-sect">
+        <div className="nav-group">Companies</div>
         {LP.lp.co.map((c: any) => (
           <Link
             key={c.id}
             href={`/lp/${c.id}/overview`}
-            className={`nav-i nav-co${c.id === co.id ? ' nav-co-on' : ''}`}
+            className={`nav-item nav-co${c.id === co.id ? ' nav-co-on' : ''}`}
           >
-            <span className="nav-l">{c.name}<span className="nav-s">{c.navSub}</span></span>
+            <span className="nav-lbl">{c.name}<span>{c.navSub}</span></span>
           </Link>
         ))}
       </div>
 
-      <div className="nav-group">
-        <div className="nav-g">{co.name} · how it is scored</div>
+      <div className="nav-sect">
+        <div className="nav-group">{co.name} · how it is scored</div>
         {link(`/lp/${co.id}/scoring`, 'How it is scored', 'and where it happens', undefined, 'nav-sub')}
         {link(`/lp/${co.id}/framework`, 'The story format', 'their proportions', undefined, 'nav-sub')}
         {link(`/lp/${co.id}/probes`, 'The follow-up probes', 'where stories break', undefined, 'nav-sub')}
@@ -54,8 +59,8 @@ export default function LpNav() {
 
       {(['high', 'med', 'low'] as const).map((f) =>
         byFreq(f).length ? (
-          <div className="nav-group" key={f}>
-            <div className="nav-g">
+          <div className="nav-sect" key={f}>
+            <div className="nav-group">
               {f === 'high' ? `${co.name} · ${co.label} · high` : `${co.name} · ${f === 'med' ? 'medium' : 'low'}`}
             </div>
             {valueLinks(byFreq(f))}
@@ -63,14 +68,14 @@ export default function LpNav() {
         ) : null
       )}
 
-      <div className="nav-group">
-        <div className="nav-g">{co.name} · your plan</div>
+      <div className="nav-sect">
+        <div className="nav-group">{co.name} · your plan</div>
         {link(`/lp/${co.id}/coverage`, 'Coverage matrix', 'gaps are visible at debrief', undefined, 'nav-sub')}
         {link(`/lp/${co.id}/prep`, 'The schedule', 'what to do, and when', undefined, 'nav-sub')}
       </div>
 
-      <div className="nav-group">
-        <div className="nav-g">Your stories · shared by every company</div>
+      <div className="nav-sect">
+        <div className="nav-group">Your stories · shared by every company</div>
         {link('/lp/shared/bank', 'The story bank', `${LP.lp.slots.length} slots`)}
         {link('/lp/shared/u-shapes', 'The ten shapes', 'one story, four rubrics')}
         {link('/lp/shared/u-recut', 'The recut matrix', 'same story, eleven rooms')}
@@ -78,8 +83,8 @@ export default function LpNav() {
         {link('/lp/shared/schedule', 'Writing cadence', 'two per Sunday')}
       </div>
 
-      <div className="nav-group">
-        <div className="nav-g">Every loop asks these</div>
+      <div className="nav-sect">
+        <div className="nav-group">Every loop asks these</div>
         {link('/lp/shared/u-openers', 'The four openers', 'nobody prepares them')}
         {link('/lp/shared/u-screen', 'The recruiter screen', 'and the comp question')}
         {link('/lp/shared/u-offer', 'Offers and negotiation', 'the highest hourly value')}

@@ -933,3 +933,51 @@ td.wrong-cell { color: var(--bad); font-size: 13px; }
   border-radius: 0 0 var(--radius) var(--radius);
   padding: 12px; font-size: 13.5px; line-height: 1.62; color: var(--ink);
 }
+
+/* ============================================ React port · structural deltas
+   The legacy tracker built the sidebar from <button data-nav> elements and
+   swapped one .view at a time. The React app uses real <a> links and one route
+   per page, so a few rules need an anchor-shaped equivalent. Nothing above
+   this line was changed.                                                     */
+
+/* Sidebar rows are links now, so middle-click and ctrl-click work on a
+   section. They must not inherit the global orange-underline anchor style. */
+a.nav-item { text-decoration: none; color: var(--ink-2); }
+a.nav-item:hover { color: var(--ink); }
+a.nav-item.on { color: var(--ink); }
+
+/* Groups are wrapped so each phase/category is one block. Only the first gets
+   the tight top padding; :first-of-type alone would give it to all of them. */
+.nav-sect .nav-group { padding-top: 18px; }
+.nav-sect:first-of-type .nav-group { padding-top: 4px; }
+
+/* A gated week stays visible — you should see what is coming — but reads as
+   unavailable rather than as a normal destination. */
+.nav-item.locked { opacity: .55; }
+.nav-item.locked .nav-n { font-size: 9.5px; }
+.nav-item.locked:hover { opacity: .8; }
+
+/* The pager's prev/next are links styled as buttons. */
+a.btn { text-decoration: none; display: inline-block; }
+.pager a.btn { color: var(--ink); }
+.pager a.btn:hover { color: var(--ink); border-color: var(--ink-3); }
+
+/* The reading column. body.has-nav sizes .view, which the React app does not
+   use — one route renders straight into <main>, so main carries it instead.
+   Narrower than the 1080px default: long prose needs a shorter measure. */
+.shell > main { max-width: 940px; padding: 34px 42px 90px; }
+@media (max-width: 720px) {
+  .shell > main { padding: 24px 18px 70px; }
+}
+
+/* Rows became real buttons/links for keyboard reach, so give them a visible
+   focus ring — the legacy tracker had none anywhere. */
+.nav-item:focus-visible,
+.prow:focus-visible,
+.qa-body:focus-visible,
+.soln-bar:focus-visible,
+.lp-slot-btn:focus-visible,
+.btn:focus-visible,
+.cb:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px;
+}

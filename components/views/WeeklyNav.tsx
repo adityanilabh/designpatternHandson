@@ -23,8 +23,8 @@ export default function WeeklyNav() {
   return (
     <aside className="sidenav">
       {groups.map(([label, weeks]) => (
-        <div key={label} className="nav-group">
-          <div className="nav-g">{label}</div>
+        <div key={label} className="nav-sect">
+          <div className="nav-group">{label}</div>
           {weeks.map((w) => {
             const pr = weekProgress(state, w);
             const locked = hydrated && !weekUnlocked(state, w.n);
@@ -33,12 +33,13 @@ export default function WeeklyNav() {
               <Link
                 key={w.n}
                 href={`/weekly/${w.n}`}
-                className={`nav-i${on ? ' on' : ''}${locked ? ' locked' : ''}`}
+                className={`nav-item${on ? ' on' : ''}${locked ? ' locked' : ''}`}
+                aria-current={on ? 'page' : undefined}
               >
-                <span className="nav-n">{w.n}</span>
-                <span className="nav-l">
+                <span className="nav-n">{locked ? '🔒' : w.n}</span>
+                <span className="nav-lbl">
                   Week {w.n}
-                  <span className="nav-s">
+                  <span>
                     {locked ? 'locked' : `${pr.core}/${pr.coreTotal} core`}
                     {pr.complete ? ' · done' : ''}
                   </span>
@@ -48,7 +49,7 @@ export default function WeeklyNav() {
           })}
         </div>
       ))}
-      <p className="dim" style={{ padding: '10px 12px', fontSize: 12 }}>
+      <p className="dim" style={{ padding: '10px 16px', fontSize: 11.5, lineHeight: 1.6 }}>
         {WEEKS} weeks partition the whole sheet — every item appears in exactly one.
       </p>
     </aside>
