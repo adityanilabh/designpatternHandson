@@ -1,14 +1,14 @@
-/* Regenerate PART II (system design) and PART IV (tech) of recognition-sheet.md
-   from data.js, so the sheet and the tracker cannot drift.
-   Run:  node gen-sheet.js                                                    */
-var fs = require('fs');
-var path = require('path');
-/* Paths are resolved against this file, not the working directory, so the
-   generator runs the same from the repo root or from anywhere else. */
-var DATA = path.join(__dirname, 'legacy', 'data.js');
-var SHEET = path.join(__dirname, 'recognition-sheet.md');
-var PLAN;
-eval(fs.readFileSync(DATA, 'utf8'));
+/* Regenerate recognition-sheet.md from content/, so the sheet and the app
+   cannot drift. content/ is the single source of truth for plan content.
+   Run:  npm run sheet                                                        */
+// @ts-nocheck
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import PLAN from '../content/index';
+
+/* resolved against this file, not the working directory */
+const SHEET = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'recognition-sheet.md');
 
 function cell(s) { return String(s == null ? '' : s).replace(/\|/g, '\\|'); }
 
@@ -717,7 +717,7 @@ md = splice(md, '# PART III — LLD', '# PART IV — TECH', partThree());
 md = splice(md, '# PART IV — TECH', '# PART V — HOW THIS SHEET MAPS', partFour());
 fs.writeFileSync(SHEET, md, 'utf8');
 
-console.log('regenerated from data.js:');
+console.log('regenerated from content/:');
 console.log('  Part I   —', PLAN.sections.length, 'DSA sections');
 console.log('  Part II —', PLAN.sd.length, 'system design sessions');
 console.log('  Part III —', PLAN.lldProblems.length, 'LLD problems');
