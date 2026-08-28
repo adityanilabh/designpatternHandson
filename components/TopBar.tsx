@@ -78,6 +78,7 @@ export default function TopBar() {
           <button className="btn ghost" title="Storage & backup" onClick={() => setStorageOpen(true)}>
             Storage
           </button>
+          <AuthButton />
         </div>
       </header>
 
