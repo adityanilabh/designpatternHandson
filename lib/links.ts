@@ -21,3 +21,18 @@ export function gfgUrl(lc: number | null, name: string): string {
   const term = (PLAN.gfgName && PLAN.gfgName[lc as number]) || name || '';
   return `https://www.geeksforgeeks.org/search/?gq=${encodeURIComponent(term)}`;
 }
+
+/* The approach and cost for a DSA question, keyed by section and LC number.
+   Ported from legacy/app.js. Returns '' for anything that is not a DSA
+   question, which is how the drawer decides whether to show the spoiler. */
+export function approachFor(key: string): string {
+  const m = /^ds-([a-z]+)-[bc]-(\d+)$/.exec(key || '');
+  if (!m) return '';
+  const sec = PLAN.sections.find((x: any) => x.id === m[1]);
+  if (!sec) return '';
+  const list = key.includes('-b-') ? sec.b : sec.c;
+  const row = list[parseInt(m[2], 10)];
+  if (!row) return '';
+  const tbl = (PLAN.approach || {})[sec.id] || {};
+  return tbl[String(row[0])] || '';
+}
