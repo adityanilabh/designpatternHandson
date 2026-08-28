@@ -4,6 +4,8 @@ import TopBar from '@/components/TopBar';
 import Tabs from '@/components/Tabs';
 import ThemeScript from '@/components/ThemeScript';
 import Drawer from '@/components/Drawer';
+import SyncProvider from '@/components/SyncProvider';
+import UploadPrompt from '@/components/UploadPrompt';
 
 export const metadata: Metadata = {
   title: 'Target Ladder — 154 days',
@@ -22,10 +24,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           is a full page, so it is always on. */}
       <body className="has-nav">
         <ThemeScript />
-        <TopBar />
-        <Tabs />
-        <div className="shell">{children}</div>
-        <Drawer />
+        <SyncProvider>
+          <TopBar />
+          <Tabs />
+          <div className="shell">{children}</div>
+          <Drawer />
+          <UploadPrompt />
+        </SyncProvider>
       </body>
     </html>
   );
