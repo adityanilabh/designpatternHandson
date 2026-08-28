@@ -54,7 +54,7 @@ export default function SyncProvider({ children }: { children: React.ReactNode }
 
     running.current = true;
     setPhase('syncing');
-    const res = await syncOnce(sb, user.id);
+    const res = await syncOnce(sb, { id: user.id, meta: user.user_metadata });
     running.current = false;
 
     if (res.error) { setError(res.error); setPhase('error'); return; }
@@ -80,7 +80,7 @@ export default function SyncProvider({ children }: { children: React.ReactNode }
         /* Pull first so we can tell an empty account from a populated one, and
            ask rather than merge silently. */
         setPhase('syncing');
-        const res = await syncOnce(sb, user.id);
+        const res = await syncOnce(sb, { id: user.id, meta: user.user_metadata });
         if (res.error) { setError(res.error); setPhase('error'); return; }
         setLast(getLastSync(user.id));
         setPhase('idle');
@@ -125,7 +125,7 @@ export default function SyncProvider({ children }: { children: React.ReactNode }
     setOffer(false);
     setPhase('syncing');
     try {
-      await uploadLocal(sb, user.id);
+      await uploadLocal(sb, { id: user.id, meta: user.user_metadata });
       setLast(getLastSync(user.id));
       setPhase('idle');
     } catch (e) {

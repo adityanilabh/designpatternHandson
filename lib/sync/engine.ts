@@ -51,6 +51,38 @@ export interface SyncResult {
   error?: string;
 }
 
+/* --------------------------------------------------------------- profile -- */
+
+/* Every progress table has a foreign key to profiles, so a missing profile row
+   means the account can authenticate and save nothing — the failure is
+   "violates foreign key constraint progress_items_user_id_fkey", which is
+   accurate and tells the user nothing they can act on.
+
+   A database trigger creates the row on signup, but that only covers accounts
+   created after the trigger existed. Rather than rely on the backfill having
+   run, ensure it here: RLS permits inserting a profile whose id is your own
+   uid, so this is self-healing and safe to attempt every sync. */
+async function ensureProfile(sb: SupabaseClient, user: { id: string; meta?: Record<string, unknown> }) {
+  const { data } = await sb.from('profiles').select('id').eq('id', user.id).maybeSingle();
+  if (data) return;
+
+  const m = user.meta || {};
+  const raw = String(m.user_name || m.preferred_username || m.full_name || 'runner');
+  const base = raw.toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'runner';
+
+  /* handles are unique; on collision, suffix until one lands */
+  for (let n = 0; n < 20; n++) {
+    const handle = n === 0 ? base : `${base}${n}`;
+    const { error } = await sb.from('profiles').insert({
+      id: user.id, handle, avatar_url: (m.avatar_url as string) || null,
+    });
+    if (!error) return;
+    /* 23505 = unique_violation on the handle; anything else is a real failure */
+    if ((error as { code?: string }).code !== '23505') throw new Error(error.message);
+  }
+  throw new Error('Could not allocate a unique handle for this account.');
+}
+
 /* ------------------------------------------------------------------ pull -- */
 
 export async function pull(sb: SupabaseClient, userId: string, since: string | null): Promise<number> {
@@ -220,15 +252,25 @@ export async function wipeRemote(sb: SupabaseClient, userId: string) {
 /* First sign-in on a browser that already has local progress. Explicit, never
    automatic — silently merging someone's work into an account is not a
    decision software should make for them. */
-export async function uploadLocal(sb: SupabaseClient, userId: string): Promise<number> {
+export async function uploadLocal(sb: SupabaseClient, user: SyncUser): Promise<number> {
+  await ensureProfile(sb, user);
   useStore.getState().markAllDirty();
-  return push(sb, userId);
+  return push(sb, user.id);
 }
 
 /* --------------------------------------------------------------- one pass -- */
 
-export async function syncOnce(sb: SupabaseClient, userId: string): Promise<SyncResult> {
+export interface SyncUser {
+  id: string;
+  meta?: Record<string, unknown>;
+}
+
+export async function syncOnce(sb: SupabaseClient, user: SyncUser): Promise<SyncResult> {
+  const userId = user.id;
   try {
+    /* before anything else — every other table has a foreign key to profiles */
+    await ensureProfile(sb, user);
+
     if (useStore.getState().pendingWipe) {
       await wipeRemote(sb, userId);
       return { pushed: 0, pulled: 0 };
