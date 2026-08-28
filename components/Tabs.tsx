@@ -29,6 +29,10 @@ export default function Tabs() {
   const state = useStore();
   const due = hydrated ? overdueCount(state) : 0;
 
+  /* The sign-in page is outside the app: showing tabs there advertises
+     destinations that all bounce straight back to /login. */
+  if (pathname.startsWith('/login') || pathname.startsWith('/auth')) return null;
+
   return (
     <nav className="tabs">
       {TABS.map((t) => {

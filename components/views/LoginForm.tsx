@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getSupabaseBrowser } from '@/lib/supabase/client';
 import { isSupabaseConfigured, supabaseSetupHint } from '@/lib/supabase/env';
@@ -87,8 +86,8 @@ export default function LoginForm() {
           </p>
         </div>
         <p className="pane-p">
-          Nothing else is affected — <Link className="lnk" href="/">the whole sheet</Link> works
-          without an account, and your progress is saved in this browser.
+          The sheet requires an account, so nothing is reachable until this is set. Fixing the two
+          environment variables and restarting is the whole job.
         </p>
       </>
     );
@@ -152,8 +151,9 @@ export default function LoginForm() {
         <div className="eyebrow">Account</div>
         <h1>{mode === 'signin' ? 'Sign in' : 'Create an account'}</h1>
         <p className="pane-sub">
-          An account syncs your progress across devices and lets you join arenas. The sheet itself
-          is public — you do not need one to read it.
+          {mode === 'signin'
+            ? 'The sheet is private. Sign in to read it, track your progress across devices, and join arenas.'
+            : 'One account gets you the whole sheet, progress that follows you across devices, and arenas.'}
         </p>
       </div>
 

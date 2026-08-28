@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useStore, migrateLegacyState } from '@/lib/store';
 import { stats } from '@/lib/score';
 import { overdueCount } from '@/lib/reviews';
@@ -14,6 +15,7 @@ import AuthButton from './AuthButton';
    render as placeholders until the store rehydrates, otherwise the server HTML
    and the first client render disagree and React throws a hydration error. */
 export default function TopBar() {
+  const pathname = usePathname();
   const hydrated = useStore((s) => s.hydrated);
   const theme = useStore((s) => s.ui.theme);
   const setTheme = useStore((s) => s.setTheme);
@@ -30,6 +32,23 @@ export default function TopBar() {
   const day = hydrated ? rawDayNumber(state.startDate) : 0;
   const phase = hydrated ? currentPhase(state.startDate) : PLAN.phases[0];
   const p = s.total ? s.done / s.total : 0;
+
+  /* Signed out, on the sign-in page: brand only. Progress metrics belong to an
+     account, and a theme toggle is noise next to the one thing to do here. */
+  const bare = pathname.startsWith('/login') || pathname.startsWith('/auth');
+  if (bare) {
+    return (
+      <header className="topbar">
+        <div className="brand">
+          <span className="logo">TL</span>
+          <div>
+            <h1>Target Ladder</h1>
+            <p className="sub">154 days · JPM → Amazon → Google</p>
+          </div>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <>
