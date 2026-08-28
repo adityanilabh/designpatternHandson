@@ -5,7 +5,9 @@
 **Ladder:** JP Morgan / Amex / Expedia → Amazon / Microsoft / Adobe → Google / Uber
 **Split:** 43% DSA · 57% system design + LLD + tech
 
-> **Status: BUILT.** The tracker in this repo implements this plan — open `index.html`. The full question and pattern sheet is `recognition-sheet.md`; the machine-readable version of the same content is `data.js`.
+> **Status: BUILT.** The tracker in this repo implements this plan — open `index.html`. The full question and pattern sheet is `recognition-sheet.md`, generated from `data.js` by `gen-sheet.js`, so the two cannot drift.
+>
+> Since the first revision, two things in here were found to be under-scoped and have been rebuilt: **behavioural was Amazon-only** and is now a rubric per company across all eleven (Part 5.3), and **DSA listed questions without resolving them** — every one of the 501 now carries its approach and cost, each section carries the derivation from an unseen statement to the right pattern row, and there is a page on why the moves are correct.
 >
 > Open questions are still collected in **Part 10** — answering them will change parts of the plan.
 
@@ -278,11 +280,30 @@ For every design you must survive these six categories. Write the answers; do no
 | 21 | 21 | Uber machine-coding simulation, full 90 min | Machine | — |
 | 22 | 22 | LP rehearsal + light | — | — |
 
-### 5.3 Amazon LP — the parallel workstream
+### 5.3 Behavioural — the parallel workstream
 
-Two STAR stories written every Sunday from week 2, reaching **15 stories by week 13**. Each with real numbers, each rehearsed to under two minutes, each saying **"I" not "we."**
+Two STAR stories written every Sunday from week 2, reaching **15 stories by week 13**. Each with real numbers, each rehearsed to under two minutes.
 
-LP is roughly half of Amazon's signal and the bar-raiser can reject you on it alone. It is the single most common way strong coders fail Amazon. Prepare "biggest failure" and "disagreed with a manager" specifically — those two catch people.
+**This was originally scoped as Amazon LP only, and that was wrong.** Every company on the ladder scores behaviour, each against its own named rubric, and preparing one of them is preparing one of eleven. The tracker's **Companies LP** tab now carries a rubric per company — Amazon's 16 Leadership Principles, Google's Googleyness attributes, Microsoft's growth mindset and the As-Appropriate round, Adobe's four core values, JPM's business principles and its HireVue stage, Uber's 2017 cultural norms, Salesforce's five ranked values, the Amex Blue Box, and Expedia, Apple and Flipkart — with 77 individually drillable values between them.
+
+**The story bank stays one bank.** You are not writing eleven sets of stories; you are writing fifteen and learning to recut them. The events do not change — the emphasis, the pronoun, the closing beat and the delivery speed do:
+
+| Room | What you add | What you remove |
+|---|---|---|
+| Amazon | The number, the alternative rejected, the decision you made alone | The collaborator who dilutes your contribution |
+| Google | The collaborators, the thing you got wrong, the moment you stepped **back** | Conviction with no doubt in it |
+| Microsoft | What you did not know at the start, the org boundary you crossed | The intensity — slow it down |
+| JP Morgan | What could have gone wrong, the rollback, who reviewed it | Speed as the headline |
+| Uber | The disagreement with someone senior, the honest bad middle | The tidy arc |
+| Salesforce | The time you said no and found the safe route | Delivery framed as success |
+
+Three consequences for the schedule:
+
+1. **Rung one meets behaviour first, in week 3.** JP Morgan's HireVue is a pre-recorded video round with no interviewer, no probes and a 90-second limit. It filters before anyone reads your code, and it is a format nobody has practised. Record three answers to a timer in week 3.
+2. **The control sentence is the cheapest adaptation on the ladder.** Fifteen seconds per story — what could have gone wrong, what you put in place, how you would have known — and it is the single biggest gap between a product-company candidate and a bank-ready one.
+3. **The step-back story is the Google differentiator.** Emergent leadership is two-sided and candidates prepare only the half where they take over. Write the one where you handed something off.
+
+Amazon remains the heaviest single weight — roughly half its signal, and the bar-raiser can reject you on it alone. Prepare "biggest failure" and "disagreed with a manager" specifically; those two catch people. But the same fifteen stories, recut, carry the other ten rooms.
 
 ---
 

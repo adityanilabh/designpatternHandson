@@ -29,1062 +29,1168 @@ Every section has three blocks.
 
 # PART I — DSA
 
-Seventeen sections. Weight is deliberately uneven — Arrays, Strings, Trees, Graphs and DP carry the plan; Bit/Math and Design are small on purpose.
+Seventeen sections, 181 pattern rows, 501 questions. Weight is deliberately uneven — Arrays, Strings, Trees, Graphs and DP carry the plan; Bit/Math and Design are small on purpose.
+
+Each section has four parts. **Derive** is the reasoning chain from an unseen statement to the right row of block A. **A · Patterns** is the machinery, read as *disguise → move*. **B** is the tier 1–2 set and **C** the Google/Uber hard tier — and every question in both carries the actual approach and its cost, so a section you are weak at does not just point you at LeetCode.
+
+> In the tracker the approach sits behind a click, so it cannot spoil a problem you are about to solve. Here it is inline — read the sheet as reference, solve from the tracker.
+
+---
+
+## §0 · WHY IT IS CORRECT — the argument shapes
+
+"How do you know that is correct?" is a Google question, it is an Uber question, and it is the difference between a candidate who recalls an algorithm and one who understands it. There are only a handful of argument shapes, and each has a sentence you can say out loud.
+
+> You do not need a formal proof in an interview. You need the ONE sentence that names why the algorithm cannot go wrong, delivered before the interviewer has to ask for it.
+
+**Exchange argument** — Greedy is optimal. Take any optimal solution, and show you can swap one of its choices for the greedy choice WITHOUT making it worse. Repeat, and you have transformed the optimum into the greedy solution.
+
+> *Say it like this:* "Take an optimal schedule. If it does not use the interval that finishes earliest, swap that interval in - it ends no later, so nothing that followed can now conflict. So there is an optimal solution containing the greedy choice."
+
+*Where:* Interval scheduling (435, 452) · Huffman (1167) · Jump Game II · Task Scheduler
+
+**Cut-and-paste** — DP has optimal substructure. Assume the optimal solution to the whole contains a sub-solution that is NOT optimal for its subproblem; cut it out, paste in the better one, and the whole improves - contradiction.
+
+> *Say it like this:* "If the best path to this cell went through a suboptimal path to the cell above it, I could substitute the better prefix and get a better total, which contradicts optimality. So the subproblem answers compose."
+
+*Where:* Every DP · shortest paths · edit distance
+
+**Loop invariant** — A property that holds before the loop, is preserved by each iteration, and gives you the answer when the loop ends. This is the argument for almost every two-pointer solution.
+
+> *Say it like this:* "The invariant is that the true answer always lies between left and right. Moving the shorter wall inward cannot remove a better solution, because any pair using that wall is bounded by it. So the invariant survives, and when the pointers meet we have checked everything that could have won."
+
+*Where:* Two pointers (11, 42) · binary search · Dutch flag (75) · cyclic sort
+
+**Monotonicity** — Binary search on the answer is valid only if feasibility is monotone: if x works, everything larger works. State it, and the search is justified.
+
+> *Say it like this:* "If a ship of capacity c can finish in d days, so can any larger capacity - feasibility is monotone in c - so the set of feasible capacities is an upward-closed interval and I can binary search its boundary."
+
+*Where:* 875 · 1011 · 410 · 774 · 1552 · 1482
+
+**Greedy stays ahead** — A weaker but often easier argument than exchange: show that after every step the greedy solution is at least as far along as any other, by an explicit measure.
+
+> *Say it like this:* "After processing k intervals, the greedy has an end time no later than any other valid selection of k. By induction it can never be overtaken."
+
+*Where:* Jump Game · activity selection · 134 Gas Station
+
+**Dijkstra's finality invariant** — When a node is popped from the min-heap its distance is final. The argument is that any other route to it must pass through a node still in the heap, which already has a distance at least as large - and edges are non-negative.
+
+> *Say it like this:* "Non-negative weights are what make this work: any alternative path leaves the settled set through a frontier node whose tentative distance is already at least as large, so it cannot come back cheaper."
+
+*Where:* 743 · 787 · 1631 · 1976 · and the reason negative edges force Bellman-Ford
+
+**Topological invariant** — Processing in topological order means every predecessor of the node you are on is already final. Say that out loud before writing the DP.
+
+> *Say it like this:* "By the time I reach v in topological order, every edge into v has already been relaxed, so dp[v] is complete when I leave it."
+
+*Where:* 1857 · 2050 · 1203 · 329
+
+**Amortised analysis** — An individual operation is expensive but the total across n operations is bounded. The accounting argument is that each element can only be charged once.
+
+> *Say it like this:* "Each element is pushed once and popped once across the whole run, so although a single step can pop many elements, the total work is O(n) rather than O(n^2)."
+
+*Where:* Monotonic stack (84, 739) · two stacks as a queue (232) · sliding-window deque (239) · DSU with path compression
+
+**Pigeonhole / counting** — The answer is forced by a counting fact rather than by a search.
+
+> *Say it like this:* "There are n+1 values in a range of size n, so by pigeonhole a duplicate must exist - which is also what guarantees the functional graph in 287 contains a cycle."
+
+*Where:* 287 · 41 First Missing Positive · 169 majority · 1568
+
+**Contribution / linearity** — Instead of enumerating the objects, count how much each element contributes across all of them, and sum. Turns an O(n^2) enumeration into O(n).
+
+> *Say it like this:* "Rather than enumerating subarrays, I ask for each element how many subarrays it is the minimum of - that is (i - prevSmaller) * (nextSmaller - i) - and multiply. Summing contributions gives the same total."
+
+*Where:* 907 · 2104 · 828 · 891
+
+**Reduction** — Prove correctness by showing the problem IS another problem you already trust, rather than by arguing from scratch.
+
+> *Say it like this:* "Minimising the maximum edge on a path is exactly the question Kruskal answers - the moment the two nodes become connected, the edge that connected them is the minimax bottleneck. So 1631, 778 and 1102 are one problem."
+
+*Where:* 778 = 1631 · 525 = 560 · 1248 = 930 · 214 via KMP
+
+**Adversary / lower bound** — Why you cannot do better, which is the answer to "can this be faster?"
+
+> *Say it like this:* "Any comparison-based sort needs O(n log n) because the decision tree has n! leaves. If you want linear, you have to stop comparing - which is what counting and bucket sorts do, and why they need bounded values."
+
+*Where:* Answering "why not faster" on sorting, selection, and top-k
+
+**The drill.** Take any ten problems you have already solved and say the correctness sentence out loud for each. If you cannot, you learned the code rather than the algorithm - and that is precisely the gap a twisted variant exposes.
 
 ---
 
 ## §1 · ARRAYS — prefix, Kadane, in-place
 
+**Derive it.** Ask what the query is over. A RANGE of the array means prefix sums; a COUNT of subarrays means prefix sums plus a hashmap; repeated range UPDATES mean a difference array. If the ask is a single best contiguous stretch, it is Kadane. If the constraint says O(1) extra space and the values happen to lie in [1..n], the array itself is the hashmap - negate or cyclic-sort. If it is a matrix, stop thinking about the values and think about the coordinate transform.
+
 ### A · Patterns
 
 | Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| **Prefix sum** | "sum of any range", "queries on subarrays", repeated range totals | Build `pre[i]`; answer = `pre[r+1]-pre[l]` | O(n) build, O(1) query |
-| **Prefix + hashmap** | "count subarrays summing to K", "divisible by K", "equal 0s and 1s" | Seed `{0:1}`; look up `pre-K`. For divisibility store `pre % K` | O(n) |
-| **Difference array** | "add v to every index in [l,r]", many range updates then one read | `d[l]+=v; d[r+1]-=v`, prefix at the end | O(1) per update |
-| **Kadane** | "maximum sum subarray", "best contiguous stretch" | `cur = max(x, cur+x)`; track global | O(n) |
-| **Kadane, two-sided** | max **product** subarray, sign flips | Track `maxEnd` **and** `minEnd` — a negative can become the max | O(n) |
-| **Boyer–Moore voting** | "element appearing more than n/2 (or n/3) times", O(1) space demanded | Candidate + counter; n/3 needs two candidates and a verify pass | O(n), O(1) space |
-| **Dutch national flag** | "sort 0/1/2", "partition into three groups", one pass, in place | Three pointers `low, mid, high` | O(n), one pass |
-| **Index-as-hashmap** | Values are in `[1..n]`, "find the missing / duplicate", O(1) space | Negate `a[abs(x)-1]`, or cyclic-sort `a[i]` to position `a[i]-1` | O(n), O(1) space |
-| **Product except self** | "without division", "product/sum of everything but me" | Left-pass prefix, right-pass suffix, multiply | O(n), O(1) extra |
-| **Rotate / reverse trick** | "rotate by k in place" | Reverse all, reverse first k, reverse rest | O(n), O(1) |
-| **Matrix as coordinates** | spiral, rotate 90°, set-zeroes | Rotate = transpose + reverse rows. Set-zeroes = use row 0/col 0 as the marker | O(nm) |
+| **Prefix sum** | "sum of any range", repeated range totals | Build pre[i]; answer = pre[r+1]-pre[l] | O(n)/O(1) |
+| **Prefix + hashmap** | "count subarrays summing to K", "divisible by K", "equal 0s and 1s" | Seed {0:1}; look up pre-K. For divisibility store pre % K | O(n) |
+| **Difference array** | "add v to every index in [l,r]", many updates then one read | d[l]+=v; d[r+1]-=v, prefix at the end | O(1)/update |
+| **Kadane** | "maximum sum subarray", "best contiguous stretch" | cur = max(x, cur+x); track global | O(n) |
+| **Kadane two-sided** | max PRODUCT subarray, sign flips | Track maxEnd AND minEnd — a negative can become the max | O(n) |
+| **Boyer–Moore voting** | "appears more than n/2 (or n/3) times", O(1) space demanded | Candidate + counter; n/3 needs two candidates and a verify pass | O(n)/O(1) |
+| **Dutch national flag** | "sort 0/1/2", "partition into three", one pass in place | Three pointers low, mid, high | O(n) 1-pass |
+| **Index-as-hashmap** | values in [1..n], "find missing / duplicate", O(1) space | Negate a[abs(x)-1], or cyclic-sort a[i] to position a[i]-1 | O(n)/O(1) |
+| **Product except self** | "without division", "everything but me" | Left-pass prefix, right-pass suffix, multiply | O(n)/O(1) |
+| **Rotate via reverse** | "rotate by k in place" | Reverse all, reverse first k, reverse rest | O(n)/O(1) |
+| **Matrix as coordinates** | spiral, rotate 90°, set-zeroes | Rotate = transpose + reverse rows. Set-zeroes = row0/col0 as markers | O(nm) |
 
-### B · Tier 1–2
+### B · Tier 1–2  *(25)*
 
-| LC | Name | D | The thing it teaches |
-|---|---|---|---|
-| 1 | Two Sum | E | Hashmap complement — the ur-pattern |
-| 121 | Best Time to Buy and Sell Stock | E | Kadane in disguise: track min-so-far |
-| 53 | Maximum Subarray | M | Kadane itself |
-| 152 | Maximum Product Subarray | M | Why you must track the min too |
-| 238 | Product of Array Except Self | M | Prefix/suffix without division |
-| 169 | Majority Element | E | Boyer–Moore; the O(1)-space follow-up is the real question |
-| 229 | Majority Element II | M | Two candidates + verification pass |
-| 75 | Sort Colors | M | Dutch national flag, one pass |
-| 268 | Missing Number | E | XOR or sum; know both |
-| 287 | Find the Duplicate Number | M | Read-only + O(1) space ⇒ Floyd cycle on indices |
-| 442 | Find All Duplicates in an Array | M | Index-as-hashmap by negation |
-| 448 | Find All Numbers Disappeared | E | Same trick |
-| 41 | First Missing Positive | H | Cyclic sort. **Amazon and Adobe favourite** |
-| 88 | Merge Sorted Array | E | Fill backwards |
-| 189 | Rotate Array | M | Three reversals |
-| 66 | Plus One | E | Carry propagation, watch all-nines |
-| 73 | Set Matrix Zeroes | M | O(1) space via first row/col as flags |
-| 54 | Spiral Matrix | M | Four bounds, shrink; off-by-one discipline |
-| 48 | Rotate Image | M | Transpose then reverse |
-| 240 | Search a 2D Matrix II | M | Staircase from top-right |
-| 560 | Subarray Sum Equals K | M | Prefix + hashmap seeded `{0:1}` |
-| 523 | Continuous Subarray Sum | M | Prefix modulo K |
-| 525 | Contiguous Array | M | Map 0→−1, then it is 560 |
-| 1010 | Pairs of Songs Divisible by 60 | M | Counting by remainder — **Amazon** |
-| 495 | Teemo Attacking | E | Interval merge as arithmetic |
-| 918 | Maximum Sum Circular Subarray | M | max(Kadane, total − minKadane), guard all-negative |
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 1 | **Two Sum** | E | Hashmap complement — the ur-pattern | Hashmap of value to index. For each x, look up target-x BEFORE inserting x, so an element never pairs with itself. O(n) time, O(n) space. |
+| 121 | **Best Time to Buy and Sell Stock** | E | Kadane in disguise: track min-so-far | One pass tracking the minimum price seen so far; the answer is the best of price minus that minimum. This is Kadane on the difference array without building it. O(n) time, O(1) space. |
+| 53 | **Maximum Subarray** | M | Kadane itself | Kadane: cur = max(x, cur + x), and keep a running global maximum. The whole trick is that a prefix with negative sum is worth discarding rather than carrying. O(n) time, O(1) space. |
+| 152 | **Maximum Product Subarray** | M | Why you must track the min too | Kadane, but track maxEnd AND minEnd at each index, because a negative times the current minimum can become the new maximum. Swap them when x is negative. O(n) time, O(1) space. |
+| 238 | **Product of Array Except Self** | M | Prefix/suffix without division | Two passes. Left to right filling res[i] with the prefix product; right to left multiplying by a running suffix product. The output array is not extra space by the problem definition. O(n) time, O(1) extra. |
+| 169 | **Majority Element** | E | Boyer–Moore; the O(1)-space follow-up is the real question | Boyer-Moore voting: keep a candidate and a counter, increment on a match, decrement otherwise, reset the candidate at zero. Works because the majority element survives every cancellation. O(n) time, O(1) space. |
+| 229 | **Majority Element II** | M | Two candidates + verification pass | Boyer-Moore generalised: at most two elements can exceed n/3, so run two candidates and two counters simultaneously, then VERIFY both with a second counting pass. O(n) time, O(1) space. |
+| 75 | **Sort Colors** | M | Dutch national flag, one pass | Dutch national flag. Three pointers low, mid, high: on 0 swap to low and advance both, on 2 swap to high and do NOT advance mid, on 1 just advance mid. One pass, O(n) time, O(1) space. |
+| 268 | **Missing Number** | E | XOR or sum; know both | XOR every index and every value together; pairs cancel and the missing number survives. Sum-of-first-n minus actual sum also works but can overflow. O(n) time, O(1) space. |
+| 287 | **Find the Duplicate Number** | M | Read-only + O(1) space => Floyd cycle on indices | Read-only plus O(1) space forces Floyd cycle detection on the functional graph i -> a[i]: phase one finds a meeting point, phase two walks one pointer from the start to find the entry, which is the duplicate. O(n) time, O(1) space. |
+| 442 | **Find All Duplicates in an Array** | M | Index-as-hashmap by negation | Index-as-hashmap. For each x, negate a[abs(x)-1]; if it was already negative you have seen abs(x) before. Restore signs if the input must survive. O(n) time, O(1) space. |
+| 448 | **Find All Numbers Disappeared** | E | Same trick | Same negation marking, then every index still holding a positive value corresponds to a missing number. O(n) time, O(1) space. |
+| 41 | **First Missing Positive** | H | Cyclic sort. Amazon and Adobe favourite | Cyclic sort: while a[i] is in [1..n] and not already in position, swap it to index a[i]-1. Then scan for the first index whose value is not i+1. The answer is always in [1..n+1]. O(n) time, O(1) space. |
+| 88 | **Merge Sorted Array** | E | Fill backwards | Fill BACKWARDS from index m+n-1, taking the larger tail element each time. Going forwards would overwrite unread values. O(m+n) time, O(1) space. |
+| 189 | **Rotate Array** | M | Three reversals | Three reversals: reverse the whole array, reverse the first k, reverse the rest. Take k modulo n first. O(n) time, O(1) space. |
+| 66 | **Plus One** | E | Carry propagation, watch all-nines | Walk from the last digit adding the carry; stop as soon as a digit is not 9. If you fall off the front, the answer is 1 followed by n zeros. O(n) time. |
+| 73 | **Set Matrix Zeroes** | M | O(1) space via first row/col as flags | Use row 0 and column 0 as the marker arrays, with one extra boolean for whether column 0 itself must be zeroed. Mark in one pass, apply in a second pass working backwards so the markers are read before they are overwritten. O(nm) time, O(1) space. |
+| 54 | **Spiral Matrix** | M | Four bounds, shrink; off-by-one discipline | Four bounds - top, bottom, left, right - and shrink whichever one you just consumed. The discipline is guarding the bottom and left passes against a single remaining row or column. O(nm) time. |
+| 48 | **Rotate Image** | M | Transpose then reverse | Transpose in place, then reverse each row. Anticlockwise is transpose then reverse each column. O(n^2) time, O(1) space. |
+| 240 | **Search a 2D Matrix II** | M | Staircase from top-right | Staircase from the top-right corner: if the value is too large move left, if too small move down. Each step eliminates a whole row or column. O(n+m) time, O(1) space. |
+| 560 | **Subarray Sum Equals K** | M | Prefix + hashmap seeded {0:1} | Prefix sum plus a hashmap of prefix-value to count, SEEDED with {0:1} so a prefix that itself equals K is counted. At each index add the count of pre-K seen so far. O(n) time, O(n) space. |
+| 523 | **Continuous Subarray Sum** | M | Prefix modulo K | Same as 560 but store prefix modulo K and the earliest INDEX it occurred at, because the subarray must be at least length two. Seed {0:-1}. O(n) time, O(k) space. |
+| 525 | **Contiguous Array** | M | Map 0 to -1, then it is 560 | Map every 0 to -1 and the problem becomes "longest subarray summing to zero", which is prefix sums plus a map of first occurrence. O(n) time, O(n) space. |
+| 1010 | **Pairs of Songs Divisible by 60** | M | Amazon — counting by remainder | Count remainders modulo 60. Pair r with 60-r, and handle r=0 and r=30 as n choose 2 within their own bucket. O(n) time, O(1) space. |
+| 918 | **Maximum Sum Circular Subarray** | M | max(Kadane, total - minKadane), guard all-negative | The answer is max(Kadane(a), total - minKadane(a)), because the best wrapping subarray is the complement of the worst non-wrapping one. Guard the all-negative case, where the second term is zero and wrong. O(n) time, O(1) space. |
 
-### C · Google / Uber L4
+### C · Google / Uber L4  *(13)*
 
-**Extra machinery:** merge-sort as a counting device · binary search on a *real-valued* answer · difference arrays over 2-D · monotonic deque over a window · prefix with a BIT when the transition needs a range query.
+**Extra machinery.** merge-sort as a counting device · binary search on a real-valued answer · 2-D difference arrays · monotonic deque over a window · prefix with a BIT when the transition needs a range query
 
-| LC | Name | D | Why it is here |
-|---|---|---|---|
-| 4 | Median of Two Sorted Arrays | H | Binary search on the *partition*, not the value. The canonical "you must think, not recall" |
-| 315 | Count of Smaller Numbers After Self | H | Merge sort as a counter, or BIT on ranks. **Google pack** |
-| 493 | Reverse Pairs | H | Same machinery, different predicate — proves transfer |
-| 327 | Count of Range Sum | H | Prefix + merge sort; three ideas composed |
-| 239 | Sliding Window Maximum | H | Monotonic deque — the template you will reuse |
-| 84 | Largest Rectangle in Histogram | H | Monotonic stack; the parent of 85 |
-| 85 | Maximal Rectangle | H | 84 applied per row. Composition |
-| 42 | Trapping Rain Water | H | Three solutions (DP, two-pointer, stack). Know why two-pointer is correct |
-| 407 | Trapping Rain Water II | H+ | Heap from the border inward. A genuine step up |
-| 862 | Shortest Subarray with Sum ≥ K | H | Negatives break sliding window ⇒ monotonic deque over prefix |
-| 410 | Split Array Largest Sum | H | Binary search on the answer; write `feasible(x)` first |
-| 774 | Minimize Max Distance to Gas Station | H | Binary search on a **real** answer. **Google premium** |
-| 2251 | Number of Flowers in Full Bloom | H | Two sorted arrays + binary search, or difference-map sweep |
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 4 | **Median of Two Sorted Arrays** | H | Binary search on the PARTITION, not the value | Binary search on the PARTITION of the shorter array, not on the value. Choose i in the shorter array, derive j from the total half-length, and check the four boundary values maxLeftA <= minRightB and maxLeftB <= minRightA. O(log min(m,n)) time. |
+| 315 | **Count of Smaller Numbers After Self** | H | Merge sort as a counter, or BIT on ranks. Google pack | Merge sort on (value, originalIndex) pairs, counting how many right-half elements are placed before each left-half element during the merge; that count is exactly the smaller-after count. Or a BIT over compressed ranks scanned right to left. O(n log n) time. |
+| 493 | **Reverse Pairs** | H | Same machinery, different predicate — proves transfer | Same merge-sort machinery, different predicate: before merging, count pairs with a[i] > 2*a[j] using a two-pointer sweep across the two sorted halves. Proves the counting device transfers. O(n log n) time. |
+| 327 | **Count of Range Sum** | H | Prefix + merge sort; three ideas composed | Build prefix sums, then during the merge count how many prefix[j] fall in [prefix[i]+lower, prefix[i]+upper] with two moving pointers. Three ideas composed: prefix, merge sort, window. O(n log n) time. |
+| 239 | **Sliding Window Maximum** | H | Monotonic deque — the template you will reuse | Monotonic deque holding INDICES with decreasing values. Pop the front when it leaves the window, pop the back while it is smaller than the incoming value, then push. The front is always the window maximum. O(n) time, O(k) space. |
+| 84 | **Largest Rectangle in Histogram** | H | Monotonic stack; parent of 85 | Monotonic increasing stack of indices. When a shorter bar arrives, pop and settle each taller bar: its width runs from the new stack top plus one to the current index minus one. Sentinel zeros at both ends remove the flush logic. O(n) time. |
+| 85 | **Maximal Rectangle** | H | 84 applied per row. Composition | Treat each row as the base of a histogram whose heights are consecutive ones above it, and run 84 per row. Composition, not a new idea. O(nm) time. |
+| 42 | **Trapping Rain Water** | H | Three solutions. Know why two-pointer is correct | Two pointers from both ends moving the side with the smaller wall inward, adding maxLeft minus height at each step. Correct because the smaller wall alone bounds the water at that index. O(n) time, O(1) space. |
+| 407 | **Trapping Rain Water II** | H | Heap from the border inward. A genuine step up | Two dimensions break the two-pointer argument, so use a min-heap seeded with the whole border. Pop the lowest boundary cell, and for each unvisited neighbour add max(0, boundaryHeight - h) and push it with height max(boundaryHeight, h). O(nm log nm) time. |
+| 862 | **Shortest Subarray with Sum >= K** | H | Negatives break sliding window => monotonic deque over prefix | Negatives break the sliding window, so keep a monotonic increasing deque of prefix-sum indices. Pop from the front while prefix[i]-prefix[front] >= K recording the length, and pop from the back while prefix[back] >= prefix[i]. O(n) time. |
+| 410 | **Split Array Largest Sum** | H | Binary search on the answer; write feasible(x) first | Binary search on the ANSWER. Write feasible(x) = greedily cut whenever the running sum would exceed x, and count the pieces; feasible if that count is at most m. Search between max(a) and sum(a). O(n log sum) time. |
+| 774 | **Minimize Max Distance to Gas Station** | H | Google premium — binary search on a REAL answer | Binary search on a REAL-valued answer. feasible(d) = sum over gaps of ceil(gap/d) - 1 stations needed, feasible if that is at most K. Iterate a fixed 60-100 times or to 1e-6. O(n log(range/eps)) time. |
+| 2251 | **Number of Flowers in Full Bloom** | H | Offline queries, or difference-map sweep | Sort start times and end times into two separate arrays. For each person, binary search how many flowers have started by then minus how many have ended; the difference is the answer. Or sweep a difference map over compressed times. O((n+q) log n) time. |
 
 ---
 
 ## §2 · TWO POINTERS & SLIDING WINDOW
 
+**Derive it.** Two pointers need a MONOTONE reason to move one side. Sorted input gives it - moving inward changes the sum in a known direction. A window gives it when the quantity you track only worsens as the window grows, which is why all-positive is required for sum windows and why negatives force a deque instead. If the ask is "exactly K", write atMost(K) - atMost(K-1) rather than a new window.
+
 ### A · Patterns
 
-| Pattern | The disguise | The move | Cost |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| **Opposite-end two pointers** | Sorted input, "pair/triplet summing to target", "container", "palindrome" | `lo`, `hi`; move the one that can improve the objective | O(n) |
-| **Same-direction (fast/slow)** | "remove in place", "move zeroes", "dedupe sorted" | Write pointer trails read pointer | O(n), O(1) |
+| **Opposite-end two pointers** | Sorted input, "pair/triplet summing to target", "container", "palindrome" | lo, hi; move the one that can improve the objective | O(n) |
+| **Same-direction fast/slow** | "remove in place", "move zeroes", "dedupe sorted" | Write pointer trails read pointer | O(n)/O(1) |
 | **Fixed-size window** | "every subarray of length k", "average of k" | Add right, drop left, no shrink loop | O(n) |
-| **Variable window — shrink while invalid** | "longest substring such that…", "smallest subarray with sum ≥ …" | Expand right always; `while (invalid) shrink left` | O(n) |
-| **Window with a counter map** | "at most K distinct", "contains all of T", anagram windows | Map of counts + a `formed`/`distinct` scalar so the check is O(1) | O(n) |
-| **atMost(K) − atMost(K−1)** | **"exactly K"** anything | Solve "at most" twice and subtract. Never try to write "exactly" directly | O(n) |
+| **Variable window** | "longest substring such that…", "smallest subarray with sum >= …" | Expand right always; WHILE invalid, shrink left | O(n) |
+| **Window with a counter map** | "at most K distinct", "contains all of T", anagram windows | Count map + a formed/distinct scalar so the check is O(1) | O(n) |
+| **atMost(K) − atMost(K−1)** | "EXACTLY K" anything | Solve "at most" twice and subtract. Never write "exactly" directly | O(n) |
 | **Two pointers over two arrays** | merge, intersection, "is subsequence" | Advance the smaller/matched side | O(n+m) |
-| **Cycle detection (Floyd)** | "no extra space", "find where it repeats", value range implies a functional graph | Slow/fast, then reset one to head | O(n), O(1) |
+| **Floyd cycle detection** | "no extra space", "find where it repeats" | Slow/fast, then reset one to head | O(n)/O(1) |
 
-> **The single most common bug:** shrinking with `if` instead of `while`. Say the invariant out loud before writing the loop: *"while the window is invalid, shrink."*
+### B · Tier 1–2  *(19)*
 
-### B · Tier 1–2
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 125 | **Valid Palindrome** | E | Filtering + opposite ends | Two pointers inward, skipping non-alphanumerics on both sides, comparing lowercased. O(n) time, O(1) space. |
+| 680 | **Valid Palindrome II** | E | One-deletion branch | Two pointers inward; on the first mismatch try deleting the left OR the right character and test whether either remaining span is a palindrome. One branch point only. O(n) time. |
+| 167 | **Two Sum II** | M | Opposite ends on sorted | Sorted input, so two pointers from both ends: move left in when the sum is too small, right in when too large. O(n) time, O(1) space. |
+| 15 | **3Sum** | M | Sort + fix one + two pointers. Dedup IS the interview | Sort, then fix i and run the 167 two-pointer on the suffix. Skip duplicates at i and after every successful pair, or the output has repeats. O(n^2) time. |
+| 16 | **3Sum Closest** | M | Same skeleton, different objective | Same as 3Sum but track the closest sum seen instead of an exact match; you can still move pointers by the sign of sum minus target. O(n^2) time. |
+| 18 | **4Sum** | M | Generalising the skeleton | Two nested fixed indices plus the two-pointer inner loop, with duplicate skipping at all four positions. Prune early when the smallest or largest reachable sum cannot hit the target. O(n^3) time. |
+| 11 | **Container With Most Water** | M | Why moving the shorter side is safe — prove it | Two pointers from both ends; always move the SHORTER wall inward, because moving the taller one can only reduce the area. O(n) time, O(1) space. |
+| 26 | **Remove Duplicates / Element / Move Zeroes** | E | LC 26, 27, 283 — write-pointer idiom | Slow-fast write pointer: the slow index is where the next kept element goes, the fast index scans. The same shape solves remove-element and move-zeroes. O(n) time, O(1) space. |
+| 3 | **Longest Substring Without Repeating** | M | Variable window + last-seen map | Sliding window with a map of character to LAST index. On a repeat, jump the left edge to max(left, lastIndex+1) rather than crawling. O(n) time, O(min(n,alphabet)) space. |
+| 209 | **Minimum Size Subarray Sum** | M | Shrink-while | Sliding window over positive numbers: grow right, and while the sum is at least the target shrink from the left recording the length. Positivity is what makes the window monotone. O(n) time. |
+| 424 | **Longest Repeating Character Replacement** | M | Valid when len - maxFreq <= k | Window is valid while (windowLength - countOfMostFrequentChar) <= k. The subtle part: you never need to decrease the recorded maximum frequency, so the window only ever grows or slides. O(n) time. |
+| 567 | **Permutation in String** | M | Fixed window + count compare | Fixed-size window of length len(s1) over s2, with a 26-slot count array and a matches counter. Slide and update two characters per step. O(n) time. |
+| 438 | **Find All Anagrams** | M | Same | Identical machinery to 567, but record every start index where the counts match rather than returning on the first. O(n) time. |
+| 76 | **Minimum Window Substring** | H | The formed counter. Asked everywhere | Grow the window until it covers all required counts (tracked by a "how many distinct chars are satisfied" counter), then shrink from the left while it still covers, recording the best. Each pointer moves n times. O(n + m) time. |
+| 340 | **Longest Substring with At Most K Distinct** | M | PREMIUM. The archetype | Sliding window with a map of character to count; while the map has more than K keys, shrink from the left and delete keys that reach zero. O(n) time, O(k) space. |
+| 141 | **Linked List Cycle I & II** | E | LC 141, 142 — prove why phase 2 meets at the entry | Floyd: slow moves one, fast moves two; they meet inside a cycle. For the entry point, restart one pointer at the head and advance both one step at a time until they meet. O(n) time, O(1) space. |
+| 234 | **Palindrome Linked List** | E | Fast/slow + reverse half. O(1) space expected | Find the middle with slow-fast, reverse the second half in place, compare the two halves, then restore the list if the caller cares. O(n) time, O(1) space. |
+| 986 | **Interval List Intersections** | M | Two pointers over intervals | Two pointers over the two sorted lists. The intersection is [max(starts), min(ends)] when that is non-empty, and you always advance whichever interval ends first. O(n+m) time. |
+| 392 | **Is Subsequence** | E | Follow-up: many queries => preprocess | Two pointers, advancing the s pointer only on a match. For the follow-up with many queries, precompute for each position and letter the next occurrence and binary search instead. O(n) time. |
 
-| LC | Name | D | Teaches |
-|---|---|---|---|
-| 125 | Valid Palindrome | E | Filtering + opposite ends |
-| 680 | Valid Palindrome II | E | One-deletion branch |
-| 167 | Two Sum II | M | Opposite ends on sorted |
-| 15 | 3Sum | M | Sort + fix one + two pointers. **Dedup is the interview** |
-| 16 | 3Sum Closest | M | Same skeleton, different objective |
-| 18 | 4Sum | M | Generalising the skeleton |
-| 11 | Container With Most Water | M | Why moving the shorter side is safe — prove it |
-| 26/27/283 | Remove Dups / Element / Move Zeroes | E | Write-pointer idiom |
-| 3 | Longest Substring Without Repeating | M | Variable window + last-seen map |
-| 209 | Minimum Size Subarray Sum | M | Shrink-while |
-| 424 | Longest Repeating Character Replacement | M | Window valid when `len − maxFreq ≤ k` |
-| 567 | Permutation in String | M | Fixed window + count compare |
-| 438 | Find All Anagrams | M | Same |
-| 76 | Minimum Window Substring | H | The `formed` counter. **Asked everywhere** |
-| 340 | Longest Substring with At Most K Distinct | M | *Premium.* The archetype |
-| 141/142 | Linked List Cycle I & II | E/M | Floyd; prove why the second phase meets at the entry |
-| 234 | Palindrome Linked List | E | Fast/slow + reverse half. O(1) space expected |
-| 986 | Interval List Intersections | M | Two pointers over intervals |
-| 392 | Is Subsequence | E | And the follow-up: many queries ⇒ preprocess |
+### C · Google / Uber L4  *(10)*
 
-### C · Google / Uber L4
+**Extra machinery.** window over a TRANSFORMED array · monotonic deque inside a window · "exactly K" by subtraction · windows whose shrink condition is not monotone (=> deque or heap)
 
-**Extra machinery:** window over a *transformed* array · monotonic deque inside a window · "exactly K" by subtraction · windows where the shrink condition is not monotone (⇒ deque or heap) · two-pointer on a sorted-by-something-else key.
-
-| LC | Name | D | Why |
-|---|---|---|---|
-| 992 | Subarrays with K Different Integers | H | The atMost subtraction, at its purest |
-| 930 | Binary Subarrays With Sum | M | Same trick, easier — do it first |
-| 1248 | Count Number of Nice Subarrays | M | Same trick, third dress |
-| 480 | Sliding Window Median | H | Two heaps + **lazy deletion**. Broadly reusable |
-| 239 | Sliding Window Maximum | H | Monotonic deque |
-| 727 | Minimum Window Subsequence | H | *Premium.* Subsequence ≠ substring — **Google & Uber** |
-| 683 | K Empty Slots | H | *Premium.* Window over a transformed array |
-| 76 | Minimum Window Substring | H | Re-solve blind in Phase 3 |
-| 1004 | Max Consecutive Ones III | M | Window with a budget |
-| 1234 | Replace Substring for Balanced String | M | Window on the *complement* — a real inversion of thinking |
-| 828 | Count Unique Characters of All Substrings | H | Contribution counting, not windowing. Know when the window fails |
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 992 | **Subarrays with K Different Integers** | H | The atMost subtraction at its purest | exactly(K) = atMost(K) - atMost(K-1). atMost is a normal distinct-count sliding window, so the whole problem is one small algebraic trick over a standard window. O(n) time. |
+| 930 | **Binary Subarrays With Sum** | M | Same trick, easier — do it first | Same subtraction trick: exactly S = atMost(S) - atMost(S-1), where atMost is a prefix-sum window over a binary array. O(n) time. |
+| 1248 | **Count Number of Nice Subarrays** | M | Same trick, third dress | Map odd to 1 and even to 0 and it becomes 930 with S = k. The same subtraction trick again - three problems, one idea. O(n) time. |
+| 480 | **Sliding Window Median** | H | Two heaps + LAZY DELETION. Broadly reusable | Two heaps (max-heap of the lower half, min-heap of the upper half) with LAZY DELETION: keep a map of values scheduled for removal and purge only from the tops. Rebalance by size after every insert and delete. O(n log k) time. |
+| 239 | **Sliding Window Maximum** | H | Monotonic deque | Monotonic deque of indices with decreasing values; the front is the maximum and leaves when it falls out of the window. O(n) time, O(k) space. |
+| 727 | **Minimum Window Subsequence** | H | PREMIUM. Google & Uber. Subsequence != substring | Two pointers with a BACKWARD pass: scan forward to find an end that covers t, then walk backwards from that end to tighten the start. Or DP over dp[i][j] = the latest start. O(nm) time. |
+| 683 | **K Empty Slots** | H | PREMIUM. Window over a transformed array | Slide a window over the position-to-day array and keep windows where every interior day is greater than both endpoints; a monotonic deque or a min-window check does it. O(n) time. |
+| 1004 | **Max Consecutive Ones III** | M | Window with a budget | Sliding window allowing at most K zeros: grow right, and when the zero count exceeds K shrink from the left. The maximum window length is the answer. O(n) time. |
+| 1234 | **Replace Substring for Balanced String** | M | Window on the COMPLEMENT — a real inversion | Reframe: find the SHORTEST window such that the characters OUTSIDE it are already balanced. Then it is a standard shrinking window over the outside counts. O(n) time. |
+| 828 | **Count Unique Characters of All Substrings** | H | Contribution counting. Know when the window fails | Contribution technique, not a window. For each occurrence of a character, its contribution is (i - prevIndex) * (nextIndex - i), so keep the last two indices per character and sum. O(n) time. |
 
 ---
 
 ## §3 · STRINGS
 
+**Derive it.** Strings are one of four things. A comparison up to reordering means a canonical key - sorted string or count signature. A nesting or matching structure means a stack. A rigid specification with edge cases means a state machine, and the specification IS the problem. A substring search or repetition question means KMP, Z or a rolling hash - and if the ask is the LONGEST such substring, binary search the length on top of the hash.
+
 ### A · Patterns
 
-| Pattern | The disguise | The move | Cost |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
 | **Frequency map / anagram key** | "anagram", "permutation of", "group by" | 26-array or sorted-string as the key | O(n) |
-| **Expand around centre** | "longest palindromic substring", "count palindromes" | 2n−1 centres, expand both ways | O(n²) |
-| **Two pointers** | "reverse words", "valid palindrome", in-place | See §2 | O(n) |
+| **Expand around centre** | "longest palindromic substring", "count palindromes" | 2n-1 centres, expand both ways | O(n^2) |
 | **Stack parsing** | nested brackets, "decode k[abc]", calculator | Push context on open, pop on close | O(n) |
-| **State machine / spec-following** | atoi, "valid number", IP validation, text justification | Enumerate the states first, code second. **The spec is the problem** | O(n) |
-| **Rolling hash (Rabin–Karp)** | "find repeated substring of length L", dedupe by content | Hash, slide, verify collisions | O(n) |
-| **KMP failure function** | "shortest prefix that is also a suffix", "does the string repeat" | `lps[]` | O(n) |
-| **Trie** | prefix / dictionary / autocomplete | See §12 | — |
-| **Char-count sliding window** | see §2 | | |
-| **Encode with framing** | serialize a list of strings unambiguously | `len + '#' + payload` — never a delimiter alone | O(n) |
+| **State machine / spec-following** | atoi, "valid number", IP validation, text justification | Enumerate the states FIRST, code second. The spec is the problem | O(n) |
+| **Rolling hash (Rabin–Karp)** | "repeated substring of length L", dedupe by content | Hash, slide, verify collisions | O(n) |
+| **KMP failure function** | "shortest prefix that is also a suffix", "does the string repeat" | lps[] array | O(n) |
+| **Encode with framing** | serialize a list of strings unambiguously | len + "#" + payload — never a delimiter alone | O(n) |
+| **Z-algorithm** | "how far does the string match ITSELF starting here", all-borders questions | z[i] = the length of the longest substring at i that is also a prefix. Same jobs as KMP, easier to derive live - the two-pointer window [l,r] is the whole implementation | O(n) |
+| **Manacher** | ALL palindromic substrings, or the longest one, when O(n^2) centre expansion will not fit | Interleave separators so every palindrome is odd-length, then reuse the mirror radius under the current rightmost palindrome. Know it exists and what it buys; centre expansion is the expected answer | O(n) |
 
-### B · Tier 1–2
+### B · Tier 1–2  *(21)*
 
-| LC | Name | D | Teaches |
-|---|---|---|---|
-| 242 | Valid Anagram | E | Count array |
-| 49 | Group Anagrams | M | Canonical key choice |
-| 5 | Longest Palindromic Substring | M | Expand around centre. **Amazon** |
-| 647 | Palindromic Substrings | M | Same engine, counting |
-| 20 | Valid Parentheses | E | Stack |
-| 22 | Generate Parentheses | M | Backtracking with a validity counter |
-| 151 | Reverse Words in a String | M | **Microsoft**; 186 is the in-place version |
-| 8 | String to Integer (atoi) | M | Pure spec discipline. **Microsoft/Adobe** |
-| 13/12 | Roman ↔ Integer | E | Table-driven |
-| 14 | Longest Common Prefix | E | Vertical scan |
-| 28 | Find the Index of the First Occurrence | E | Naive, then KMP as the follow-up |
-| 344/345 | Reverse String / Vowels | E | Two pointers |
-| 387 | First Unique Character | E | Two passes |
-| 819 | Most Common Word | E | **Amazon** — string hygiene under time pressure |
-| 937 | Reorder Data in Log Files | M | **Amazon rite of passage** — custom comparator |
-| 271 | Encode and Decode Strings | M | *Premium.* Length-framing |
-| 443 | String Compression | M | In-place write pointer |
-| 6 | Zigzag Conversion | M | Index arithmetic, easy to fumble |
-| 68 | Text Justification | H | **The most Google-flavoured spec problem** — also asked at Uber |
-| 468 | Validate IP Address | M | **Microsoft** — spec discipline |
-| 273 | Integer to English Words | H | **Uber/Microsoft.** Tedious on purpose; tests care |
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 242 | **Valid Anagram** | E | Count array | 26-slot count array, increment for s and decrement for t, then check all zeros. Unicode follow-up needs a hashmap. O(n) time, O(1) space. |
+| 49 | **Group Anagrams** | M | Canonical key choice | Group by a canonical key: either the sorted string, O(n k log k), or a 26-length count signature, O(n k). The choice of key IS the interview. |
+| 5 | **Longest Palindromic Substring** | M | Amazon — expand around centre | Expand around every centre, 2n-1 of them because even-length palindromes have a centre between characters. Manacher gets O(n) but is rarely required. O(n^2) time, O(1) space. |
+| 647 | **Palindromic Substrings** | M | Same engine, counting | Identical centre expansion, but count every successful expansion instead of tracking the longest. O(n^2) time. |
+| 20 | **Valid Parentheses** | E | Stack | Stack of expected closers. Push the matching closer on an opener, and on a closer check it equals the popped top. The stack must be empty at the end. O(n) time. |
+| 22 | **Generate Parentheses** | M | Backtracking with a validity counter | Backtrack with two counters: you may add an open bracket while open < n, and a close bracket while close < open. That invariant alone prevents every invalid string. O(4^n / sqrt(n)) outputs. |
+| 151 | **Reverse Words in a String** | M | Microsoft; 186 is the in-place version | Split on runs of whitespace and join reversed. For the in-place O(1) variant: reverse the whole array, then reverse each word. O(n) time. |
+| 8 | **String to Integer (atoi)** | M | Microsoft/Adobe — pure spec discipline | The specification IS the problem. Skip leading spaces, read an optional sign, consume digits, stop at the first non-digit, and clamp to the 32-bit range while accumulating rather than after. O(n) time. |
+| 13 | **Roman to Integer / Integer to Roman** | E | LC 13, 12 — table-driven | Right to left: add the value, but subtract when the current symbol is smaller than the one to its right. For the reverse direction, greedily emit from a table that includes the subtractive pairs. O(n) time. |
+| 14 | **Longest Common Prefix** | E | Vertical scan | Compare characters column by column across all strings, or take the min and max string in lexical order and compare only those two. O(total characters). |
+| 28 | **Find the Index of the First Occurrence** | E | Naive, then KMP as the follow-up | KMP: build the failure function (longest proper prefix that is also a suffix) then scan without ever backing up in the haystack. O(n+m) time. |
+| 344 | **Reverse String / Reverse Vowels** | E | LC 344, 345 | Two pointers swapping inward. The vowels variant advances each pointer until it lands on a vowel first. O(n) time, O(1) space. |
+| 387 | **First Unique Character** | E | Two passes | Two passes: count, then scan for the first character with count one. A single pass storing first-index and count also works. O(n) time. |
+| 819 | **Most Common Word** | E | Amazon — string hygiene under time pressure | Lowercase, split on non-letters, count, then take the highest count not in the banned set. The parsing is the difficulty, not the algorithm. O(n) time. |
+| 937 | **Reorder Data in Log Files** | M | Amazon rite of passage — custom comparator | Stable sort with a custom comparator: letter-logs before digit-logs, letter-logs compared by content then by identifier, digit-logs left in original order. Stability is what preserves the digit-log order. O(n log n) time. |
+| 271 | **Encode and Decode Strings** | M | PREMIUM. Length-framing | Length-prefix framing: write the length, a delimiter, then the payload. Never a delimiter alone, because the payload can contain it. O(total length). |
+| 443 | **String Compression** | M | In-place write pointer | Read pointer and write pointer over the same array. Count a run, write the character, then write the count digits only when the run exceeds one. O(n) time, O(1) space. |
+| 6 | **Zigzag Conversion** | M | Index arithmetic, easy to fumble | Simulate the row index bouncing between 0 and numRows-1, appending each character to its row, then concatenate. The closed-form index arithmetic is an optional flourish. O(n) time. |
+| 68 | **Text Justification** | H | The most Google-flavoured spec problem. Also Uber | Greedily fit as many words as possible per line, then distribute spaces: the leftmost gaps take the extra space. The last line and any single-word line are left-justified. O(total characters). |
+| 468 | **Validate IP Address** | M | Microsoft — spec discipline | Pure specification work. Split on dots or colons, check the count of parts, then validate each part - no leading zeros for IPv4, at most four hex digits for IPv6. O(n) time. |
+| 273 | **Integer to English Words** | H | Uber/Microsoft. Tedious on purpose; tests care | Recurse in groups of three digits, appending the scale word (Thousand, Million, Billion). The traps are zero, the teens, and stray spaces. O(log n) digits. |
 
-### C · Google / Uber L4
+### C · Google / Uber L4  *(12)*
 
-**Extra machinery:** KMP and its `lps` reuse · Z-function · rolling hash with double modulus · suffix structures conceptually · counting *contributions* instead of enumerating substrings · DP over strings (see §15).
+**Extra machinery.** KMP and lps reuse · Z-function · rolling hash with double modulus · counting CONTRIBUTIONS instead of enumerating substrings · DP over strings
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| 1044 | Longest Duplicate Substring | H+ | Binary search on length + rolling hash. Two techniques composed |
-| 214 | Shortest Palindrome | H | KMP on `s + '#' + reverse(s)` — the trick worth owning |
-| 459 | Repeated Substring Pattern | E | Falls straight out of `lps` |
-| 336 | Palindrome Pairs | H | Trie or reversed-prefix hashmap. **Google pack** |
-| 76 | Minimum Window Substring | H | — |
-| 809 | Expressive Words | M | **Google pack** — two-pointer group counting |
-| 777 | Swap Adjacent in LR String | M | **Google pack.** Code is short, the invariant proof is the interview |
-| 833 | Find And Replace in String | M | **Google pack** — index bookkeeping |
-| 726 | Number of Atoms | H | **Uber** — recursive parsing |
-| 224/227/772 | Basic Calculator I / II / III | H | **Uber & Google.** Do all three; III is the real one |
-| 394 | Decode String | M | Stack of (count, built-so-far) |
-| 65 | Valid Number | H | State machine. Horrible and instructive |
-| 30 | Substring with Concatenation of All Words | H | Window of words, not chars |
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 1044 | **Longest Duplicate Substring** | H | Binary search on length + rolling hash. Two techniques composed | Binary search on the LENGTH, with a rolling hash (Rabin-Karp) checking whether any duplicate substring of that length exists. Store hashes in a set and verify collisions. O(n log n) expected. |
+| 214 | **Shortest Palindrome** | H | KMP on s + "#" + reverse(s) — the trick worth owning | The answer is the longest palindromic PREFIX; everything after it gets mirrored in front. Find it with KMP on s + "#" + reverse(s) and read the last failure value. O(n) time. |
+| 459 | **Repeated Substring Pattern** | E | Falls straight out of lps | The one-liner: s is built from a repeated block if and only if s appears inside (s+s) with the first and last characters removed. Or use the KMP failure function: n % (n - fail[n]) == 0. O(n) time. |
+| 336 | **Palindrome Pairs** | H | Google pack. Trie or reversed-prefix hashmap | Trie of reversed words plus a per-node list of which suffixes below it are palindromes. For each word, walk the trie and match the two cases - the other word is shorter, or longer. O(n k^2) time. |
+| 809 | **Expressive Words** | M | Google pack — two-pointer group counting | Run-length encode both strings and compare group by group: the groups must be the same character, and the query count must either equal the word count or be at least three and at least the word count. O(n) time. |
+| 777 | **Swap Adjacent in LR String** | M | Google pack. Code is short; the invariant proof is the interview | Invariant proof, not simulation. Strip the Xs: the remaining L/R sequences must be identical, and every L in start must be at an index >= its position in end, every R at an index <=. O(n) time. |
+| 833 | **Find And Replace in String** | M | Google pack — index bookkeeping | Collect all replacements that actually match at their index, sort by index, then build the output in one left-to-right pass. Doing them in place invalidates every later index. O(n + k log k) time. |
+| 726 | **Number of Atoms** | H | Uber — recursive parsing | Recursive descent parser. Parse an element and an optional count, recurse on an open parenthesis, multiply the returned map by the count after the close. Then sort the map. O(n^2) worst case. |
+| 224 | **Basic Calculator I / II / III** | H | LC 224, 227, 772. Uber & Google. III is the real one | One stack, one running result, one sign. On an open parenthesis push the result and the sign and reset both; on a close pop and combine. For II and III also carry a pending operator and handle multiply/divide immediately against the last term. O(n) time. |
+| 394 | **Decode String** | M | Stack of (count, built-so-far) | Two stacks - counts and partial strings - or one recursion. On an open bracket push the current string and the multiplier; on a close pop and append the repeated segment. O(output length). |
+| 65 | **Valid Number** | H | State machine. Horrible and instructive | A small state machine, or a flag-based scan tracking seenDigit, seenDot and seenExponent with the rule that a dot cannot follow an exponent and an exponent needs a digit before and after. O(n) time. |
+| 30 | **Substring with Concatenation of All Words** | H | Window of words, not chars | Sliding window in WORD units: run len separate windows, one per starting offset modulo the word length, each maintaining a count map and shrinking on excess. O(n * len) time. |
 
 ---
 
 ## §4 · HASHING & COUNTING
 
+**Derive it.** Reach for a map when you need O(1) membership or an O(1) count, and reach for a map PLUS a second structure when you also need order or extremes. The composition table in section 17 is the real answer here: map plus doubly linked list is LRU, map plus buckets is LFU, map plus array is O(1) random access. The question "what does the map alone fail to give me" picks the partner structure.
+
 ### A · Patterns
 
-| Pattern | The disguise | The move | Cost |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| **Complement lookup** | "two things that add to X" | Map value→index, look for `target−x` | O(n) |
-| **Canonical key** | "group these", "are these the same shape" | Choose a key that is equal iff the things are equal — sorted string, normalised tuple, serialized subtree | O(n·k) |
+| **Complement lookup** | "two things that add to X" | Map value->index, look for target-x | O(n) |
+| **Canonical key** | "group these", "are these the same shape" | Choose a key equal iff the things are equal — sorted string, normalised tuple, serialized subtree | O(nk) |
 | **Count then decide** | "top K frequent", "most common", "can we rearrange" | Counter, then heap / bucket / greedy | O(n) |
-| **Bucket by frequency** | "top K" with K near n, or O(n) demanded | `buckets[freq] = [items]`, walk down | O(n) |
-| **Seen-set as a graph probe** | "longest consecutive sequence" | Only start a run at `x` when `x−1 ∉ set` | O(n) |
-| **Prefix state → map** | see §1 | | |
-| **Hash + doubly linked list** | "O(1) get, put, and eviction" | LRU. See §17 | O(1) |
-| **Rolling / incremental key** | dedupe streaming content | Rolling hash | O(n) |
+| **Bucket by frequency** | "top K" with K near n, or O(n) demanded | buckets[freq] = [items], walk down | O(n) |
+| **Seen-set as a graph probe** | "longest consecutive sequence" | Only start a run at x when x-1 is not in the set | O(n) |
+| **Hash + doubly linked list** | "O(1) get, put, and eviction" | LRU | O(1) |
 
-### B · Tier 1–2
+### B · Tier 1–2  *(11)*
 
-| LC | Name | D | Teaches |
-|---|---|---|---|
-| 217/219 | Contains Duplicate I & II | E | Set, then windowed set |
-| 128 | Longest Consecutive Sequence | M | The `x−1 ∉ set` guard is the whole problem |
-| 347 | Top K Frequent Elements | M | Heap **and** bucket sort — know both |
-| 692 | Top K Frequent Words | M | **Amazon/Google.** The lexicographic tie-break is where people fail |
-| 383/205/290 | Ransom Note / Isomorphic / Word Pattern | E | Bijection needs **two** maps |
-| 349/350 | Intersection of Two Arrays I & II | E | Set vs multiset |
-| 249 | Group Shifted Strings | M | *Premium.* Canonical key design |
-| 380 | Insert Delete GetRandom O(1) | M | **Amazon/Uber.** Array + index map; swap-with-last on delete |
-| 381 | …with Duplicates allowed | H | Same, with a set of indices |
-| 146 | LRU Cache | M | **Everywhere.** See §17 |
-| 1152 | Analyze User Website Visit Pattern | M | *Premium.* **Amazon** — deliberately messy, and that is the point |
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 217 | **Contains Duplicate I & II** | E | LC 217, 219 — set, then windowed set | Set for the plain version. For the "within k indices" variant, keep a sliding window set of the last k elements, evicting as you go. O(n) time. |
+| 128 | **Longest Consecutive Sequence** | M | The x-1 guard is the whole problem | Put everything in a set, then start a run ONLY at x where x-1 is absent, and walk upward. Each element is visited at most twice, which is what makes it O(n) rather than O(n log n). |
+| 347 | **Top K Frequent Elements** | M | Heap AND bucket sort — know both | Count, then either a size-k min-heap, O(n log k), or bucket sort by frequency into n+1 buckets and read from the top, O(n). Quickselect on counts is the third answer. |
+| 692 | **Top K Frequent Words** | M | Amazon/Google. The lexicographic tie-break is where people fail | Same as 347 but the tie-break is lexical, so the heap comparator must invert on count and not on the word. Bucket sort plus sorting inside each bucket also works. O(n log k) time. |
+| 383 | **Ransom Note / Isomorphic / Word Pattern** | E | LC 383, 205, 290 — a bijection needs TWO maps | Count the source, decrement for the target, fail on a negative. The isomorphic and word-pattern variants need TWO maps - forward and backward - or the mapping is not a bijection. O(n) time. |
+| 349 | **Intersection of Two Arrays I & II** | E | LC 349, 350 — set vs multiset | Set intersection for the distinct version. For the multiset version, count one side and decrement while scanning the other; if both are sorted, two pointers with no extra space. O(n+m) time. |
+| 249 | **Group Shifted Strings** | M | PREMIUM. Canonical key design | Canonical key: shift every character so the first letter becomes "a", wrapping modulo 26. Group by that key. O(total characters). |
+| 380 | **Insert Delete GetRandom O(1)** | M | Amazon/Uber. Array + index map; swap-with-last on delete | Array plus a value-to-index map. Insert appends; delete swaps the doomed element with the LAST one, fixes that one index in the map, and pops. getRandom indexes the array. O(1) all three. |
+| 381 | **Insert Delete GetRandom — duplicates allowed** | H | Same, with a set of indices | Same shape but the map holds a SET of indices per value. On delete pull any index out of the set and do the same swap-with-last, updating the moved element's index set. O(1) expected. |
+| 146 | **LRU Cache** | M | Everywhere. Be fastest at this | Hashmap to node, plus a doubly linked list with sentinel head and tail. get moves the node to the front; put evicts from the tail when full. The sentinels are what make the pointer surgery branch-free. O(1) both. |
+| 1152 | **Analyze User Website Visit Pattern** | M | PREMIUM. Amazon — deliberately messy, and that is the point | Group timestamps by user, sort each user's visits by time, enumerate every 3-subsequence of pages, count the patterns across users, and take the max with a lexical tie-break. Deliberately messy - the specification is the difficulty. O(u * k^3) time. |
 
-### C · Google / Uber L4
+### C · Google / Uber L4  *(7)*
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| 652 | Find Duplicate Subtrees | M | Canonical serialization + id assignment to dodge O(n²) strings |
-| 288 | Unique Word Abbreviation | M | *Premium.* **Google pack** |
-| 359 | Logger Rate Limiter | E | *Premium.* **Google & Uber** — design warm-up |
-| 981 | Time Based Key-Value Store | M | **Uber** — map to sorted list + binary search |
-| 895 | Maximum Frequency Stack | H | **Uber** — stack of stacks keyed by frequency |
-| 460 | LFU Cache | H | Two maps + frequency buckets. The hard sibling of 146 |
-| 936 | Stamping The Sequence | H | Reverse thinking + greedy matching |
+**Extra machinery.** canonical id assignment to avoid O(n^2) string cost · frequency-bucket structures · versioned/time-indexed maps
+
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 652 | **Find Duplicate Subtrees** | M | Canonical serialization + id assignment | Serialise every subtree post-order into a canonical string (with explicit null markers) and count them in a map; any serialisation seen exactly twice contributes one root. O(n^2) with strings, O(n) with an id-assignment map.  |
+| 288 | **Unique Word Abbreviation** | M | PREMIUM. Google pack | Map from abbreviation to the set of words producing it. A word is unique if the abbreviation is absent, or maps to a set containing only that word. O(n) build. |
+| 359 | **Logger Rate Limiter** | E | PREMIUM. Google & Uber — design warm-up | Map from message to the next allowed timestamp. Print only when now is at least that value, and then set it to now + 10. The follow-up is what to do about unbounded memory - evict lazily. O(1) per call. |
+| 981 | **Time Based Key-Value Store** | M | Uber — map to sorted list + binary search | Map from key to a list of (timestamp, value) appended in increasing time order, then binary search for the largest timestamp not exceeding the query. O(log n) per get. |
+| 895 | **Maximum Frequency Stack** | H | Uber — stack of stacks keyed by frequency | Map from value to a stack of the frequencies at which it was pushed, plus a map from frequency to the stack of values at that frequency, plus the current max frequency. Push increments; pop takes from the top frequency stack. O(1) both. |
+| 460 | **LFU Cache** | H | Two maps + frequency buckets. The hard sibling of 146 | Three structures: key to node, key to frequency, and frequency to a doubly linked list of nodes in that bucket in LRU order. Track the minimum frequency and bump nodes between buckets on access. O(1) both. |
+| 936 | **Stamping The Sequence** | H | Reverse thinking + greedy matching | Work BACKWARDS. Repeatedly find a window in the target that matches the stamp allowing already-stamped wildcards, replace it with wildcards, and record the index; reverse the recorded order at the end. O(n * m) time. |
 
 ---
 
 ## §5 · BINARY SEARCH
 
+**Derive it.** Two different questions wear the same clothes. If the array is sorted, you are searching an INDEX and the only work is picking a lower- or upper-bound template. If the array is not sorted but the answer is a number with a monotone feasibility test - larger is always easier, or always harder - you are searching the ANSWER. In that case write feasible(x) first and the search is boilerplate. The tell is a question phrased as "minimum largest", "maximum smallest", or "minimum days to".
+
 ### A · Patterns
 
-| Pattern | The disguise | The move | Cost |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| **First-true / last-true** | "find the boundary", "leftmost index where…" | **One template**, half-open `[lo, hi)`. Never deviate under pressure | O(log n) |
-| **Binary search on the answer** | **"minimise the maximum"**, "maximise the minimum", "smallest k such that possible" | Write `feasible(x)` first; the search is boilerplate | O(n log R) |
-| **Search a rotated array** | "sorted but rotated" | Decide which half is sorted, then whether the target lies in it | O(log n) |
-| **Search on a 2-D grid** | sorted rows and columns | Treat as 1-D, or staircase from top-right | O(log nm) / O(n+m) |
-| **Binary search on a real answer** | answers are doubles; "within 1e-6" | Fixed ~100 iterations, not `lo < hi` | O(100·n) |
-| **Binary search on the partition** | two sorted arrays, median, kth | Search the split point, not the value | O(log min(n,m)) |
-| **Binary search inside a DP/greedy** | "longest increasing", "job scheduling by end time" | `bisect` over `tails[]` or over sorted ends | O(n log n) |
+| **First-true / last-true** | "find the boundary", "leftmost index where…" | ONE template, half-open [lo, hi). Never deviate under pressure | O(log n) |
+| **Binary search on the answer** | "MINIMISE THE MAXIMUM", "maximise the minimum", "smallest k such that possible" | Write feasible(x) first; the search is boilerplate | O(n log R) |
+| **Rotated array** | "sorted but rotated" | Decide which half is sorted, then whether the target lies in it | O(log n) |
+| **2-D grid** | sorted rows and columns | Flatten to 1-D, or staircase from top-right | O(log nm) |
+| **Real-valued answer** | answers are doubles; "within 1e-6" | Fixed ~100 iterations, not lo < hi | O(100n) |
+| **Search the partition** | two sorted arrays, median, kth | Search the SPLIT POINT, not the value | O(log min) |
+| **Binary search inside DP/greedy** | "longest increasing", "job scheduling by end time" | bisect over tails[] or over sorted ends | O(n log n) |
 | **Peak / unimodal** | "find any peak", "mountain array" | Compare with the neighbour and walk uphill | O(log n) |
 
-> **Trigger to burn in:** the words *minimise the maximum* or *maximise the minimum* mean binary search on the answer, roughly 90% of the time. The other 10% is Dijkstra-with-max or Kruskal — and those three are usually the same problem (see §13).
+### B · Tier 1–2  *(17)*
 
-### B · Tier 1–2
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 704 | **Binary Search** | E | The template | Canonical half-open loop: lo=0, hi=n, while lo<hi with mid = lo + (hi-lo)/2. Pick one template and never write another. O(log n) time. |
+| 35 | **Search Insert Position** | E | First-true | Same search, but return lo when the loop ends - that is exactly the insertion point. O(log n) time. |
+| 34 | **Find First and Last Position** | M | Two boundary searches | Two searches: lower bound (first index with a[i] >= target) and upper bound (first index with a[i] > target). Write them as one function with a strictness flag. O(log n) time. |
+| 33 | **Search in Rotated Sorted Array I & II** | M | LC 33, 81. Duplicates break the invariant in II — say why | One half of the array is always sorted. Determine which by comparing a[lo] with a[mid], test whether the target lies inside that sorted half, and discard the other. With duplicates you must shrink lo and hi by one on ties, which degrades to O(n) worst case. |
+| 153 | **Find Minimum in Rotated Array I & II** | M | LC 153, 154 | Compare a[mid] with a[hi]: if greater, the minimum is to the right; otherwise it is at mid or to the left. Comparing with a[lo] instead is the classic bug on an already-sorted array. O(log n) time. |
+| 74 | **Search a 2-D Matrix I & II** | M | LC 74, 240 — flatten vs staircase | Treat the matrix as one flat sorted array of length n*m and map the index back with divide and modulo. For matrix II, where rows are not globally sorted, use the staircase from the top-right instead. O(log nm) / O(n+m). |
+| 69 | **Sqrt(x)** | E | Integer binary search | Binary search on the answer in [0, x], testing mid*mid <= x with care about overflow (compare mid <= x/mid). Newton iteration is the alternative. O(log x) time. |
+| 278 | **First Bad Version** | E | First-true, literally | Straight lower-bound search for the first index where isBadVersion is true. Use lo + (hi-lo)/2 to avoid overflow. O(log n) time. |
+| 162 | **Find Peak Element** | M | Unimodal | Compare a[mid] with a[mid+1]: if increasing, a peak exists to the right, otherwise at mid or left. Works on unsorted input because the boundary conditions guarantee a peak. O(log n) time. |
+| 852 | **Peak Index in a Mountain Array** | E | Same | Identical to 162, but the mountain shape means the peak is unique. O(log n) time. |
+| 875 | **Koko Eating Bananas** | M | THE canonical "on the answer". Do this first | Binary search on the answer k in [1, max(pile)]. feasible(k) = sum of ceil(pile/k) <= h. Write feasible first and the search is boilerplate. O(n log max) time. |
+| 1011 | **Capacity To Ship Packages** | M | Same shape, different feasible() | Binary search on the capacity in [max(weight), sum(weight)]. feasible(c) = greedily fill days and count them. O(n log sum) time. |
+| 1552 | **Magnetic Force Between Two Balls** | M | Maximise-the-minimum | Binary search on the minimum gap. feasible(d) = greedily place balls at least d apart after sorting, and check you placed m. O(n log range) time. |
+| 540 | **Single Element in a Sorted Array** | M | Parity of the index | Binary search on PAIR indices. Force mid to be even; if a[mid] == a[mid+1] the single element is to the right, otherwise at mid or left. O(log n) time. |
+| 658 | **Find K Closest Elements** | M | Binary search the window start | Binary search for the left edge of the window: find the smallest i such that x - a[i] <= a[i+k] - x, then take k elements from i. O(log n) time. |
+| 528 | **Random Pick with Weight** | M | Uber — prefix sum + binary search | Build prefix sums of the weights, draw a uniform number in [0, total), and binary search for the first prefix strictly greater than it. O(log n) per pick. |
+| 981 | **Time Based Key-Value Store** | M | Uber | Per key, an append-only list ordered by timestamp plus a binary search for the largest timestamp not exceeding the query. O(log n) per get. |
 
-| LC | Name | D | Teaches |
-|---|---|---|---|
-| 704 | Binary Search | E | The template |
-| 35 | Search Insert Position | E | First-true |
-| 34 | Find First and Last Position | M | Two boundary searches |
-| 33/81 | Search in Rotated Sorted Array I & II | M | Duplicates break the invariant in II — say why |
-| 153/154 | Find Minimum in Rotated Array I & II | M/H | Same |
-| 74/240 | Search a 2-D Matrix I & II | M | Flatten vs staircase |
-| 69 | Sqrt(x) | E | Integer binary search |
-| 278 | First Bad Version | E | First-true, literally |
-| 162 | Find Peak Element | M | Unimodal |
-| 852 | Peak Index in a Mountain Array | E | Same |
-| 875 | Koko Eating Bananas | M | **The canonical "on the answer"** — do this before anything else here |
-| 1011 | Capacity To Ship Packages | M | Same shape, different `feasible` |
-| 1552 | Magnetic Force Between Two Balls | M | Maximise-the-minimum |
-| 540 | Single Element in a Sorted Array | M | Parity of the index |
-| 658 | Find K Closest Elements | M | Binary search the window start |
-| 528 | Random Pick with Weight | M | **Uber** — prefix sum + binary search |
-| 981 | Time Based Key-Value Store | M | **Uber** |
+### C · Google / Uber L4  *(11)*
 
-### C · Google / Uber L4
+**Extra machinery.** binary search on the VALUE with a counting helper · real-valued search · search-the-partition · binary search composed with DP or a rolling hash
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| 4 | Median of Two Sorted Arrays | H | Search the partition |
-| 410 | Split Array Largest Sum | H | The DP-vs-binary-search conversation is the signal |
-| 1231 | Divide Chocolate | H | Maximise the minimum |
-| 1482 | Minimum Days to Make m Bouquets | M | `feasible` is a scan |
-| 774 | Minimize Max Distance to Gas Station | H | *Premium.* Real-valued |
-| 644 | Maximum Average Subarray II | H | *Premium.* Real-valued + prefix trick |
-| 1044 | Longest Duplicate Substring | H+ | Binary search + rolling hash |
-| 1235 | Maximum Profit in Job Scheduling | H | **Google pack.** DP + binary search composed |
-| 668 | Kth Smallest Number in Multiplication Table | H | Binary search on the *value*, count with a helper |
-| 378 | Kth Smallest Element in a Sorted Matrix | M | Heap **and** binary-search-on-value. Do both |
-| 719 | Find K-th Smallest Pair Distance | H | Binary search on value + two pointers to count |
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 4 | **Median of Two Sorted Arrays** | H | Search the partition | Binary search the partition point of the SHORTER array so that the combined left halves hold exactly half the elements, then validate with the four boundary values. O(log min(m,n)) time. |
+| 410 | **Split Array Largest Sum** | H | The DP-vs-binary-search conversation is the signal | Binary search on the answer between max(a) and sum(a); feasible(x) counts greedy cuts and checks the count is at most m. O(n log sum) time. |
+| 1231 | **Divide Chocolate** | H | Maximise the minimum | Binary search on the minimum sweetness; feasible(x) greedily cuts a chunk whenever the running sum reaches x and checks you got at least k+1 chunks. O(n log sum) time. |
+| 1482 | **Minimum Days to Make m Bouquets** | M | feasible() is a scan | Binary search on the number of days; feasible(d) scans for runs of flowers bloomed by day d and counts how many bouquets of k adjacent ones fit. O(n log maxDay) time. |
+| 774 | **Minimize Max Distance to Gas Station** | H | PREMIUM. Real-valued | Binary search on a REAL answer; feasible(d) sums ceil(gap/d)-1 across gaps. Iterate to a fixed epsilon rather than to equality. O(n log(range/eps)) time. |
+| 644 | **Maximum Average Subarray II** | H | PREMIUM. Real-valued + prefix trick | Binary search on the real-valued average. feasible(x) subtracts x from every element and asks whether some subarray of length at least k has a non-negative sum, which is a prefix-minimum sweep. O(n log(range/eps)) time. |
+| 1044 | **Longest Duplicate Substring** | H | Binary search + rolling hash | Binary search on the length, Rabin-Karp rolling hash to test whether a duplicate of that length exists. O(n log n) expected. |
+| 1235 | **Maximum Profit in Job Scheduling** | H | Google pack. DP + binary search composed | Sort jobs by end time; dp[i] = max(dp[i-1], profit[i] + dp[j]) where j is found by binary searching for the last job ending at or before job i starts. O(n log n) time. |
+| 668 | **Kth Smallest Number in Multiplication Table** | H | Binary search on the VALUE, count with a helper | Binary search on the VALUE x in [1, m*n], counting how many table entries are at most x with sum over rows of min(x/i, n). Take the smallest x whose count reaches k. O(m log mn) time. |
+| 378 | **Kth Smallest Element in a Sorted Matrix** | M | Heap AND binary-search-on-value. Do both | Binary search on the value, counting entries at most x with a staircase walk from the bottom-left. The heap solution is O(k log k) and is the one to mention as the alternative. O(n log range) time. |
+| 719 | **Find K-th Smallest Pair Distance** | H | Binary search on value + two pointers to count | Binary search on the distance. count(d) = number of pairs within d, computed by a sliding window over the sorted array. O(n log n + n log range) time. |
 
 ---
 
 ## §6 · SORTING & GREEDY
 
+**Derive it.** Greedy needs a sorting key, and choosing it is the whole problem. Sort by END for interval scheduling and non-overlap; by start for merging; by a custom pairwise comparator when the objective is a concatenation or a ratio. If the greedy needs to revise an earlier choice, it is not a greedy - it is a heap, where you take everything and evict the worst so far. That is the shape of 502, 630, 871 and 1642.
+
 ### A · Patterns
 
-| Pattern | The disguise | The move | Cost |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| **Sort by the right key** | "schedule", "minimum number of X", "maximum non-overlapping" | The whole problem is choosing the key. End time → max non-overlap. Start time → merge | O(n log n) |
-| **Exchange argument** | "is this greedy correct?" | Show swapping any adjacent out-of-order pair does not worsen the answer. **Say this out loud — it is scored** | — |
-| **Greedy with a heap (regret)** | "you may do K upgrades", "at most k refuels" | Take greedily, push what you skipped, pop the best regret when you get stuck | O(n log n) |
-| **Custom comparator** | "largest number from these pieces", "log file ordering" | Comparator on the *concatenation* or on the tuple | O(n log n) |
+| **Sort by the right key** | "schedule", "minimum number of X", "maximum non-overlapping" | The WHOLE problem is the key. End time => max non-overlap. Start time => merge | O(n log n) |
+| **Exchange argument** | "is this greedy correct?" | Show swapping any adjacent out-of-order pair does not worsen the answer. SAY THIS OUT LOUD — it is scored |  |
+| **Greedy with regret (heap)** | "you may do K upgrades", "at most k refuels" | Take greedily, push what you skipped, pop the best regret when stuck | O(n log n) |
+| **Custom comparator** | "largest number from these pieces", "log file ordering" | Comparator on the CONCATENATION or on the tuple | O(n log n) |
 | **Counting / bucket sort** | small value range, O(n) demanded | Count array | O(n+k) |
-| **Quickselect** | "kth largest", full sort not needed | Lomuto/Hoare partition, recurse one side | O(n) avg |
-| **Cyclic sort** | values are a permutation of `1..n` | Swap `a[i]` home until it is | O(n) |
+| **Quickselect** | "kth largest", full sort not needed | Partition, recurse one side | O(n) avg |
+| **Cyclic sort** | values are a permutation of 1..n | Swap a[i] home until it is | O(n) |
 | **Merge sort as a counter** | "count inversions", "smaller after self" | Count across the merge step | O(n log n) |
-| **Interval greedy** | see §10 | | |
 
-### B · Tier 1–2
+### B · Tier 1–2  *(17)*
 
-| LC | Name | D | Teaches |
-|---|---|---|---|
-| 215 | Kth Largest Element | M | Heap **and** quickselect. **Amazon** |
-| 973 | K Closest Points to Origin | M | Same. **Amazon** |
-| 179 | Largest Number | M | Comparator on concatenation |
-| 937 | Reorder Data in Log Files | M | **Amazon** |
-| 56 | Merge Intervals | M | Sort by start |
-| 435 | Non-overlapping Intervals | M | Sort by **end** |
-| 452 | Minimum Arrows to Burst Balloons | M | Same |
-| 455 | Assign Cookies | E | Two sorted pointers |
-| 122 | Best Time to Buy and Sell Stock II | M | Greedy sum of positive deltas |
-| 55/45 | Jump Game I & II | M | Reachability greedy, then BFS-by-level greedy |
-| 134 | Gas Station | M | The "if total ≥ 0, an answer exists" argument |
-| 621 | Task Scheduler | M | **Amazon** — the formula, and why it works |
-| 767 | Reorganize String | M | **Amazon** — heap greedy |
-| 1167 | Minimum Cost to Connect Sticks | M | *Premium.* **Amazon** — heap greedy |
-| 1481 | Least Number of Unique Integers after K Removals | M | **Amazon** — count then greedy |
-| 253 | Meeting Rooms II | M | *Premium.* **Uber.** Heap or sweep — know both |
-| 1834 | Single-Threaded CPU | M | Two-stage heap |
-| 75 | Sort Colors | M | DNF |
-| 148 | Sort List | M | Merge sort on a linked list |
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 215 | **Kth Largest Element** | M | Amazon. Heap AND quickselect | Quickselect with a random pivot, expected O(n), worst case O(n^2) - say the randomisation out loud. A size-k min-heap is the O(n log k) answer and the one to give when the interviewer wants streaming. |
+| 973 | **K Closest Points to Origin** | M | Amazon. Same | Same choice: a size-k max-heap by squared distance, O(n log k), or quickselect on squared distance, expected O(n). Never take the square root. |
+| 179 | **Largest Number** | M | Comparator on concatenation | Sort with the comparator (a+b) vs (b+a) as strings, descending. Then handle the all-zeros case, which otherwise prints "000". O(n log n * k) time. |
+| 56 | **Merge Intervals** | M | Sort by START | Sort by start, then walk merging while the next start is at most the current end, extending the end to the maximum. O(n log n) time. |
+| 435 | **Non-overlapping Intervals** | M | Sort by END | Sort by END time and greedily keep every interval whose start is at least the last kept end; the removals are the rest. Sorting by start is the classic wrong answer. O(n log n) time. |
+| 452 | **Minimum Arrows to Burst Balloons** | M | Same | Identical to 435 - sort by end, shoot at the end of the first balloon, skip everything it hits. The count of shots is the answer. O(n log n) time. |
+| 455 | **Assign Cookies** | E | Two sorted pointers | Sort both children and cookies, then two pointers assigning the smallest sufficient cookie to the least greedy child. O(n log n) time. |
+| 122 | **Best Time to Buy and Sell Stock II** | M | Greedy sum of positive deltas | Sum every positive consecutive difference. The exchange argument: any profitable multi-day hold decomposes into the daily gains it contains. O(n) time. |
+| 55 | **Jump Game I & II** | M | LC 55, 45 — reachability greedy, then BFS-by-level greedy | Track the furthest reachable index while scanning; fail if the current index passes it. For Jump Game II, count levels BFS-style by tracking the end of the current jump range. O(n) time. |
+| 134 | **Gas Station** | M | The "if total >= 0, an answer exists" argument | If the total gas is at least the total cost a solution exists. Scan once tracking a running tank, and every time it goes negative reset it and set the candidate start to the next index. O(n) time. |
+| 621 | **Task Scheduler** | M | Amazon — the formula, and why it works | Formula: (maxCount-1) * (n+1) + numberOfTasksWithMaxCount, then take the max with the total task count for the dense case. The heap simulation is the alternative and is worth knowing. O(n) time. |
+| 767 | **Reorganize String** | M | Amazon — heap greedy | Greedy from a max-heap by remaining count: take the two most frequent characters each round so you never place the same one twice in a row. Impossible when one count exceeds (n+1)/2. O(n log 26) time. |
+| 1167 | **Minimum Cost to Connect Sticks** | M | PREMIUM. Amazon — heap greedy | Huffman: min-heap, repeatedly pop the two smallest, push their sum, and accumulate. The exchange argument is that the two smallest must be deepest. O(n log n) time. |
+| 1481 | **Least Number of Unique Integers after K Removals** | M | Amazon — count then greedy | Count frequencies, sort the counts ascending, and remove whole groups from the smallest upward while the budget lasts. O(n log n) time, or O(n) with bucket counting. |
+| 253 | **Meeting Rooms II** | M | PREMIUM. Uber. Heap or sweep — know both | Sort by start and use a min-heap of end times: pop every meeting that has finished before the current start, then push the current end. The heap size is the answer. Or sweep +1/-1 events. O(n log n) time. |
+| 1834 | **Single-Threaded CPU** | M | Two-stage heap | Sort tasks by enqueue time, then simulate with a min-heap ordered by (processingTime, index). When the heap is empty, jump the clock forward to the next enqueue time. O(n log n) time. |
+| 148 | **Sort List** | M | Merge sort on a linked list | Merge sort on the list. Top-down with slow-fast splitting is O(log n) stack; bottom-up with doubling block sizes is the true O(1)-space answer the interviewer is fishing for. O(n log n) time. |
 
-### C · Google / Uber L4
+### C · Google / Uber L4  *(11)*
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| 857 | Minimum Cost to Hire K Workers | H | Sort by ratio + max-heap of quality. A genuinely beautiful greedy |
-| 502 | IPO | H | Two heaps: capital min-heap feeding a profit max-heap |
-| 1642 | Furthest Building You Can Reach | M | **The regret heap.** Learn this shape |
-| 871 | Minimum Number of Refueling Stops | H | Same shape, restated |
-| 630 | Course Schedule III | H | Regret again — three dresses, one idea |
-| 315 | Count of Smaller Numbers After Self | H | Merge-sort counting |
-| 493 | Reverse Pairs | H | Same |
-| 759 | Employee Free Time | H | *Premium.* **Google pack** — k-way interval merge |
-| 402 | Remove K Digits | M | Monotonic stack greedy |
-| 316/1081 | Remove Duplicate Letters | H | Greedy + stack + last-occurrence. Hard to get right cold |
-| 135 | Candy | H | Two sweeps; the proof is the interview |
+**Extra machinery.** the regret heap in its four disguises · merge-sort counting · greedy + stack (monotonic) · proving a greedy with an exchange argument
+
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 857 | **Minimum Cost to Hire K Workers** | H | Sort by ratio + max-heap of quality. A beautiful greedy | Sort workers by wage-to-quality ratio ascending. Sweep, keeping a max-heap of qualities of size k and its running sum; at each ratio the cost is ratio * sumOfQualities. O(n log n) time. |
+| 502 | **IPO** | H | Two heaps: capital min-heap feeding a profit max-heap | Sort projects by capital. Push every affordable project's profit into a max-heap, then pop the best, add it to the capital, and repeat k times. O(n log n) time. |
+| 1642 | **Furthest Building You Can Reach** | M | THE REGRET HEAP. Learn this shape | Use ladders for the k largest climbs seen so far: push every positive climb into a min-heap of size ladders, and when it overflows pay the smallest climb with bricks. Stop when the bricks run out. O(n log k) time. |
+| 871 | **Minimum Number of Refueling Stops** | H | Same shape, restated | Scan stations while the fuel lasts, pushing each passed station's fuel into a max-heap. When you cannot reach the next one, pop the biggest tank you have skipped and count a stop. O(n log n) time. |
+| 630 | **Course Schedule III** | H | Regret again — three dresses, one idea | Sort by deadline. Take every course, pushing its duration into a max-heap; if the running total exceeds the deadline, pop the longest course taken so far and remove it. O(n log n) time. |
+| 315 | **Count of Smaller Numbers After Self** | H | Merge-sort counting | Merge sort counting right-half elements placed before left-half ones, or a BIT over compressed ranks scanned right to left. O(n log n) time. |
+| 493 | **Reverse Pairs** | H | Same | Merge sort with a two-pointer counting pass for a[i] > 2*a[j] before each merge. O(n log n) time. |
+| 759 | **Employee Free Time** | H | PREMIUM. Google pack — k-way interval merge | Flatten every interval, sort by start, and merge; the gaps between merged intervals are the free time. A k-way heap merge is the O(n log k) version. O(n log n) time. |
+| 402 | **Remove K Digits** | M | Monotonic stack greedy | Monotonic increasing stack: pop while the top is greater than the incoming digit and you still have removals left. Trim any remaining removals from the tail and strip leading zeros. O(n) time. |
+| 316 | **Remove Duplicate Letters** | H | LC 316, 1081. Greedy + stack + last-occurrence | Monotonic stack plus a last-occurrence index and an in-stack set: pop a larger character only if it appears again later. O(n) time. |
+| 135 | **Candy** | H | Two sweeps; the proof is the interview | Two sweeps: left to right giving one more than the left neighbour when the rating rises, then right to left taking the maximum with one more than the right neighbour. Sum. O(n) time. |
 
 ---
 
 ## §7 · LINKED LIST
 
+**Derive it.** Almost every list problem is one of four moves, or a composition of them: slow-fast pointers, in-place reversal, a dummy head, and two pointers a fixed gap apart. If the problem asks for O(1) space, the answer is one of those. If it asks for a data structure with list-like ordering plus O(1) lookup, you are in section 17.
+
 ### A · Patterns
 
-| Pattern | The disguise | The move | Cost |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| **Dummy head** | any problem that may delete the head | Allocate a sentinel; return `dummy.next`. Removes every edge case | O(1) |
-| **Fast/slow** | "middle", "cycle", "nth from end", "palindrome" | Two pointers at different speeds | O(n), O(1) |
-| **Reverse in place** | "reverse", "reverse in groups of k", palindrome check | `prev/cur/next` three-pointer walk | O(n), O(1) |
+| **Dummy head** | any problem that may delete the head | Allocate a sentinel; return dummy.next. Removes every edge case | O(1) |
+| **Fast/slow** | "middle", "cycle", "nth from end", "palindrome" | Two pointers at different speeds | O(n)/O(1) |
+| **Reverse in place** | "reverse", "reverse in groups of k" | prev/cur/next three-pointer walk | O(n)/O(1) |
 | **Merge two lists** | "merge sorted", merge sort on a list | Dummy + compare-and-append | O(n+m) |
-| **Interleave / split** | reorder list, odd-even, copy with random pointer | Split, reverse one half, zip | O(n), O(1) |
-| **Hash map of nodes** | deep copy with extra pointers | Map old→new, or interleave clones then unweave for O(1) space | O(n) |
+| **Interleave / split** | reorder list, odd-even, copy with random pointer | Split, reverse one half, zip | O(n)/O(1) |
+| **Map of nodes** | deep copy with extra pointers | Map old->new, or interleave clones then unweave for O(1) space | O(n) |
 | **Two-pass length** | "intersection of two lists", "rotate by k" | Compute lengths, align, walk | O(n) |
 
-### B · Tier 1–2
+### B · Tier 1–2  *(14)*
 
-| LC | Name | D | Teaches |
-|---|---|---|---|
-| 206/92 | Reverse Linked List I & II | E/M | The three-pointer walk; II needs a dummy |
-| 21/23 | Merge Two / K Sorted Lists | E/H | Dummy; then a heap of k heads |
-| 141/142 | Cycle I & II | E/M | Floyd, and the entry proof |
-| 143 | Reorder List | M | Split + reverse + zip — three patterns in one |
-| 19 | Remove Nth From End | M | One pass with a gap |
-| 2/445 | Add Two Numbers I & II | M | II **without reversing** — **Amazon** |
-| 138 | Copy List with Random Pointer | M | **Amazon/Microsoft.** Know the O(1)-space interleave |
-| 160 | Intersection of Two Linked Lists | E | **Microsoft.** The swap-heads trick |
-| 234 | Palindrome Linked List | E | O(1) space expected |
-| 328 | Odd Even Linked List | M | In-place split |
-| 61 | Rotate List | M | Make it circular, then cut |
-| 83/82 | Remove Duplicates I & II | E/M | II needs a dummy |
-| 707 | Design Linked List | M | Index bookkeeping |
-| 146 | LRU Cache | M | Hashmap + DLL. **The one to be fastest at** |
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 206 | **Reverse Linked List I & II** | E | LC 206, 92. II needs a dummy | Three pointers - prev, cur, next - relinking one node per step. For "reverse between m and n", walk to the node before m, then repeatedly splice the next node to the front of the sublist. O(n) time, O(1) space. |
+| 21 | **Merge Two Sorted Lists** | E | Dummy | Dummy head plus a tail pointer, taking the smaller head each step and attaching the remaining list at the end. The dummy is what removes every null special case. O(n+m) time. |
+| 141 | **Cycle I & II** | E | LC 141, 142. Floyd, and the entry proof | Floyd slow-fast. For the entry node, once they meet restart one pointer at the head and step both one at a time. O(n) time, O(1) space. |
+| 143 | **Reorder List** | M | Split + reverse + zip — three patterns in one | Three standard moves composed: find the middle with slow-fast, reverse the second half, then merge the two halves alternately. O(n) time, O(1) space. |
+| 19 | **Remove Nth From End** | M | One pass with a gap | Two pointers n apart, moving together until the leader falls off the end; a dummy head handles removing the head itself. O(n) time, one pass. |
+| 2 | **Add Two Numbers I & II** | M | LC 2, 445. Amazon — II WITHOUT reversing | Walk both lists adding digit plus carry, allocating as you go, and remember the final carry. For version II (most significant first) either reverse both lists or push onto two stacks and build the result backwards. O(n+m) time. |
+| 138 | **Copy List with Random Pointer** | M | Amazon/Microsoft. Know the O(1)-space interleave | Interleave: insert each copy directly after its original, set copy.random = original.random.next, then unweave the two lists. That gives O(1) extra space where the hashmap version needs O(n). |
+| 160 | **Intersection of Two Linked Lists** | E | Microsoft. The swap-heads trick | Two pointers that switch to the other list on reaching the end; they meet at the intersection after at most two passes because both then travel the same total distance. O(n+m) time, O(1) space. |
+| 234 | **Palindrome Linked List** | E | O(1) space expected | Middle by slow-fast, reverse the second half, compare, then restore. O(n) time, O(1) space. |
+| 328 | **Odd Even Linked List** | M | In-place split | Two chains built simultaneously - odd tail and even tail - then attach the even head after the odd tail. Keep the even head in a variable before you start. O(n) time. |
+| 61 | **Rotate List** | M | Make it circular, then cut | Close the list into a ring while measuring the length, then break it at length minus k modulo length steps from the head. O(n) time. |
+| 83 | **Remove Duplicates I & II** | E | LC 83, 82. II needs a dummy | Sorted input, so compare with the next node. Version II, which removes ALL copies of a duplicated value, needs a dummy head and a prev pointer that skips a whole run. O(n) time. |
+| 707 | **Design Linked List** | M | Index bookkeeping | Doubly linked list with a size counter and sentinel head and tail; index operations walk from whichever end is closer. The interview is the boundary conditions, not the idea. O(n) per index op. |
+| 146 | **LRU Cache** | M | Hashmap + DLL. The one to be fastest at | Hashmap to node plus a doubly linked list with sentinels; get moves to the front, put evicts from the tail. O(1) both. |
 
-### C · Google / Uber L4
+### C · Google / Uber L4  *(8)*
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| 25 | Reverse Nodes in k-Group | H | **The hardest common list problem.** Do it iteratively, O(1) space |
-| 460 | LFU Cache | H | Two-level bucketing |
-| 1650 | LCA III with Parent Pointers | M | *Premium.* Solve it **as "intersection of two linked lists"** — the transfer is the lesson |
-| 430 | Flatten a Multilevel Doubly Linked List | M | Stack or recursion |
-| 708 | Insert into a Sorted Circular List | M | *Premium.* Edge cases are the entire problem |
-| 1171 | Remove Zero Sum Consecutive Nodes | M | Prefix sum + hashmap **on a list** |
-| 148 | Sort List | M | O(1)-space bottom-up merge sort is the follow-up |
+**Extra machinery.** k-group reversal with O(1) space · list problems solved by transferring a non-list pattern (prefix sum, list-intersection as LCA)
+
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 25 | **Reverse Nodes in k-Group** | H | THE hardest common list problem. Iteratively, O(1) space | Count k nodes ahead first; if fewer than k remain, leave them alone. Reverse the group with the standard three-pointer loop, then reconnect the previous tail to the new head. A dummy head makes the first group uniform. O(n) time, O(1) space. |
+| 23 | **Merge k Sorted Lists** | H | Heap of k heads | Min-heap of the k current heads, popping the smallest and pushing its successor - O(N log k). Divide and conquer pairwise merging is the same complexity with no heap and is often the cleaner answer. |
+| 460 | **LFU Cache** | H | Two-level bucketing | Key to node, key to frequency, and frequency to a doubly linked list in LRU order, plus a running minimum frequency. O(1) both operations. |
+| 1650 | **LCA III with Parent Pointers** | M | PREMIUM. Solve it AS list-intersection — the transfer is the lesson | With parent pointers this is exactly 160: walk both nodes upward switching to the other chain at the root, and they meet at the LCA. O(h) time, O(1) space. |
+| 430 | **Flatten a Multilevel Doubly Linked List** | M | Stack or recursion | Iterative with a stack, or splice in place: when a node has a child, insert the whole child list between the node and its next, fix the prev pointers, and clear the child. O(n) time. |
+| 708 | **Insert into a Sorted Circular List** | M | PREMIUM. Edge cases are the entire problem | Walk the ring once looking for prev.val <= insertVal <= next.val, or for the pivot where the value wraps. If you complete a full loop without a slot, all values are equal - insert anywhere. O(n) time. |
+| 1171 | **Remove Zero Sum Consecutive Nodes** | M | Prefix sum + hashmap ON A LIST | Prefix sums over the list plus a map from prefix value to node. Any repeated prefix value means the span between them sums to zero, so relink past it. Two passes, O(n) time. |
+| 148 | **Sort List** | M | O(1)-space bottom-up merge sort is the follow-up | Merge sort; bottom-up with doubling block sizes is the O(1)-space version. O(n log n) time. |
 
 ---
 
 ## §8 · STACK, QUEUE & MONOTONIC STACK
 
+**Derive it.** A stack means the answer for an element depends on a LATER element that has not arrived yet - so you park it. Monotonic decreasing gives you the next greater element; monotonic increasing gives you the next smaller and therefore the boundaries of the region an element dominates. If the question counts subarrays where an element is the min or max, it is the contribution technique on a monotonic stack, not a DP. Parsing with nesting is the other family entirely.
+
 ### A · Patterns
 
-| Pattern | The disguise | The move | Cost |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
 | **Plain stack** | "matching", "nested", "undo", "innermost first" | Push context, pop on close | O(n) |
-| **Monotonic stack (decreasing)** | **"next greater element"**, "days until warmer", "how far right until bigger" | Pop while `stack.top < cur`; the popped item's answer is `cur` | O(n) |
-| **Monotonic stack (increasing)** | "next smaller", histogram, "largest rectangle" | Mirror. **Decide up front: increasing or decreasing, and push index or value** | O(n) |
-| **Monotonic deque** | monotonic behaviour **inside a window** | Deque of indices; pop from both ends | O(n) |
+| **Monotonic stack (decreasing)** | "NEXT GREATER element", "days until warmer", "how far right until bigger" | Pop while top < cur; the popped item answer is cur | O(n) |
+| **Monotonic stack (increasing)** | "next smaller", histogram, "largest rectangle" | Mirror. DECIDE UP FRONT: increasing or decreasing, index or value | O(n) |
+| **Monotonic deque** | monotonic behaviour INSIDE a window | Deque of indices; pop from both ends | O(n) |
 | **Stack for parsing/eval** | calculator, decode string, file paths, exclusive time | One stack, or one per context type | O(n) |
-| **Two stacks** | queue from stacks, min-stack, calculator with signs | Amortised transfer, or a parallel stack of minima | O(1) amortised |
-| **Stack of "pending"** | asteroid collision, remove-k-digits, dedupe-letters | Push, then resolve conflicts against the top | O(n) |
-| **Simulation with a stack** | browser history, backspace compare | — | O(n) |
+| **Two stacks** | queue from stacks, min-stack, calculator with signs | Amortised transfer, or a parallel stack of minima | O(1) amort |
+| **Stack of pending** | asteroid collision, remove-k-digits, dedupe-letters | Push, then resolve conflicts against the top | O(n) |
 
-> **The recognition line for monotonic stack:** any phrasing of *"for each element, find the nearest element to its left/right that is bigger/smaller"* — including heavily disguised ones like "how many days until", "how much water is trapped", "how wide can this bar extend".
+### B · Tier 1–2  *(18)*
 
-### B · Tier 1–2
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 20 | **Valid Parentheses** | E | The base case | Push the matching closer on every opener; on a closer, check it equals the popped top. Empty at the end. O(n) time. |
+| 155 | **Min Stack** | M | Parallel stack of minima | Either a second stack of running minima, or store the value together with the minimum-so-far in one stack. The O(1)-extra-space trick with encoded deltas is the follow-up. O(1) per op. |
+| 232 | **Queue from Stacks / Stack from Queues** | E | LC 232, 225 — amortised analysis | Two stacks, in and out. Push onto in; pop from out, refilling it from in only when it is empty. Amortised O(1) because each element moves between stacks at most once. |
+| 739 | **Daily Temperatures** | M | THE canonical monotonic stack | Monotonic decreasing stack of indices. When a warmer day arrives, pop and record the index difference for each popped day. O(n) time. |
+| 496 | **Next Greater Element I & II** | E | LC 496, 503. II: circular => iterate 2n | Same monotonic stack. For the circular version II, iterate over 2n indices using modulo so every element gets a second chance to find its greater element. O(n) time. |
+| 901 | **Online Stock Span** | M | Monotonic stack, streaming | Monotonic decreasing stack of (price, span) pairs. On a new price, pop everything not greater and absorb its span. O(1) amortised per call. |
+| 42 | **Trapping Rain Water** | H | Stack solution, plus two others | Two pointers moving the smaller wall inward - O(n) time, O(1) space. The monotonic-stack version fills water layer by layer and is worth knowing as the second answer. |
+| 84 | **Largest Rectangle in Histogram** | H | The parent problem | Monotonic increasing stack of indices; on a shorter bar, pop and settle each taller bar with width from the new top plus one to the current index minus one. Sentinels at both ends. O(n) time. |
+| 85 | **Maximal Rectangle** | H | 84 per row | Row by row, build a histogram of consecutive ones and run 84 on it. O(nm) time. |
+| 394 | **Decode String** | M | Stack of (count, prefix) | Stack of (multiplier, partialString), or direct recursion. On a close bracket, pop and append the repeated segment. O(output) time. |
+| 71 | **Simplify Path** | M | Stack of components | Split on slashes and push components onto a stack, ignoring empty and ".", popping on "..". Join with slashes. O(n) time. |
+| 150 | **Evaluate RPN** | M | — | Push numbers, and on an operator pop two, apply, push back. Watch the operand order for subtraction and division. O(n) time. |
+| 227 | **Basic Calculator II** | M | Sign carried into the stack | One pass with a stack of terms: push a number for +, push its negation for -, and for * or / pop the top and combine immediately. The answer is the sum of the stack. O(n) time. |
+| 735 | **Asteroid Collision** | M | Resolve against the top | Stack of surviving asteroids. A negative asteroid pops positives smaller than it, annihilates on equality, and dies if the top is larger. The three-way comparison is the whole problem. O(n) time. |
+| 402 | **Remove K Digits** | M | Greedy + monotonic stack | Monotonic increasing stack popping while the top exceeds the incoming digit and removals remain; trim the tail and strip leading zeros. O(n) time. |
+| 1047 | **Remove Adjacent Duplicates I & II** | E | LC 1047, 1209 — stack with counts | Stack: pop when the incoming character equals the top. For version II with k adjacent duplicates, store (char, count) and pop when the count reaches k. O(n) time. |
+| 636 | **Exclusive Time of Functions** | M | Google pack — stack simulation | Stack of function ids plus the timestamp of the last switch. On start, charge the elapsed time to the current top and push; on end, charge the inclusive duration and pop. Off-by-one on the end timestamp is the trap. O(n) time. |
+| 388 | **Longest Absolute File Path** | M | Google pack — parse + stack | Stack (or an array indexed by depth) holding the path length at each depth. Depth comes from counting tab characters; on a file, record depth-length plus the name length. O(n) time. |
 
-| LC | Name | D | Teaches |
-|---|---|---|---|
-| 20 | Valid Parentheses | E | The base case |
-| 155 | Min Stack | M | Parallel stack of minima |
-| 232/225 | Queue from Stacks / Stack from Queues | E | Amortised analysis |
-| 739 | Daily Temperatures | M | **The canonical monotonic stack** |
-| 496/503 | Next Greater Element I & II | E/M | II: circular ⇒ iterate `2n` |
-| 901 | Online Stock Span | M | Monotonic stack, streaming |
-| 42 | Trapping Rain Water | H | Stack solution, plus two others |
-| 84 | Largest Rectangle in Histogram | H | The parent problem |
-| 85 | Maximal Rectangle | H | 84 per row |
-| 394 | Decode String | M | Stack of (count, prefix) |
-| 71 | Simplify Path | M | Stack of components |
-| 150 | Evaluate RPN | M | — |
-| 227 | Basic Calculator II | M | Sign carried into the stack |
-| 735 | Asteroid Collision | M | Resolve against the top |
-| 682 | Baseball Game | E | Warm-up |
-| 402 | Remove K Digits | M | Greedy + monotonic stack |
-| 1047/1209 | Remove Adjacent Duplicates | E/M | Stack with counts |
-| 636 | Exclusive Time of Functions | M | **Google pack** — stack simulation |
-| 388 | Longest Absolute File Path | M | **Google pack** — parse + stack |
+### C · Google / Uber L4  *(11)*
 
-### C · Google / Uber L4
+**Extra machinery.** monotonic deque over prefix sums · CONTRIBUTION counting via monotonic stack · stack-vs-DP duality · monotonic stack scanned from the right
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| 224/772 | Basic Calculator I & III | H | **Uber & Google.** III (parens + precedence) is the real one |
-| 239 | Sliding Window Maximum | H | Monotonic deque |
-| 862 | Shortest Subarray with Sum at Least K | H | Deque over prefix sums — non-obvious |
-| 316 | Remove Duplicate Letters | H | Stack + greedy + last-occurrence |
-| 321 | Create Maximum Number | H+ | Composition: pick-k monotone + merge |
-| 907 | Sum of Subarray Minimums | M | **Contribution counting** via monotonic stack. Learn this idea |
-| 2104 | Sum of Subarray Ranges | M | Same idea, twice |
-| 1130 | Minimum Cost Tree From Leaf Values | M | Monotonic stack **or** interval DP — see both |
-| 895 | Maximum Frequency Stack | H | **Uber** |
-| 456 | 132 Pattern | M | Monotonic stack from the right — genuinely tricky |
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 224 | **Basic Calculator I & III** | H | LC 224, 772. Uber & Google. III (parens + precedence) is the real one | Stack of (result, sign) pushed on an open parenthesis. Version III adds multiply and divide, so also carry a pending operator and combine against the previous term immediately. O(n) time. |
+| 239 | **Sliding Window Maximum** | H | Monotonic deque | Monotonic deque of indices with decreasing values; the front is the window maximum. O(n) time. |
+| 862 | **Shortest Subarray with Sum at Least K** | H | Deque over prefix sums — non-obvious | Monotonic increasing deque over prefix-sum indices: pop the front while the difference reaches K, pop the back while the new prefix is not larger. O(n) time. |
+| 316 | **Remove Duplicate Letters** | H | Stack + greedy + last-occurrence | Monotonic stack plus last-occurrence indices and an in-stack marker; only pop a character that reappears later. O(n) time. |
+| 321 | **Create Maximum Number** | H | Composition: pick-k monotone + merge | For every split k, take the best k digits from one array and best (K-k) from the other with a monotonic stack, then merge them by lexical comparison of remaining suffixes and keep the maximum. O(K * (n+m)^2) worst case. |
+| 907 | **Sum of Subarray Minimums** | M | CONTRIBUTION counting. Learn this idea | Contribution technique with a monotonic stack: for each element compute how many subarrays it is the minimum of, which is (i - prevSmaller) * (nextSmaller - i). Use strict on one side and non-strict on the other to avoid double counting. O(n) time. |
+| 2104 | **Sum of Subarray Ranges** | M | Same idea, twice | Sum of subarray maximums minus sum of subarray minimums, each computed with the 907 contribution technique. Two runs of the same machinery. O(n) time. |
+| 1130 | **Minimum Cost Tree From Leaf Values** | M | Monotonic stack OR interval DP — see both | Monotonic decreasing stack: repeatedly remove the smallest leaf, paying it multiplied by its smaller neighbour. Equivalent to interval DP but linear. O(n) time. |
+| 895 | **Maximum Frequency Stack** | H | Uber | Value to a stack of push-frequencies, frequency to a stack of values, plus the current maximum frequency. O(1) both. |
+| 456 | **132 Pattern** | M | Monotonic stack from the right — genuinely tricky | Scan right to left with a stack, maintaining the largest value that has already been popped as the candidate "2". If the current element is smaller than that candidate, you have the pattern. O(n) time. |
+| 32 | **Longest Valid Parentheses** | H | Stack AND DP — do both | Stack of indices seeded with -1 as a base; on a close bracket pop and measure from the new top. The two-counter left-right scan run in both directions is the O(1)-space alternative. O(n) time. |
+
 ---
 
 ## §9 · HEAP & TOP-K
 
+**Derive it.** A heap answers "what is the extreme right now" while the set keeps changing. Size-k heap for top-k; two heaps for a running median; a heap of one entry per list for a k-way merge; a heap as the revision mechanism for a greedy that must undo a choice. If nothing changes over time, sort instead - a heap over a static array is usually the wrong answer.
+
 ### A · Patterns
 
-| Pattern | The disguise | The move | Cost |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| **Top-K with the opposite heap** | "k largest", "k closest" | **Min**-heap of size k for k-*largest*. The polarity is the opposite of what feels natural | O(n log k) |
-| **K-way merge** | "merge k sorted lists/arrays", "smallest range covering all lists" | Heap of k cursors | O(n log k) |
-| **Two heaps** | **"median"**, "balance two halves" | Max-heap for the low half, min-heap for the high half, rebalance by size | O(log n) insert |
-| **Lazy deletion** | heap needs "remove an arbitrary element" | Keep a `to_delete` count map; discard stale entries at the top | O(log n) amortised |
+| **Top-K with the OPPOSITE heap** | "k largest", "k closest" | MIN-heap of size k for k-LARGEST. The polarity is the opposite of what feels natural | O(n log k) |
+| **K-way merge** | "merge k sorted", "smallest range covering all lists" | Heap of k cursors | O(n log k) |
+| **Two heaps** | "MEDIAN", "balance two halves" | Max-heap low half, min-heap high half, rebalance by size | O(log n) |
+| **Lazy deletion** | heap needs "remove an arbitrary element" | to_delete count map; discard stale entries at the top | O(log n) amort |
 | **Greedy with regret** | "at most k upgrades / refuels / skips" | Push what you passed on; pop the best regret when stuck | O(n log n) |
 | **Scheduling by two keys** | "tasks with start and priority", CPU scheduling | Sort by key 1, heap by key 2 | O(n log n) |
-| **Heap as a sweep frontier** | trapping rain water II, shortest-path-like grids | Pop the current global minimum boundary | O(nm log nm) |
-| **Bucket instead of heap** | "top K" where K ≈ n, or O(n) required | `buckets[freq]` | O(n) |
+| **Heap as a sweep frontier** | trapping rain water II, skyline | Pop the current global minimum boundary | O(n log n) |
+| **Bucket instead of heap** | "top K" where K is near n, or O(n) required | buckets[freq] | O(n) |
 
-> `heapify` is **O(n)**, not O(n log n). Know the proof sketch — it gets asked as a warm-up.
+### B · Tier 1–2  *(13)*
 
-### B · Tier 1–2
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 215 | **Kth Largest Element** | M | Min-heap of size k, and quickselect | Size-k min-heap, O(n log k), or quickselect with a random pivot, expected O(n). Say which the interviewer wants: streaming favours the heap. |
+| 703 | **Kth Largest in a Stream** | E | Streaming version | Size-k min-heap; the root is the answer and every add pushes then pops if the size exceeds k. O(log k) per add. |
+| 347 | **Top K Frequent Elements / Words** | M | LC 347, 692. Bucket vs heap; the tie-break in 692 | Count, then a size-k heap, O(n log k), or bucket by frequency for O(n). The words variant needs a comparator that inverts on count but not on the word. |
+| 973 | **K Closest Points** | M | Amazon | Size-k max-heap on squared distance, or quickselect. Never take the square root. O(n log k) time. |
+| 23 | **Merge k Sorted Lists** | H | K-way merge | Heap of the k current heads, or divide-and-conquer pairwise merges. O(N log k) time. |
+| 295 | **Find Median from Data Stream** | H | TWO HEAPS. The rebalance invariant is the interview | Two heaps: a max-heap for the lower half, a min-heap for the upper, rebalanced so their sizes differ by at most one. The median is the top of the larger, or the average of the two tops. O(log n) add, O(1) find. |
+| 253 | **Meeting Rooms II** | M | PREMIUM. Uber | Sort by start, min-heap of end times, popping everything finished before the current start. The heap size is the answer. O(n log n) time. |
+| 621 | **Task Scheduler** | M | Amazon | Max-heap by remaining count, taking up to n+1 tasks per round and pushing back what remains. The closed-form formula is the O(n) answer. O(n log 26) time. |
+| 1167 | **Minimum Cost to Connect Sticks** | M | PREMIUM. Amazon | Huffman with a min-heap: pop two, push the sum, accumulate. O(n log n) time. |
+| 1834 | **Single-Threaded CPU** | M | Two-stage | Sort by enqueue time, then a min-heap ordered by (processingTime, index), jumping the clock forward when the heap empties. O(n log n) time. |
+| 378 | **Kth Smallest in a Sorted Matrix** | M | Heap, then binary-search-on-value | Min-heap seeded with the first column, popping k times and pushing the right neighbour - O(k log n). Binary search on the value with a staircase count is the other answer and is better when k is large. |
+| 373 | **K Pairs with Smallest Sums** | M | Heap over a virtual grid | Min-heap seeded with (a[i], b[0]) for the first k values of a; on popping (i,j) push (i, j+1). Avoids generating all n*m pairs. O(k log k) time. |
+| 1046 | **Last Stone Weight** | E | Warm-up | Max-heap; pop two, push the difference if non-zero. O(n log n) time. |
 
-| LC | Name | D | Teaches |
-|---|---|---|---|
-| 215 | Kth Largest Element | M | Min-heap of size k, and quickselect |
-| 703 | Kth Largest in a Stream | E | Streaming version |
-| 347/692 | Top K Frequent Elements / Words | M | Bucket vs heap; the tie-break in 692 |
-| 973 | K Closest Points | M | **Amazon** |
-| 23 | Merge k Sorted Lists | H | K-way merge |
-| 295 | Find Median from Data Stream | H | **Two heaps.** The rebalance invariant is the interview |
-| 253 | Meeting Rooms II | M | *Premium.* **Uber** |
-| 621 | Task Scheduler | M | **Amazon** |
-| 767 | Reorganize String | M | **Amazon** |
-| 1167 | Minimum Cost to Connect Sticks | M | *Premium.* **Amazon** |
-| 1834 | Single-Threaded CPU | M | Two-stage |
-| 378 | Kth Smallest in a Sorted Matrix | M | Heap, then binary-search-on-value |
-| 373 | K Pairs with Smallest Sums | M | Heap over a virtual grid |
-| 1046 | Last Stone Weight | E | Warm-up |
+### C · Google / Uber L4  *(11)*
 
-### C · Google / Uber L4
+**Extra machinery.** lazy deletion · chained heaps · the regret heap · heap as a geometric sweep frontier
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| 480 | Sliding Window Median | H | Two heaps + **lazy deletion**. The pattern is broadly reusable |
-| 502 | IPO | H | Two heaps chained |
-| 857 | Minimum Cost to Hire K Workers | H | Ratio sort + heap |
-| 1642 | Furthest Building You Can Reach | M | Regret heap |
-| 871 | Minimum Refueling Stops | H | Regret heap |
-| 630 | Course Schedule III | H | Regret heap |
-| 1383 | Maximum Performance of a Team | H | Sort by one key, heap the other |
-| 632 | Smallest Range Covering K Lists | H | K-way merge + window |
-| 407 | Trapping Rain Water II | H+ | Heap as a sweep frontier |
-| 218 | The Skyline Problem | H+ | **Legendary.** Heap + sweep, or divide & conquer |
-| 895 | Maximum Frequency Stack | H | **Uber** |
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 480 | **Sliding Window Median** | H | Two heaps + LAZY DELETION | Two heaps with LAZY deletion via a map of pending removals, purged only from the tops, rebalanced by logical size. O(n log k) time. |
+| 502 | **IPO** | H | Two heaps chained | Sort by capital, push affordable profits into a max-heap, pop the best k times. O(n log n) time. |
+| 857 | **Minimum Cost to Hire K Workers** | H | Ratio sort + heap | Sort by wage-to-quality ratio; sweep with a max-heap of qualities of size k and its running sum. O(n log n) time. |
+| 1642 | **Furthest Building You Can Reach** | M | Regret heap | Min-heap of the climbs paid with ladders, size ladders; overflow is paid with bricks. O(n log k) time. |
+| 871 | **Minimum Refueling Stops** | H | Regret heap | Max-heap of the fuel at stations you have passed; pop the largest when you cannot reach the next one. O(n log n) time. |
+| 630 | **Course Schedule III** | H | Regret heap | Sort by deadline, take everything into a max-heap of durations, and evict the longest whenever the running total exceeds the deadline. O(n log n) time. |
+| 1383 | **Maximum Performance of a Team** | H | Sort by one key, heap the other | Sort engineers by efficiency descending, sweep with a min-heap of speeds of size k and its running sum, and evaluate sum * currentEfficiency at each step. O(n log n) time. |
+| 632 | **Smallest Range Covering K Lists** | H | K-way merge + window | Min-heap of one pointer per list plus the current maximum across the pointers. Pop the minimum, record the range, and advance that list; stop when any list is exhausted. O(N log k) time. |
+| 407 | **Trapping Rain Water II** | H | Heap as a sweep frontier | Min-heap seeded with the whole border; pop the lowest boundary cell and push neighbours with height max(boundary, h). O(nm log nm) time. |
+| 218 | **The Skyline Problem** | H | LEGENDARY. Heap + sweep, or divide & conquer | Sweep the x coordinates with a max-heap of active heights and lazy deletion; emit a key point whenever the maximum changes. Divide and conquer merging skylines is the alternative. O(n log n) time. |
+| 895 | **Maximum Frequency Stack** | H | Uber | Value to a stack of frequencies, frequency to a stack of values, plus the maximum frequency. O(1) both. |
 
 ---
 
 ## §10 · INTERVALS
 
+**Derive it.** First decide whether you need the intervals themselves or just the COUNT at each point. Counting means a sweep over +1/-1 events or a difference map, and it is almost always simpler. Needing the intervals means sorting - by start to merge, by end to schedule. If intervals arrive online, you need an ordered structure with neighbour lookup rather than a sort.
+
 ### A · Patterns
 
-| Pattern | The disguise | The move | Cost |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| **Sort by START, then merge** | "merge overlapping", "insert an interval" | If `cur.start <= last.end`, extend; else push | O(n log n) |
-| **Sort by END, then greedy** | **"maximum non-overlapping"**, "minimum removals", "minimum arrows" | Take the earliest-ending compatible one | O(n log n) |
-| **Sweep line / difference map** | "maximum concurrent", "how many at time t", booking counts | `+1` at start, `−1` at end, sort events, running sum, track max | O(n log n) |
-| **Heap of end times** | "minimum rooms/resources needed" | Pop every meeting that has ended; heap size is the answer | O(n log n) |
-| **Ordered map of intervals** | "book if free", "range module", dynamic add/remove | TreeMap / sorted dict; `floorKey` and `ceilingKey` are the whole API | O(log n) |
-| **Overlap test** | any of the above | `a.start < b.end && b.start < a.end`. Write it once, never re-derive | — |
-| **Interval intersection (two lists)** | "free time common to both" | Two pointers; advance the one that ends first | O(n+m) |
+| **Sort by START, then merge** | "merge overlapping", "insert an interval" | If cur.start <= last.end, extend; else push | O(n log n) |
+| **Sort by END, then greedy** | "MAXIMUM NON-OVERLAPPING", "minimum removals", "minimum arrows" | Take the earliest-ending compatible one | O(n log n) |
+| **Sweep line / difference map** | "maximum concurrent", "how many at time t", booking counts | +1 at start, -1 at end, sort events, running sum, track max | O(n log n) |
+| **Heap of end times** | "minimum rooms / resources needed" | Pop every meeting that has ended; heap size is the answer | O(n log n) |
+| **Ordered map of intervals** | "book if free", "range module", dynamic add/remove | TreeMap; floorKey and ceilingKey are the whole API | O(log n) |
+| **Overlap test** | any of the above | a.start < b.end && b.start < a.end. Write it once, never re-derive |  |
+| **Two pointers over two lists** | "free time common to both" | Advance the one that ends first | O(n+m) |
 
-> Python note: **there is no balanced BST in the standard library.** `sortedcontainers.SortedList` is third-party. Know the fallbacks: `bisect` on a list (O(n) insert), a heap with lazy deletion, or a BIT. This trips up Python candidates constantly — Java `TreeMap` and C++ `std::map` are a real advantage here.
+### B · Tier 1–2  *(10)*
 
-### B · Tier 1–2
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 56 | **Merge Intervals** | M | Sort by start | Sort by start, walk merging while the next start is at most the current end. O(n log n) time. |
+| 57 | **Insert Interval** | M | Three phases: before, merge, after | Already sorted, so three phases: copy everything ending before the new start, merge everything overlapping by taking min of starts and max of ends, then copy the rest. O(n) time. |
+| 252 | **Meeting Rooms I & II** | E | LC 252, 253. PREMIUM. Uber | Sort by start and check for any overlap. For II, the min-heap of end times or the +1/-1 sweep gives the number of rooms. O(n log n) time. |
+| 435 | **Non-overlapping Intervals** | M | Sort by end | Sort by END and greedily keep non-overlapping intervals; the rest are removals. O(n log n) time. |
+| 452 | **Minimum Arrows** | M | Same | Same greedy as 435: sort by end and shoot at each kept end. O(n log n) time. |
+| 986 | **Interval List Intersections** | M | Two pointers | Two pointers; the intersection is [max(starts), min(ends)] when non-empty, and you advance whichever ends first. O(n+m) time. |
+| 228 | **Summary Ranges** | E | Warm-up | Single pass building runs while each value is exactly one more than the previous. Formatting is the only difficulty. O(n) time. |
+| 1288 | **Remove Covered Intervals** | M | Sort by start asc, end desc | Sort by start ascending and end DESCENDING, then anything whose end is at most the running maximum end is covered. The tie-break on end is what makes it correct. O(n log n) time. |
+| 729 | **My Calendar I** | M | Google favourite. TreeMap | Keep bookings in a sorted structure (TreeMap or a sorted list) and binary search for the neighbour before the new start; reject if it overlaps. O(log n) per booking. |
+| 1229 | **Meeting Scheduler** | M | PREMIUM. Two pointers | Two pointers over both sorted slot lists: compute the overlap, return it if it is long enough, otherwise advance whichever slot ends first. O(n log n + m log m) with the sorts. |
 
-| LC | Name | D | Teaches |
-|---|---|---|---|
-| 56 | Merge Intervals | M | Sort by start |
-| 57 | Insert Interval | M | Three phases: before, merge, after |
-| 252/253 | Meeting Rooms I & II | E/M | *Premium.* **Uber** |
-| 435 | Non-overlapping Intervals | M | Sort by end |
-| 452 | Minimum Arrows | M | Same |
-| 986 | Interval List Intersections | M | Two pointers |
-| 228 | Summary Ranges | E | Warm-up |
-| 495 | Teemo Attacking | E | — |
-| 1288 | Remove Covered Intervals | M | Sort by start asc, end desc |
-| 729 | My Calendar I | M | **Google favourite.** TreeMap |
-| 1229 | Meeting Scheduler | M | *Premium.* Two pointers |
+### C · Google / Uber L4  *(8)*
 
-### C · Google / Uber L4
+**Extra machinery.** sweep-line difference map with a running max · interval TreeMap with merge AND split · coordinate compression · sweep + segment tree
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| 731 | My Calendar II | M | Double-booking list, or a count map |
-| 732 | My Calendar III | H | **Sweep-line difference map with a running max.** The general solution |
-| 715 | Range Module | H | **Google pack.** Interval TreeMap with merge and split |
-| 759 | Employee Free Time | H | *Premium.* **Google pack** |
-| 218 | The Skyline Problem | H+ | Sweep + heap |
-| 699 | Falling Squares | H | Coordinate compression + segment tree, or brute-force-with-max |
-| 850 | Rectangle Area II | H+ | Sweep + segment tree over y |
-| 2251 | Number of Flowers in Full Bloom | H | Offline queries + sorted starts/ends |
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 731 | **My Calendar II** | M | Double-booking list, or a count map | Keep two structures: all booked intervals and all doubly-booked ones. A new booking is rejected if it overlaps the doubly-booked set; otherwise add its overlap with the booked set to the doubly-booked set. O(n) per booking. |
+| 732 | **My Calendar III** | H | SWEEP-LINE difference map with a running max. The general solution | Difference map over a TreeMap: +1 at the start, -1 at the end, then sweep the whole map accumulating and tracking the maximum. O(n log n) per query. |
+| 715 | **Range Module** | H | Google pack. Interval TreeMap with merge and split | A TreeMap from start to end holding disjoint intervals. addRange merges with any neighbour that touches or overlaps; removeRange splits. Every operation is a floor lookup plus a bounded walk. O(log n) amortised. |
+| 759 | **Employee Free Time** | H | PREMIUM. Google pack | Flatten, sort by start, merge; the gaps are the answer. O(n log n) time. |
+| 218 | **The Skyline Problem** | H | Sweep + heap | Max-heap sweep with lazy deletion, emitting a point whenever the maximum height changes. O(n log n) time. |
+| 699 | **Falling Squares** | H | Coordinate compression + segment tree | Coordinate-compress the x ranges, then either a segment tree with range-max and range-assign, or an O(n^2) scan comparing each square against all previous overlapping ones. O(n log n) or O(n^2). |
+| 850 | **Rectangle Area II** | H | Sweep + segment tree over y | Sweep on x with coordinate compression on y: at each x interval, compute the total covered y length from the currently active rectangles and multiply by the x width. O(n^2) with a scan, O(n log n) with a segment tree. |
+| 2251 | **Number of Flowers in Full Bloom** | H | Offline queries + sorted starts/ends | Sort starts and ends separately; for each query, count started minus ended by binary search. O((n+q) log n) time. |
 
 ---
 
 ## §11 · TREES & BST
 
+**Derive it.** Ask which direction the information flows. Upward from children means post-order returning a value, and the classic bug is returning the answer instead of the quantity the parent needs - 543 and 124 are the same mistake. Downward from the root means pre-order carrying state, such as bounds in 98 or a prefix map in 437. Needing BOTH directions is rerooting, which is two passes. Level structure means BFS. A BST adds the invariant that lets you discard half.
+
 ### A · Patterns
 
-| Pattern | The disguise | The move | Cost |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| **DFS returning what the parent needs** | almost every tree problem | `dfs(node) -> value the parent needs`; the **answer** is updated inside, at each node. These are two different quantities — internalise that | O(n) |
-| **Path that bends at a node** | "any path", "diameter", "max path sum" | Return `max(0, best straight-down)`; update the global with `left + right + val` | O(n) |
-| **Root-to-leaf path** | "path sum equals target", "all paths" | DFS + a backtracked list | O(n·h) |
-| **Downward path, anywhere to anywhere** | "path sum III", "count paths summing to K" | **Prefix sum + hashmap along the DFS path** — and *decrement the map on the way up*. That backtrack is the bug everyone ships | O(n) |
-| **BFS by level** | "level order", "right side view", "zigzag", "minimum depth" | `for _ in range(len(queue))` — the level counter is where people bug out | O(n) |
-| **Tree → undirected graph** | **"all nodes at distance K"**, "infection spreads", "burn the tree" | Build a parent map, then plain BFS | O(n) |
-| **Rerooting** | **"the answer for EVERY node as root"** | Two passes: down-DFS accumulates subtree info, second DFS redistributes using the parent's answer. Turns O(n²) into O(n) | O(n) |
-| **Post-order greedy with states** | "cover/monitor all nodes with the fewest X" | Return one of 3 states (needs-cover / covered / has-camera) | O(n) |
-| **Choose-or-skip on nodes** | "cannot take a node and its child" | Tree DP returning a `(take, skip)` tuple | O(n) |
-| **Serialize to a canonical form** | "duplicate subtrees", "is this a subtree of that" | Serialize with null markers → hashmap. Assign integer ids to avoid O(n²) string cost — *that discussion is the signal* | O(n) |
-| **Construct from traversals** | pre+in, in+post, pre+post | Recursion + an index hashmap for O(n). Know **why pre+post is not unique** | O(n) |
-| **BST bounds** | "validate", "range sum", "trim" | Carry `(lo, hi)` down; prune whole subtrees. **Never** validate with just `left < root` | O(n) |
+| **DFS returning what the PARENT needs** | almost every tree problem | dfs(node) -> value the parent needs; the ANSWER is updated inside at each node. Two different quantities | O(n) |
+| **Path that bends at a node** | "any path", "diameter", "max path sum" | Return max(0, best straight-down); update global with left+right+val | O(n) |
+| **Root-to-leaf path** | "path sum equals target", "all paths" | DFS + a backtracked list | O(nh) |
+| **Downward path anywhere** | "path sum III", "count paths summing to K" | Prefix sum + hashmap along the DFS path — and DECREMENT ON THE WAY UP. That backtrack is the bug everyone ships | O(n) |
+| **BFS by level** | "level order", "right side view", "zigzag", "minimum depth" | for _ in range(len(queue)) — the level counter is where people bug out | O(n) |
+| **Tree -> undirected graph** | "ALL NODES AT DISTANCE K", "infection spreads", "burn the tree" | Build a parent map, then plain BFS | O(n) |
+| **Rerooting** | "the answer for EVERY NODE as root" | Two passes: down-DFS accumulates, second DFS redistributes using the parent answer. O(n^2) -> O(n) | O(n) |
+| **Post-order greedy with states** | "cover / monitor all nodes with the fewest X" | Return one of 3 states: needs-cover / covered / has-camera | O(n) |
+| **Choose-or-skip on nodes** | "cannot take a node and its child" | Tree DP returning a (take, skip) tuple | O(n) |
+| **Canonical serialization** | "duplicate subtrees", "is this a subtree of that" | Serialize with null markers -> hashmap. Assign integer IDs to avoid O(n^2) string cost — that discussion is the signal | O(n) |
+| **Construct from traversals** | pre+in, in+post, pre+post | Recursion + an index hashmap for O(n). Know WHY pre+post is not unique | O(n) |
+| **BST bounds** | "validate", "range sum", "trim" | Carry (lo, hi) down; prune whole subtrees. NEVER validate with just left < root | O(n) |
 | **Inorder is sorted** | "kth smallest", "recover swapped nodes", "closest value" | Iterative inorder with one stack, stop early | O(h) space |
-| **Morris traversal** | *"can you do it in O(1) space?"* | Thread the tree via right-most predecessors, unthread on the way back | O(n), O(1) |
-| **Augment with subtree size** | "kth smallest **when the tree changes often**" | Store `leftSubtreeSize`; descend in O(h). This is an order-statistic tree — **the one place AVL knowledge pays** | O(h) |
-| **Binary lifting** | "kth ancestor", repeated LCA queries | `up[k][v] = up[k-1][up[k-1][v]]`, `LOG = 20` | O(n log n) / O(log n) |
+| **Morris traversal** | "can you do it in O(1) SPACE?" | Thread via right-most predecessors, unthread on the way back | O(n)/O(1) |
+| **Augment with subtree size** | "kth smallest WHEN THE TREE CHANGES OFTEN" | Store leftSubtreeSize; descend in O(h). An order-statistic tree — the ONE place AVL knowledge pays | O(h) |
+| **Binary lifting** | "kth ancestor", repeated LCA queries | up[k][v] = up[k-1][up[k-1][v]], LOG = 20 | O(n log n) |
 
-### B · Tier 1–2
+### B · Tier 1–2  *(24)*
 
-| LC | Name | D | Teaches |
-|---|---|---|---|
-| 94/144/145 | Traversals — **iteratively** | M | One stack each; postorder via reversed-modified-preorder |
-| 102/107/103 | Level order, bottom-up, zigzag | M | The level loop |
-| 199 | Right Side View | M | Last node per level |
-| 104/111/110 | Max depth / Min depth / Balanced | E | Min depth's leaf edge case |
-| 226 | Invert Binary Tree | E | — |
-| 100/101/572 | Same / Symmetric / Subtree | E/M | 572 also has an O(n+m) serialization+KMP answer |
-| 543 | Diameter | E | The bend-at-a-node scaffold |
-| 112/113 | Path Sum I & II | E/M | Backtracking |
-| 437 | Path Sum III | M | Prefix map + **decrement on the way up** |
-| 236/235 | LCA of BT / of BST | M | Two different algorithms — do not conflate |
-| 105/106 | Build from pre+in / in+post | M | Index map |
-| 98 | Validate BST | M | Bounds, not comparison |
-| 700/701/450 | BST search / insert / **delete** | E/M | **450's three cases** — people fumble this live |
-| 230 | Kth Smallest in BST | M | And the "tree changes often" follow-up |
-| 173 | BST Iterator | M | O(h) space; then support `prev()` |
-| 108/109 | Sorted array/list → balanced BST | E/M | — |
-| 938/669/653 | Range sum / Trim / Two Sum in BST | E/M | Pruning |
-| 297 | Serialize and Deserialize BT | H | Preorder + null sentinels |
-| 863 | All Nodes Distance K | M | **Amazon** — tree→graph |
-| 116/117 | Populating Next Right Pointers | M | **Microsoft** — 117 with O(1) space |
-| 114 | Flatten to Linked List | M | Morris-style O(1) version |
-| 124 | Binary Tree Maximum Path Sum | H | **The archetype** |
-| 337 | House Robber III | M | `(take, skip)` |
-| 662 | Maximum Width of Binary Tree | M | Index arithmetic, watch overflow |
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 94 | **Traversals — ITERATIVELY** | M | LC 94, 144, 145. One stack each; postorder via reversed-modified-preorder | Iterative inorder: push left spine, pop and visit, then move to the right child. Preorder is one stack pushing right before left; postorder is either two stacks or reversed root-right-left. Learn all three iteratively - recursion is not the interview. O(n) time. |
+| 102 | **Level order / bottom-up / zigzag** | M | LC 102, 107, 103 — the level loop | BFS with a queue, processing exactly queue.size() nodes per level so the level boundary is explicit. Bottom-up reverses the result; zigzag flips the insertion order per level. O(n) time. |
+| 199 | **Right Side View** | M | Last node per level | Level-order taking the last node of each level, or DFS root-right-left recording the first node seen at each new depth. O(n) time. |
+| 104 | **Max depth / Min depth / Balanced** | E | LC 104, 111, 110. Min depth leaf edge case | Post-order recursion returning 1 + max of children. Min depth must ignore null children of a one-child node. Balanced returns -1 as a sentinel to short-circuit. O(n) time. |
+| 226 | **Invert Binary Tree** | E | — | Swap the children and recurse, or a BFS swapping at each node. O(n) time. |
+| 100 | **Same / Symmetric / Subtree** | E | LC 100, 101, 572. 572 also has an O(n+m) serialize+KMP answer | Parallel recursion on both trees, handling the two-null and one-null cases first. Symmetric mirrors the recursion (left against right); subtree checks isSame at every node, or compares canonical serialisations. O(nm) time. |
+| 543 | **Diameter** | E | The bend-at-a-node scaffold | Post-order returning HEIGHT while updating a global best with leftHeight + rightHeight. Returning the diameter instead of the height is the classic bug. O(n) time. |
+| 112 | **Path Sum I & II** | E | LC 112, 113 — backtracking | DFS carrying the remaining sum, checking it hits zero exactly at a leaf. Version II carries the path and copies it on success. O(n) time. |
+| 437 | **Path Sum III** | M | Prefix map + DECREMENT on the way up | Prefix sums along the root-to-node path plus a hashmap of prefix counts seeded with {0:1}, and REMOVE the current prefix on the way back up. That backtracking removal is the whole problem. O(n) time. |
+| 236 | **LCA of BT / of BST** | M | LC 236, 235 — two different algorithms, do not conflate | Post-order: return the node itself if it matches, otherwise the non-null child result, or the node when both children return non-null. For a BST, walk down while both targets are on the same side. O(n) / O(h). |
+| 105 | **Build from pre+in / in+post** | M | LC 105, 106 — index map | The first preorder element is the root; find it in the inorder array (use a value-to-index map) to split left and right, and recurse with index ranges. From in+post, take the LAST postorder element and build right before left. O(n) time. |
+| 98 | **Validate BST** | M | Bounds, not comparison | Recurse carrying (low, high) bounds, not just comparing with the parent. An inorder traversal checking strict increase is the equally valid alternative. O(n) time. |
+| 700 | **BST search / insert / DELETE** | M | LC 700, 701, 450. 450 three cases — people fumble this live | Search and insert walk down comparing. DELETE is the real question: no children means unlink, one child means promote it, two children means replace with the inorder successor and delete that successor instead. O(h) time. |
+| 230 | **Kth Smallest in BST** | M | And the "tree changes often" follow-up | Inorder traversal stopping at the kth node - iterative with a stack so you can stop early. The follow-up for frequent queries is to store subtree sizes. O(h + k) time. |
+| 173 | **BST Iterator** | M | O(h) space; then support prev() | Controlled iterative inorder: keep the stack of the left spine, and on next() pop, then push the left spine of the popped node's right child. O(1) amortised per call, O(h) space. |
+| 108 | **Sorted array / list to balanced BST** | E | LC 108, 109 | Take the middle element as the root and recurse on the halves. From a sorted LIST, either convert to an array or use the inorder-simulation trick that builds bottom-up in O(n). O(n) time. |
+| 938 | **Range sum / Trim / Two Sum in BST** | E | LC 938, 669, 653 — pruning | BST pruning: skip the left subtree when the node is below the low bound and the right when above the high. Trim returns the rebuilt subtree. Two Sum in a BST uses the BSTIterator from both ends. O(n) time. |
+| 297 | **Serialize and Deserialize BT** | H | Preorder + null sentinels | Preorder with explicit null markers, deserialising from a queue of tokens. Level-order also works. The null markers are what make it unambiguous. O(n) time. |
+| 863 | **All Nodes Distance K** | M | Amazon — tree to graph | Build a parent map with one DFS, then BFS outward from the target through children and parent, with a visited set. O(n) time. |
+| 116 | **Populating Next Right Pointers** | M | LC 116, 117. Microsoft — 117 with O(1) space | Use the already-built next pointers of the level above to walk it and stitch the level below, giving O(1) extra space. Version 117 with a non-perfect tree needs a dummy head per level. O(n) time. |
+| 114 | **Flatten to Linked List** | M | Morris-style O(1) version | Morris-style: for each node, find the rightmost node of its left subtree, attach the current right subtree there, move the left subtree to the right, and null the left. O(n) time, O(1) space. |
+| 124 | **Binary Tree Maximum Path Sum** | H | THE archetype | Post-order returning the best DOWNWARD path (max(0, child)) while updating a global with node + leftDown + rightDown. Returning the split path upward is the bug. O(n) time. |
+| 337 | **House Robber III** | M | (take, skip) | Tree DP returning a pair (bestWithThisNode, bestWithoutThisNode). With = value + both children's without; without = sum of max of each child's pair. O(n) time. |
+| 662 | **Maximum Width of Binary Tree** | M | Index arithmetic, watch overflow | BFS assigning heap-style indices (2i, 2i+1), taking the difference between the first and last index per level. Normalise by subtracting the level's first index each level or the numbers overflow. O(n) time. |
 
-### C · Google / Uber L4
+### C · Google / Uber L4  *(19)*
 
-**Extra machinery:** rerooting · binary lifting · Morris · canonical-id serialization · vertical order with tie-breaks · segment/BIT-augmented BSTs.
+**Extra machinery.** rerooting · binary lifting · Morris · canonical-ID serialization · vertical order with tie-breaks · 4-tuple tree DP
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| 834 | Sum of Distances in Tree | H | **The rerooting archetype.** If you learn one thing here, this |
-| 968 | Binary Tree Cameras | H | Post-order greedy, 3 states. Hard and worth it |
-| 979 | Distribute Coins in Binary Tree | M | Return the *excess*; accumulate `abs(l)+abs(r)` |
-| 1483 | Kth Ancestor of a Tree Node | H | **Binary lifting** |
-| 987 | Vertical Order Traversal | H | The sort-by-value tie-break is where everyone fails |
-| 314 | Vertical Order Traversal | M | *Premium.* **Google favourite** — note the different tie-break |
-| 99 | Recover BST | M | Two inversions in inorder; **do the Morris O(1) version** |
-| 449 | Serialize/Deserialize **BST** | M | **Must be shorter than 297's output.** If it is not, you failed the problem |
-| 428 | Serialize/Deserialize N-ary Tree | H | Framing discipline |
-| 652 | Find Duplicate Subtrees | M | Canonical ids |
-| 1373 | Maximum Sum BST in a Binary Tree | H | Tree DP returning a 4-tuple — great composition drill |
-| 1372 | Longest ZigZag Path | M | Two-state DFS |
-| 2385 | Amount of Time for Tree to Be Infected | M | 863 restated |
-| 1650 | LCA III with parent pointers | M | *Premium.* Solve as list-intersection |
-| 1123 | LCA of Deepest Leaves | M | Return `(depth, node)` |
-| 272 | Closest BST Values II | H | *Premium.* **Google classic** — two stacks as pred/succ iterators, O(k + log n) |
-| 270 | Closest BST Value | E | *Premium.* Its warm-up |
-| 951 | Flip Equivalent Binary Trees | M | **Google pack** |
-| 545 | Boundary of Binary Tree | M | *Premium.* Three careful walks |
-
-> **Deliberately capped:** AVL and red-black. Learn the *concepts* — balance factor, the four rotation cases, RB's five invariants, why `TreeMap`/`std::map` are RB trees, AVL better for reads / RB better for writes. **Do not implement insert or delete.** Two hours, conceptual, done. Trie, rerooting and 0-1 BFS each pay back more.
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 834 | **Sum of Distances in Tree** | H | THE rerooting archetype. If you learn one thing here, this | REROOTING. One post-order pass computes subtree sizes and the answer for the root; a second pre-order pass moves the answer to each child with ans[child] = ans[parent] - size[child] + (n - size[child]). O(n) time. |
+| 968 | **Binary Tree Cameras** | H | Post-order greedy, 3 states. Hard and worth it | Greedy post-order with three states per node - needs cover, has camera, is covered. Place a camera only when a child needs cover. O(n) time. |
+| 979 | **Distribute Coins in Binary Tree** | M | Return the EXCESS; accumulate abs(l)+abs(r) | Post-order returning the excess coins (subtreeSum - subtreeSize); the moves accumulate the absolute value of every child's excess. O(n) time. |
+| 1483 | **Kth Ancestor of a Tree Node** | H | BINARY LIFTING | Binary lifting: up[k][v] = the 2^k-th ancestor, built from up[k-1]. Answer a query by decomposing k into its binary bits. O(n log n) build, O(log n) per query. |
+| 987 | **Vertical Order Traversal** | H | The sort-by-value tie-break is where everyone fails | DFS or BFS collecting (column, row, value), then sort by column, then row, then value. The value tie-break within the same cell is the part everyone misses. O(n log n) time. |
+| 314 | **Vertical Order Traversal** | M | PREMIUM. Google favourite — note the different tie-break | Same column bucketing but WITHOUT the value tie-break - BFS order is the required order, so a queue is enough. O(n) time. |
+| 99 | **Recover BST** | M | Two inversions in inorder; do the MORRIS O(1) version | Inorder traversal spotting the one or two places where the sequence decreases; the first violation gives the first node, the last gives the second. Morris traversal makes it O(1) space. O(n) time. |
+| 449 | **Serialize/Deserialize BST** | M | MUST be shorter than 297 output. If it is not, you failed the problem | Preorder only, no null markers needed - the BST property lets you reconstruct by passing down (low, high) bounds while consuming the token stream. O(n) time. |
+| 428 | **Serialize/Deserialize N-ary Tree** | H | Framing discipline | Serialise each node as value, child count, then the children; the child count replaces the null markers. O(n) time. |
+| 652 | **Find Duplicate Subtrees** | M | Canonical IDs | Canonical post-order serialisation counted in a map, or an id-assignment map from (leftId, val, rightId) to a new id for the O(n) version. |
+| 1373 | **Maximum Sum BST in a Binary Tree** | H | Tree DP returning a 4-tuple — great composition drill | Post-order returning (isBST, min, max, sum) for each subtree and updating a global maximum when the subtree is a valid BST. The tuple is the whole design. O(n) time. |
+| 1372 | **Longest ZigZag Path** | M | Two-state DFS | DFS carrying (direction, currentLength); go left from a right-child step and vice versa, resetting to one otherwise. O(n) time. |
+| 2385 | **Amount of Time for Tree to Be Infected** | M | 863 restated | Build a parent map, then BFS outward from the start node counting levels. Identical machinery to 863. O(n) time. |
+| 1650 | **LCA III with parent pointers** | M | PREMIUM. Solve as list-intersection | Parent pointers make it the two-list intersection problem: switch chains at the root and they meet at the LCA. O(h) time, O(1) space. |
+| 1123 | **LCA of Deepest Leaves** | M | Return (depth, node) | Post-order returning (depth, lcaOfDeepestLeavesInThisSubtree). Equal child depths means this node is the answer for its subtree; otherwise take the deeper side. O(n) time. |
+| 272 | **Closest BST Values II** | H | PREMIUM. Google classic — two stacks as pred/succ iterators | Inorder into a fixed-size window, or two stacks acting as predecessor and successor iterators merged k times for the O(k log n) version. O(n) or O(h + k). |
+| 951 | **Flip Equivalent Binary Trees** | M | Google pack | Recurse comparing children both ways: either (l,l and r,r) or (l,r and r,l) must hold. Values are distinct, which is what makes the two-way check sufficient. O(n) time. |
+| 545 | **Boundary of Binary Tree** | M | PREMIUM. Three careful walks | Three separate walks - left boundary top-down, leaves left to right, right boundary bottom-up - with careful de-duplication of the corners. Pure case analysis. O(n) time. |
+| null | **AVL / Red-Black — CONCEPTS ONLY, 2h hard cap** | M | Balance factor, 4 rotation cases, RB 5 invariants, why TreeMap is RB. DO NOT implement insert/delete | Concepts only, hard-capped at two hours. Know WHY rotations restore balance and what a red-black tree guarantees; nobody implements one live. |
 
 ---
 
 ## §12 · TRIE
 
+**Derive it.** A trie is for prefix structure over a set of strings that you will query many times. The tell is many words against many queries, or a per-character search that would otherwise restart per word - which is why 212 is a trie plus DFS rather than a DFS per word. Store aggregates at nodes when the query is not just membership: top-k completions, palindromic suffixes, or the smallest index below.
+
 ### A · Patterns
 
-| Pattern | The disguise | The move | Cost |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| **Standard trie** | "prefix", "autocomplete", "dictionary", "starts with" | `children` map + `isEnd` | O(L) per op |
-| **Trie + DFS wildcard** | "search with `.` matching any char" | At `.`, recurse into every child | O(26^dots · L) |
-| **Trie + grid backtracking** | **"find all words from the list in this board"** | Walk the board and the trie together. Two optimisations make it pass: **prune leaf nodes after a word is found**, and **store the word on the terminal node** instead of threading a string | — |
-| **Binary trie (bitwise)** | **"maximum XOR pair"**, "max XOR with a limit" | 32 levels; at each bit greedily descend to the opposite bit | O(32n) |
+| **Standard trie** | "prefix", "autocomplete", "dictionary", "starts with" | children map + isEnd | O(L) |
+| **Trie + DFS wildcard** | "search with . matching any char" | At ., recurse into every child | O(26^dots) |
+| **Trie + grid backtracking** | "find ALL WORDS FROM THE LIST in this board" | Walk board and trie together. Two optimisations make it pass: prune leaf nodes after a word is found, and store the word on the terminal node |  |
+| **Binary trie (bitwise)** | "MAXIMUM XOR pair", "max XOR with a limit" | 32 levels; at each bit greedily descend to the opposite bit | O(32n) |
 | **Suffix trie / reversed insert** | "stream of characters", "suffix search" | Insert reversed words; query the reversed stream | O(L) |
-| **Trie + DP** | "can this word be built from others" | Trie walk inside a DP over positions | O(n·L) |
-| **Trie with payload** | autocomplete ranked by frequency; top-k per prefix | Store the top-k list on each node | — |
+| **Trie + DP** | "can this word be built from others" | Trie walk inside a DP over positions | O(nL) |
+| **Trie with payload** | autocomplete ranked by frequency; top-k per prefix | Store the top-k list on each node |  |
 
-### B · Tier 1–2
+### B · Tier 1–2  *(8)*
 
-| LC | Name | D | Teaches |
-|---|---|---|---|
-| 208 | Implement Trie | M | The template |
-| 211 | Add and Search Words | M | Wildcard DFS |
-| 212 | Word Search II | H | **The one that matters.** Trie + grid DFS + pruning |
-| 648 | Replace Words | M | Shortest-root lookup |
-| 720 | Longest Word in Dictionary | M | Ordering + trie |
-| 676 | Implement Magic Dictionary | M | Exactly-one-mismatch |
-| 1268 | Search Suggestions System | M | **Amazon** — very on-brand |
-| 472 | Concatenated Words | H | **Amazon** — trie + DP |
-| 14 | Longest Common Prefix | E | Trie is overkill — say so |
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 208 | **Implement Trie** | M | The template | Node with 26 children (or a map) and an isEnd flag. Insert, search and startsWith all walk one character at a time. O(k) per operation. |
+| 211 | **Add and Search Words** | M | Wildcard DFS | Same trie, but search recurses over all 26 children when it hits a dot. Bound the fan-out by noting that dots are rare in practice. O(26^d * k) worst case. |
+| 212 | **Word Search II** | H | THE one that matters. Trie + grid DFS + pruning | Build a trie of the words, then DFS the board carrying the trie node rather than re-searching per word. Prune by deleting a word from the trie once found so the branch dies. O(nm * 4^L) with heavy pruning. |
+| 648 | **Replace Words** | M | Shortest-root lookup | Trie of the roots; for each word, walk it and stop at the first isEnd node, replacing with that prefix. O(total characters). |
+| 720 | **Longest Word in Dictionary** | M | Ordering + trie | Insert every word, then DFS the trie only through nodes marked isEnd, tracking the longest and lexically smallest. Or sort and use a set. O(total characters). |
+| 676 | **Implement Magic Dictionary** | M | Exactly-one-mismatch | Trie plus a search that permits exactly ONE character substitution, carried as a boolean through the recursion. O(26 * k) per search. |
+| 1268 | **Search Suggestions System** | M | Amazon — very on-brand | Trie with each node holding the three lexically smallest completions below it, precomputed at insert time. Or sort the products and binary search per prefix. O(total characters). |
+| 472 | **Concatenated Words** | H | Amazon — trie + DP | Insert all words into a trie, then for each word run a DP over its own characters: dp[i] is true if some prefix ending at i is a word and dp at that split is true. Skip the word itself. O(n k^2) time. |
 
-### C · Google / Uber L4
+### C · Google / Uber L4  *(8)*
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| 421 | Maximum XOR of Two Numbers | M | **Binary trie.** A genuinely different use of the structure |
-| 1707 | Maximum XOR With an Element From Array | H | Binary trie + offline queries sorted by limit |
-| 336 | Palindrome Pairs | H | **Google pack.** Trie of reversed words + palindromic-remainder check |
-| 642 | Design Search Autocomplete System | H | *Premium.* **Google pack** — trie with ranked payload |
-| 1032 | Stream of Characters | H | Suffix-trie trick, or Aho–Corasick-lite |
-| 745 | Prefix and Suffix Search | H | Two tries, or a combined key `suffix#prefix` |
-| 588 | Design In-Memory File System | H | *Premium.* **Google & Amazon** — file system *is* an n-ary tree |
-| 425 | Word Squares | H | *Premium.* Trie + backtracking |
+**Extra machinery.** binary trie for XOR · trie with a ranked payload · Aho-Corasick-lite streaming · combined prefix#suffix keys
+
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 421 | **Maximum XOR of Two Numbers** | M | BINARY TRIE. A genuinely different use of the structure | Binary trie of 32-bit numbers, most significant bit first. For each number, walk the trie preferring the OPPOSITE bit at each level to maximise the XOR. The prefix-set-plus-greedy-bit alternative is the same idea without the structure. O(32n) time. |
+| 1707 | **Maximum XOR With an Element From Array** | H | Binary trie + offline queries sorted by limit | Offline: sort queries by their limit and numbers ascending, then insert numbers into the binary trie only as the limit allows before answering each query. O((n+q) log n + 32n) time. |
+| 336 | **Palindrome Pairs** | H | Google pack. Trie of reversed words + palindromic-remainder check | Trie of reversed words with a per-node list of palindromic suffixes below it, handling the shorter-other-word and longer-other-word cases separately. O(n k^2) time. |
+| 642 | **Design Search Autocomplete System** | H | PREMIUM. Google pack — trie with ranked payload | Trie where each node holds the top three sentences by (count, lexical) below it, plus a current-input buffer. On a hash character, commit the sentence and bump its count. O(k) per keystroke. |
+| 1032 | **Stream of Characters** | H | Suffix-trie trick, or Aho-Corasick-lite | Trie of REVERSED words plus a rolling buffer of recent characters; on each query, walk backwards through the buffer down the reversed trie. Cap the buffer at the longest word length. O(maxWordLength) per query. |
+| 745 | **Prefix and Suffix Search** | H | Two tries, or a combined key suffix#prefix | Insert every (suffix + separator + word) combination into one trie, so a two-sided query becomes a single prefix lookup. O(n k^2) build, O(k) per query. |
+| 588 | **Design In-Memory File System** | H | PREMIUM. Google & Amazon — a file system IS an n-ary tree | Trie-shaped directory tree where each node has a children map and optional file content. ls sorts the child names; mkdir walks creating as it goes. O(path length + children log children). |
+| 425 | **Word Squares** | H | PREMIUM. Trie + backtracking | Trie with a per-node list of words having that prefix, plus backtracking row by row: after placing row i, the prefix for row i+1 is column i of the square so far. O(n * 26^L) with strong pruning. |
 
 ---
 
-## §13 · GRAPHS
+## §13 · GRAPHS — the biggest section
+
+**Derive it.** Two questions, in this order. What is a STATE, and what states are one move away? Answer those and the search is boilerplate - which is why the implicit-graph problems are not harder, only less obvious. Then pick the engine by edge weight: unweighted is BFS, weights of only 0 and 1 is a deque, positive weights is Dijkstra, negative or exactly-k-edges is Bellman-Ford, all pairs with small n is Floyd-Warshall. If the state has an extra budget - stops, removals, keys, fuel - it goes INTO the state and dist becomes multi-dimensional. If the question is about connectivity under adding things, it is DSU; under REMOVING things, it is DSU run backwards in time.
 
 ### A · Patterns
 
-| Pattern | The disguise | The move | Cost |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| **BFS** | "shortest", **all edges cost 1** | Queue, visited on push | O(V+E) |
-| **Multi-source BFS** | "shortest from *any* of these", "spreading from several places at once" | Seed the queue with **all** sources — one virtual super-source | O(V+E) |
-| **Bidirectional BFS** | both endpoints known, huge branching factor | Expand the smaller frontier each round | ~O(b^(d/2)) |
-| **DFS / flood fill** | "islands", "regions", "connected components" | Recursion or explicit stack. Know why recursion dies at n=10⁵ in Python | O(V+E) |
-| **Reverse thinking** | "regions NOT touching the border", "cells that reach both oceans" | BFS/DFS **inward from the border**, then invert | O(V+E) |
-| **Dijkstra (lazy)** | "shortest", **positive weights** | Heap of `(dist, node)`; skip stale with `if d > dist[u]: continue` | O(E log V) |
-| **Dijkstra with augmented state** | **"at most K stops / removals / refuels"**, "with a fuel budget" | Heap of `(cost, node, extra)`; `dist` becomes 2-D `dist[node][extra]`. **The single highest-value template** | O(E·K log) |
-| **Bitmask in the state** | "collect all keys", "visit every node", **n ≤ 20** | State = `(node, visitedMask)` | O(2ⁿ·n) |
-| **0-1 BFS** | edge weights are **only 0 and 1** | `deque`; `appendleft` for 0, `append` for 1. O(V+E) instead of O(E log V). **Most candidates do not know it exists** | O(V+E) |
-| **Bellman-Ford / exactly-k** | negative edges, or **"exactly k edges"** | `prev = dist.copy()` inside the k-loop — that copy *is* the trick | O(V·E) |
-| **Floyd-Warshall** | all-pairs, **n ≤ 400** | Triple loop, k outermost | O(n³) |
-| **Dijkstra with max / minimax path** | **"minimise the maximum edge on the path"** | Three equivalent answers: Dijkstra-with-max · binary search + BFS · **Kruskal + DSU**. Recognise they are the same problem | — |
-| **Path counting** | "count the shortest paths" | Carry `ways[]`; reset on improve, accumulate on tie | O(E log V) |
-| **Topological sort — Kahn** | "prerequisites", "ordering", "before" | In-degree + queue; cycle iff `len(order) != n` | O(V+E) |
+| **BFS** | "shortest", ALL EDGES COST 1 | Queue, visited on push | O(V+E) |
+| **Multi-source BFS** | "shortest from ANY of these", "spreading from several places at once" | Seed the queue with ALL sources — one virtual super-source | O(V+E) |
+| **Bidirectional BFS** | both endpoints known, huge branching factor | Expand the smaller frontier each round | ~b^(d/2) |
+| **DFS / flood fill** | "islands", "regions", "connected components" | Recursion or explicit stack. Know why recursion dies at n=1e5 in Python | O(V+E) |
+| **Reverse thinking** | "regions NOT touching the border", "cells that reach both oceans" | BFS/DFS INWARD from the border, then invert | O(V+E) |
+| **Dijkstra (lazy)** | "shortest", POSITIVE WEIGHTS | Heap of (dist,node); skip stale with if d > dist[u]: continue | O(E log V) |
+| **Dijkstra with AUGMENTED STATE** | "AT MOST K stops / removals / refuels", "with a fuel budget" | Heap of (cost,node,extra); dist becomes 2-D dist[node][extra]. THE single highest-value template | O(EK log) |
+| **Bitmask in the state** | "collect all keys", "visit every node", N <= 20 | State = (node, visitedMask) | O(2^n n) |
+| **0-1 BFS** | edge weights are ONLY 0 AND 1 | deque; appendleft for 0, append for 1. O(V+E) not O(E log V). Most candidates do not know it exists | O(V+E) |
+| **Bellman-Ford / exactly-k** | negative edges, or "EXACTLY k edges" | prev = dist.copy() inside the k-loop — that copy IS the trick | O(VE) |
+| **Floyd-Warshall** | all-pairs, n <= 400 | Triple loop, k outermost | O(n^3) |
+| **Minimax path** | "MINIMISE THE MAXIMUM EDGE on the path" | Three equivalent answers: Dijkstra-with-max, binary search + BFS, Kruskal + DSU. Recognise they are the same problem |  |
+| **Path counting** | "count the shortest paths" | Carry ways[]; reset on improve, accumulate on tie | O(E log V) |
+| **Topological sort — Kahn** | "prerequisites", "ordering", "before" | In-degree + queue; cycle iff len(order) != n | O(V+E) |
 | **Topological sort — DFS 3-colour** | needed for SCC and "safe states" | white/grey/black | O(V+E) |
-| **Topo + DP** | **a value accumulates along a DAG** | Process in topo order; when you reach `v`, every predecessor's dp is final. **Say that invariant out loud before coding** | O(V+E) |
-| **DAG in disguise** | "longest increasing path in a matrix", monotone constraints | It is a DAG ⇒ memoized DFS | O(nm) |
-| **Bipartite / 2-colouring** | "two groups", "no two adjacent alike", "dislikes" | BFS colouring, or **DSU with parity** | O(V+E) |
+| **Topo + DP** | A VALUE ACCUMULATES ALONG A DAG | Process in topo order; when you reach v, every predecessor dp is final. Say that invariant out loud before coding | O(V+E) |
+| **DAG in disguise** | "longest increasing path in a matrix", monotone constraints | It is a DAG => memoized DFS | O(nm) |
+| **Bipartite / 2-colouring** | "two groups", "no two adjacent alike", "dislikes" | BFS colouring, or DSU with parity | O(V+E) |
 | **DSU** | "merge these", "same group", incremental unions | Path compression + union by size, with a component counter | ~O(1) |
-| **DSU offline sweep** | queries with a **weight threshold** | Sort queries by limit, sort edges by weight, one DSU pass | O((E+Q) log) |
-| **Reverse-time DSU** | **things get REMOVED over time** | Process backwards, so removals become additions | O(α) |
+| **DSU offline sweep** | queries with a WEIGHT THRESHOLD | Sort queries by limit, sort edges by weight, one DSU pass | O((E+Q)log) |
+| **Reverse-time DSU** | THINGS GET REMOVED OVER TIME | Process backwards, so removals become additions | O(a) |
 | **Weighted DSU** | ratios, "a/b = 2.0", parity constraints | Store the weight to the parent; compose on find | ~O(1) |
-| **MST** | "connect everything at minimum cost" | Kruskal + DSU; **Prim for dense/complete graphs** — the interviewer will probe this | O(E log E) |
-| **Tarjan bridges** | **"removing this edge disconnects the graph"**, critical connections | `disc[]`, `low[]`, timer; bridge iff `low[v] > disc[u]`. Articulation point: `low[v] >= disc[u]`, plus the root special case | O(V+E) |
-| **Kosaraju / Tarjan SCC** | "strongly connected", condensation | Two passes on G and Gᵀ | O(V+E) |
-| **Hierholzer (Euler)** | **"use every edge exactly once"**, itinerary | Append **after** recursion, then reverse. Existence: 0 or 2 odd-degree (undirected) | O(E) |
-| **Implicit / state-space graph** | input is **strings, board states, numbers** — no edges given | Stop asking "what is the graph". Ask **"what is a state, and what states are one move away?"** Write `neighbors(state)` first; the BFS is boilerplate | varies |
-| **Node splitting** | the **node** has a capacity, not the edge | `v → v_in, v_out` with a capacity edge between | — |
+| **MST** | "connect everything at minimum cost" | Kruskal + DSU; PRIM for dense/complete graphs — the interviewer will probe this | O(E log E) |
+| **Tarjan bridges** | "REMOVING THIS EDGE DISCONNECTS THE GRAPH", critical connections | disc[], low[], timer; bridge iff low[v] > disc[u]. Articulation: low[v] >= disc[u] + root case | O(V+E) |
+| **SCC (Kosaraju / Tarjan)** | "strongly connected", condensation | Two passes on G and G-transpose | O(V+E) |
+| **Hierholzer (Euler)** | "USE EVERY EDGE EXACTLY ONCE", itinerary | Append AFTER recursion, then reverse. Exists iff 0 or 2 odd-degree (undirected) | O(E) |
+| **Implicit / state-space graph** | input is STRINGS, BOARD STATES, NUMBERS — no edges given | Stop asking "what is the graph". Ask "what is a STATE, and what states are one move away?" Write neighbors(state) first; the BFS is boilerplate |  |
+| **Node splitting** | the NODE has a capacity, not the edge | v -> v_in, v_out with a capacity edge between |  |
 
-> **The four things that make a graph problem Hard** (this is the whole game):
-> **(A)** the graph is implicit · **(B)** the state is a tuple · **(C)** two techniques compose · **(D)** the invariant is non-obvious and the code is 15 lines.
+### B · Tier 1–2  *(29)*
 
-### B · Tier 1–2
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 200 | **Number of Islands** | M | AMAZON SPEED-RUN: under 8 minutes, clean | DFS or BFS from every unvisited land cell, sinking the component as you go. Mark visited on PUSH, not on pop, or the queue fills with duplicates. O(nm) time. |
+| 695 | **Max Area of Island / Closed Islands** | M | LC 695, 1254 — same engine | Identical flood fill returning the component size. Closed Islands is the same engine run inward from the border first to eliminate open regions. O(nm) time. |
+| 733 | **Flood Fill** | E | — | Flood fill from the start cell, guarding the case where the new colour equals the old one or you loop forever. O(nm) time. |
+| 994 | **Rotting Oranges** | M | MULTI-SOURCE BFS. Amazon speed-run | MULTI-SOURCE BFS: seed the queue with every rotten orange at once, then count levels. The single virtual super-source is the idea. O(nm) time. |
+| 542 | **01 Matrix** | M | Multi-source | Multi-source BFS seeded with every zero cell; the level at which each one-cell is reached is its distance. Two-pass DP is the alternative. O(nm) time. |
+| 1091 | **Shortest Path in Binary Matrix** | M | BFS with 8 directions | Plain BFS with eight directions, counting levels. Bidirectional BFS is the optimisation to mention. O(nm) time. |
+| 130 | **Surrounded Regions** | M | Reverse thinking from the border | REVERSE THINKING: BFS or DFS inward from the border to mark regions that reach the edge, then everything unmarked is surrounded. Cleaner than trying to detect enclosure directly. O(nm) time. |
+| 417 | **Pacific Atlantic Water Flow** | M | BFS FROM both oceans inward | BFS or DFS from BOTH oceans inward, marking cells that can reach each; the answer is the intersection. Searching outward from every cell is the O(n^2 m^2) trap. O(nm) time. |
+| 934 | **Shortest Bridge** | M | DFS to mark, BFS to expand | DFS to mark the first island, then multi-source BFS outward from all of its cells until you touch the second island. Two techniques composed. O(nm) time. |
+| 909 | **Snakes and Ladders** | M | Amazon — BFS on a transformed board | BFS over the board treated as a 1-D array of squares 1..n*n; the transform from square number to (row, col) with the boustrophedon flip is the actual work. O(n^2) time. |
+| 127 | **Word Ladder** | H | Amazon — implicit graph; then bidirectional | Implicit graph BFS where neighbours are the words one character away - generate them by substituting each position rather than comparing all pairs. Bidirectional BFS is the follow-up. O(n * k * 26) time. |
+| 133 | **Clone Graph** | M | Map old->new | DFS or BFS carrying a map from original node to its copy; check the map before recursing or you loop forever on cycles. O(V+E) time. |
+| 207 | **Course Schedule I & II** | M | LC 207, 210. Kahn AND DFS | Kahn: in-degrees plus a queue, and a cycle exists exactly when the produced order is shorter than n. The DFS three-colour version detects the back edge directly. Know both. O(V+E) time. |
+| 802 | **Find Eventual Safe States** | M | Reverse graph + topo, or 3-colour | Reverse the graph and topologically sort, or run the three-colour DFS where a node is safe if every path from it terminates. O(V+E) time. |
+| 310 | **Minimum Height Trees** | M | Peel leaves | Peel leaves layer by layer like a topological sort on an undirected tree; the last one or two nodes remaining are the roots. O(V) time. |
+| 269 | **Alien Dictionary** | H | PREMIUM. Historically the most-asked Google graph problem. Edge case: ["abc","ab"] -> "" | Build edges from adjacent word pairs at their first differing character, then topologically sort the alphabet. The killer edge case is a longer word before its own prefix, which is invalid input. O(total characters). |
+| 547 | **Number of Provinces** | M | DSU | DSU with path compression and union by size, or DFS over the adjacency matrix. The component count is the answer. O(n^2 * alpha) time. |
+| 721 | **Accounts Merge** | M | Amazon — DSU with a key map | DSU over account INDICES, keyed by a map from email to the first account index that claimed it. Then group emails by root and sort. O(n k log k) time. |
+| 684 | **Redundant Connection** | M | DSU | DSU: the first edge whose two endpoints are already connected is the redundant one. O(n * alpha) time. |
+| 990 | **Satisfiability of Equality Equations** | M | DSU in disguise | DSU over the 26 letters using the equality equations, then check every inequality against it. Order matters - process all equalities first. O(n) time. |
+| 947 | **Most Stones Removed** | M | Google pack — DSU in disguise | DSU in disguise: union stones sharing a row or a column, and the answer is the number of stones minus the number of components. O(n * alpha) time. |
+| 743 | **Network Delay Time** | M | Vanilla Dijkstra | Lazy Dijkstra with a min-heap of (dist, node), skipping stale entries with "if d > dist[u] continue". The answer is the maximum finalised distance. O(E log V) time. |
+| 1514 | **Path with Maximum Probability** | M | Max-heap Dijkstra — proves you know the invariant, not the code | Dijkstra with a MAX-heap and multiplication instead of addition; the invariant that the popped node is final still holds because probabilities are in [0,1]. O(E log V) time. |
+| 785 | **Is Graph Bipartite / Possible Bipartition** | M | LC 785, 886. Also DSU-with-parity | BFS colouring, failing on an edge whose endpoints already share a colour. DSU with parity is the second answer, and it is the one that generalises. O(V+E) time. |
+| 399 | **Evaluate Division** | M | Weighted DSU AND DFS-with-product — do both | Weighted DSU storing the ratio to the parent and composing it during find - or DFS multiplying edge weights along the path. Do both; the DSU version is the one that scales to many queries. O((n+q) * alpha) time. |
+| 1584 | **Min Cost to Connect All Points** | M | Kruskal AND Prim | Manhattan distance makes it a complete graph, so PRIM is the right choice over Kruskal - the interviewer will probe exactly this. O(n^2) time. |
+| 1319 | **Number of Operations to Make Network Connected** | M | DSU with a counter | DSU. If the number of cables is less than n-1 it is impossible; otherwise the answer is componentCount - 1. O(n * alpha) time. |
+| 329 | **Longest Increasing Path in a Matrix** | H | It is a DAG => memo. Also the topo version | The strictly increasing condition makes it a DAG, so memoised DFS on each cell. The topological-order version processing cells by value is the alternative. O(nm) time. |
+| 1466 | **Reorder Routes** | M | Directed edges on a tree | DFS or BFS over the tree treating every edge as bidirectional but carrying its original direction; count the edges pointing away from the root. O(n) time. |
 
-| LC | Name | D | Teaches |
-|---|---|---|---|
-| 200 | Number of Islands | M | **Amazon speed-run: under 8 minutes, clean** |
-| 695/1254 | Max Area of Island / Closed Islands | M | Same engine |
-| 733 | Flood Fill | E | — |
-| 994 | Rotting Oranges | M | **Multi-source BFS.** Amazon speed-run |
-| 542 | 01 Matrix | M | Multi-source |
-| 1091 | Shortest Path in Binary Matrix | M | BFS with 8 directions |
-| 130 | Surrounded Regions | M | Reverse thinking from the border |
-| 417 | Pacific Atlantic Water Flow | M | BFS *from* both oceans inward |
-| 934 | Shortest Bridge | M | DFS to mark, BFS to expand |
-| 909 | Snakes and Ladders | M | **Amazon** — BFS on a transformed board |
-| 127 | Word Ladder | H | **Amazon** — implicit graph; then bidirectional |
-| 133 | Clone Graph | M | Map old→new |
-| 207/210 | Course Schedule I & II | M | Kahn **and** DFS |
-| 802 | Find Eventual Safe States | M | Reverse graph + topo, or 3-colour |
-| 310 | Minimum Height Trees | M | Peel leaves |
-| 269 | Alien Dictionary | H | *Premium.* **Historically the most-asked Google graph problem.** Edge case: `["abc","ab"] → ""` |
-| 547 | Number of Provinces | M | DSU |
-| 721 | Accounts Merge | M | **Amazon** — DSU with a key map |
-| 684 | Redundant Connection | M | DSU |
-| 990 | Satisfiability of Equality Equations | M | DSU in disguise |
-| 947 | Most Stones Removed | M | **Google pack** — DSU in disguise |
-| 743 | Network Delay Time | M | Vanilla Dijkstra |
-| 1514 | Path with Maximum Probability | M | Max-heap Dijkstra — proves you know the invariant, not the code |
-| 785/886 | Is Graph Bipartite / Possible Bipartition | M | Colouring; also DSU-with-parity |
-| 399 | Evaluate Division | M | Weighted DSU **and** DFS-with-product — do both |
-| 1584 | Min Cost to Connect All Points | M | Kruskal **and** Prim |
-| 1319 | Number of Operations to Make Network Connected | M | DSU with a counter |
-| 329 | Longest Increasing Path in a Matrix | H | It is a DAG ⇒ memo. Also do the topo version |
-| 1466 | Reorder Routes | M | Directed edges on a tree |
+### C · Google / Uber L4  *(37)*
 
-### C · Google / Uber L4
+**Extra machinery.** state augmentation · bitmask states · 0-1 BFS · Tarjan · Hierholzer · topo+DP · offline and reverse-time DSU · implicit graph modelling
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| **787** | Cheapest Flights Within K Stops | M | **Solve three ways:** BFS-by-level · Bellman-Ford with layer copy · Dijkstra on `(cost,node,stops)`. Worth more than ten easy problems |
-| **1631** | Path With Minimum Effort | M | **Three ways:** Dijkstra-with-max · binary search + BFS · Kruskal + DSU |
-| 778 | Swim in Rising Water | H | **The same problem as 1631.** Say why in one sentence |
-| 1102 | Path With Maximum Minimum Value | M | *Premium.* Inverted |
-| 1368 | Min Cost to Make at Least One Valid Path | H | **0-1 BFS** |
-| 2290 | Minimum Obstacle Removal | H | 0-1 BFS |
-| 1293 | Shortest Path with Obstacle Elimination | H | State `(r,c,k)`. Pruning: if `k ≥ r+c` remaining, answer is Manhattan |
-| 864 | Shortest Path to Get All Keys | H | State `(r,c,keyMask)`. **`visited` is state-al, not positional** — the classic bug |
-| 847 | Shortest Path Visiting All Nodes | H | `(node, mask)` |
-| 815 | Bus Routes | H | **Nodes are routes, not stops.** Modelling choice is everything |
-| 752 | Open the Lock | M | State = a 4-digit string |
-| 773 | Sliding Puzzle | H | State = flattened board; precompute the neighbour table |
-| 1345 | Jump Game IV | H | Clear the value→indices bucket after first use or it is O(n²) |
-| 126 | Word Ladder II | H | BFS to build the DAG, DFS to enumerate. Two-phase |
-| 1976 | Number of Ways to Arrive at Destination | M | Dijkstra + `ways[]` |
-| 1928 | Min Cost to Reach Destination in Time | H | `(cost, node, time)` |
-| 2045 | Second Minimum Time to Reach Destination | H | Best **and** second-best, plus traffic-light modular arithmetic |
-| 1334 | City With Smallest Number of Neighbors | M | Floyd-Warshall and its n³ ceiling |
-| **1192** | Critical Connections | H | **Tarjan bridges — the one Google actually asks.** Memorisation is acceptable here; nobody derives it live |
-| 1568 | Minimum Days to Disconnect Island | H | Answer is always 0, 1 or 2 — the 1-case is an articulation point |
-| **332** | Reconstruct Itinerary | H | **Hierholzer.** "Why append after the recursion" is the probe |
-| 2097 | Valid Arrangement of Pairs | H | Euler path, directed |
-| 753 | Cracking the Safe | H | de Bruijn sequence as an Euler circuit. Beautiful |
-| **1857** | Largest Color Value in a Directed Graph | H | **Topo + DP** with a 26-wide count per node |
-| 2050 | Parallel Courses III | H | Topo + DP |
-| **1203** | Sort Items by Groups | H | **Topo on two levels.** A genuine L4-hard |
-| 685 | Redundant Connection II | H | Directed: two-parents vs cycle vs both. Nasty case analysis |
-| **1697** | Edge Length Limited Paths | H | **The offline-sweep archetype** |
-| 1489 | Critical and Pseudo-Critical Edges in MST | H | Exclude ⇒ critical; force-include ⇒ pseudo-critical |
-| **803** | Bricks Falling When Hit | H+ | **Reverse-time DSU.** Top-tier |
-| 1970 | Last Day Where You Can Still Cross | H | Reverse time, or binary search + BFS |
-| 952 | Largest Component by Common Factor | H | DSU + factorisation |
-| 839 | Similar String Groups | H | DSU with an O(n²·L) compare |
-| 827 | Making A Large Island | H | Component labelling + size map |
-| 2492 | Minimum Score of a Path | M | — |
-| 490/505 | The Maze I & II | M/H | *Premium.* **Uber** — rolling-ball BFS / Dijkstra |
-| 818 | Race Car | H | **Uber** — BFS/DP over an unusual state space |
-| 489 | Robot Room Cleaner | H | *Premium.* **Google classic** — backtracking with no coordinates given |
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 787 | **Cheapest Flights Within K Stops** | M | SOLVE THREE WAYS: BFS-by-level, Bellman-Ford layer copy, Dijkstra on (cost,node,stops). Worth more than ten easy problems | Three ways, and knowing all three is the point. BFS level by level for at most K+1 levels; Bellman-Ford with prev = dist.copy() inside the k-loop so each round uses only the previous layer; or Dijkstra over the augmented state (cost, node, stopsUsed). O(K*E) time. |
+| 1631 | **Path With Minimum Effort** | M | THREE WAYS: Dijkstra-with-max, binary search + BFS, Kruskal + DSU | Three ways again: Dijkstra where the path cost is the MAXIMUM edge rather than the sum; binary search on the effort plus a plain BFS feasibility check; or Kruskal with DSU adding edges by weight until start and end connect. O(nm log nm) time. |
+| 778 | **Swim in Rising Water** | H | THE SAME PROBLEM as 1631. Say why in one sentence | The same problem as 1631 - minimise the maximum cell on the path. Say why in one sentence and reuse the machinery unchanged. O(nm log nm) time. |
+| 1102 | **Path With Maximum Minimum Value** | M | PREMIUM. Inverted | Inverted 1631: maximise the minimum. Max-heap Dijkstra, or binary search plus BFS, or Kruskal adding edges from largest to smallest. O(nm log nm) time. |
+| 1368 | **Min Cost to Make at Least One Valid Path** | H | 0-1 BFS | 0-1 BFS. Following the arrow costs 0, turning costs 1, so use a deque with appendleft for zero-weight moves and append for one-weight ones. O(nm) instead of O(nm log nm). |
+| 2290 | **Minimum Obstacle Removal** | H | 0-1 BFS | 0-1 BFS again: moving to an empty cell costs 0, removing an obstacle costs 1. O(nm) time. |
+| 1293 | **Shortest Path with Obstacle Elimination** | H | State (r,c,k). Pruning: if k >= r+c remaining, answer is Manhattan | BFS over the augmented state (row, col, remainingEliminations); visited must be three-dimensional. Prune with "if k >= r+c remaining, the answer is the Manhattan distance". O(nm*k) time. |
+| 864 | **Shortest Path to Get All Keys** | H | State (r,c,keyMask). visited is STATE-al, not positional — the classic bug | BFS over (row, col, keyMask) with a state-al visited set - treating visited as positional is THE classic bug here. The mask has at most six bits. O(nm * 2^6) time. |
+| 847 | **Shortest Path Visiting All Nodes** | H | (node, mask) | BFS over (node, visitedMask) starting from every node simultaneously; the answer is the first state whose mask is full. O(2^n * n^2) time. |
+| 815 | **Bus Routes** | H | NODES ARE ROUTES, not stops. Modelling choice is everything | Model ROUTES as nodes, not stops. Build a map from stop to the routes serving it, then BFS over routes; the answer is the number of routes taken. The modelling choice is the entire problem. O(total stops) time. |
+| 752 | **Open the Lock** | M | State = a 4-digit string | BFS over 4-digit strings with eight neighbours per state and the deadends as a blocked set. Bidirectional BFS halves it. O(10^4 * 8) time. |
+| 773 | **Sliding Puzzle** | H | State = flattened board; precompute the neighbour table | BFS over the flattened board string with a precomputed neighbour table for the blank position. A* with the Manhattan heuristic is the optimisation. O(6! * 6) time. |
+| 1345 | **Jump Game IV** | H | Clear the value->indices bucket after first use or it is O(n^2) | BFS where neighbours are i-1, i+1, and every index sharing the value. CLEAR the value-to-indices bucket after using it once, or the whole thing degenerates to O(n^2). |
+| 126 | **Word Ladder II** | H | BFS to build the DAG, DFS to enumerate. Two-phase | Two phases: BFS from the start building a parent DAG level by level, then DFS backwards from the end to enumerate every shortest path. Do not try to collect paths during the BFS. O(n * k * 26) time. |
+| 1976 | **Number of Ways to Arrive at Destination** | M | Dijkstra + ways[] | Dijkstra carrying a ways[] array: on a strict improvement reset ways, on a tie accumulate, all modulo 1e9+7. O(E log V) time. |
+| 1928 | **Min Cost to Reach Destination in Time** | H | (cost, node, time) | Dijkstra over the augmented state (cost, node, timeUsed) with dist as a 2-D array indexed by node and time. O(V * maxTime * log) time. |
+| 2045 | **Second Minimum Time to Reach Destination** | H | Best AND second-best, plus traffic-light modular arithmetic | BFS tracking the best AND second-best arrival time per node, plus modular arithmetic for the traffic lights - if the arrival lands in a red phase, wait until the next green. O(V+E) time. |
+| 1334 | **City With Smallest Number of Neighbors** | M | Floyd-Warshall and its n^3 ceiling | Floyd-Warshall with k as the OUTERMOST loop, then count reachable neighbours per node under the threshold. n is small enough that n^3 is intended. O(n^3) time. |
+| 1192 | **Critical Connections** | H | TARJAN BRIDGES — the one Google actually asks. Memorisation is acceptable; nobody derives it live | Tarjan bridges: disc[] and low[] with a timer, and an edge is a bridge when low[child] > disc[node]. Memorisation is acceptable here; nobody derives it live. O(V+E) time. |
+| 1568 | **Minimum Days to Disconnect Island** | H | Answer is always 0, 1 or 2 — the 1-case is an articulation point | The answer is always 0, 1 or 2. Check 0 (already disconnected), then try removing each cell and check for an articulation point, otherwise 2 - because any corner cell of an island has at most two neighbours. O((nm)^2) time. |
+| 332 | **Reconstruct Itinerary** | H | HIERHOLZER. "Why append after the recursion" is the probe | Hierholzer: DFS consuming edges in lexical order, and APPEND the node AFTER the recursion returns, then reverse at the end. "Why after the recursion" is the probe. O(E log E) time. |
+| 2097 | **Valid Arrangement of Pairs** | H | Euler path, directed | Directed Euler path: check the degree condition, pick the start with outdegree exceeding indegree, then Hierholzer. O(E) time. |
+| 753 | **Cracking the Safe** | H | de Bruijn sequence as an Euler circuit. Beautiful | de Bruijn sequence as an Euler circuit over the (n-1)-length prefix graph, built by Hierholzer. Beautiful and rarely required, but it is the intended answer. O(k^n) time. |
+| 1857 | **Largest Color Value in a Directed Graph** | H | TOPO + DP with a 26-wide count per node | Topological order plus DP: carry a 26-wide colour count per node, and when relaxing an edge take the elementwise maximum. Cycle detection falls out of the topo sort. O((V+E)*26) time. |
+| 2050 | **Parallel Courses III** | H | Topo + DP | Topo order with dp[v] = time[v] + max over predecessors of dp[u]. The pure shape of topo-plus-DP. O(V+E) time. |
+| 1203 | **Sort Items by Groups** | H | TOPO ON TWO LEVELS. A genuine L4-hard | Topological sort on TWO levels: order the groups, then order the items inside each group. Give every ungrouped item its own synthetic group first. A genuine L4-hard because of the bookkeeping. O(V+E) time. |
+| 685 | **Redundant Connection II** | H | Directed: two-parents vs cycle vs both. Nasty case analysis | Case analysis, not an algorithm. Find any node with two parents; if there is one, try removing each of its two candidate edges and test whether the rest is a valid tree. Otherwise it is a plain cycle, so remove the last cycle edge. O(n * alpha) time. |
+| 1697 | **Edge Length Limited Paths** | H | THE OFFLINE-SWEEP ARCHETYPE | The OFFLINE SWEEP archetype: sort queries by their limit and edges by weight, then walk the queries adding all edges below the limit into a DSU and answering connectivity. O((E+Q) log) time. |
+| 1489 | **Critical and Pseudo-Critical Edges in MST** | H | Exclude => critical; force-include => pseudo-critical | Build the MST weight once. For each edge, force-exclude it and rebuild - a larger weight means critical; otherwise force-include it first and rebuild - an equal weight means pseudo-critical. O(E^2 * alpha) time. |
+| 803 | **Bricks Falling When Hit** | H | REVERSE-TIME DSU. Top-tier | REVERSE TIME with DSU. Remove all hits first, build the DSU with a virtual "roof" node, then add the hits back in reverse order and count the newly attached component size each time. O((nm) * alpha) time. |
+| 1970 | **Last Day Where You Can Still Cross** | H | Reverse time, or binary search + BFS | Reverse time - start fully flooded and remove water backwards until the top and bottom connect via DSU - or binary search on the day plus a BFS check. O(nm * alpha) time. |
+| 952 | **Largest Component by Common Factor** | H | DSU + factorisation | DSU where each number is unioned with each of its prime factors, then the answer is the largest component. Factorise by trial division up to the square root. O(n sqrt(maxVal)) time. |
+| 839 | **Similar String Groups** | H | DSU with an O(n^2 L) compare | DSU with an explicit O(n^2 * L) pairwise comparison, since two strings are similar if they differ in at most two positions. When the alphabet is small, generating all swaps is faster. O(n^2 L) time. |
+| 827 | **Making A Large Island** | H | Component labelling + size map | Label every island component with an id and record its size, then for each zero cell sum the sizes of its DISTINCT neighbouring ids plus one. The distinctness is the trap. O(nm) time. |
+| 490 | **The Maze I & II** | H | LC 490, 505. PREMIUM. Uber — rolling-ball BFS / Dijkstra | Rolling-ball BFS - a move continues until the ball hits a wall, so the neighbours are the stopping positions, not the adjacent cells. Maze II is the same graph with Dijkstra over the distance rolled. O(nm * max(n,m)) time. |
+| 818 | **Race Car** | H | Uber — BFS/DP over an unusual state space | BFS or DP over an unusual state space of (position, speed), bounding the search by the target rather than exploring forever. The DP formulation with the "overshoot then reverse" case is the harder half. O(target log target). |
+| 489 | **Robot Room Cleaner** | H | PREMIUM. Google classic — backtracking with no coordinates given | Backtracking with NO coordinates: track relative position yourself, and after exploring a direction, execute the exact "turn twice, move, turn twice" sequence to restore both position and heading. The restore step is the problem. O(nm) time. |
 
 ---
 
 ## §14 · BACKTRACKING
 
+**Derive it.** Backtracking is for enumerating, and the questions are always the same three: what is one choice, what makes a choice illegal, and when am I done. Duplicates are handled by sorting and skipping equal siblings at the same depth - never by de-duplicating the output afterwards. If the problem asks for a count rather than the items, check whether a DP collapses the search first.
+
 ### A · Patterns
 
-| Pattern | The disguise | The move | Cost |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| **The template** | "all combinations / permutations / subsets" | `choose → recurse → un-choose`. Write the un-choose immediately after the choose, always | O(branch^depth) |
-| **Subsets vs combinations vs permutations** | — | Subsets: include/exclude. Combinations: a start index. Permutations: a `used[]` array | — |
-| **Dedup with sorted input** | input has duplicates, output must not | Sort, then `if i > start and a[i] == a[i-1]: continue` | — |
-| **Prune on infeasibility** | "sum exceeds target", "already worse than best" | Return early. **Pruning is what makes these pass, and it is the interview** | — |
-| **Grid backtracking** | word search, N-Queens, sudoku | Mark visited in place, restore after | — |
-| **Backtracking + trie** | grid + a word list | Never search per word — walk the trie | — |
-| **Partition into k groups** | "k equal-sum subsets", "matchsticks to square" | Sort descending, place each item, skip equal-sized empty buckets | — |
-| **Expression building** | "insert operators to reach a target" | Carry `(value, lastOperand)` for `*` precedence | — |
-| **Iterative deepening / bounded search** | "minimum moves", branching too wide for BFS | Depth-limited DFS | — |
+| **The template** | "all combinations / permutations / subsets" | choose -> recurse -> UN-choose. Write the un-choose immediately after the choose, always | O(b^d) |
+| **Subsets vs combinations vs permutations** |  | Subsets: include/exclude. Combinations: a start index. Permutations: a used[] array |  |
+| **Dedup with sorted input** | input has duplicates, output must not | Sort, then if i > start and a[i] == a[i-1]: continue |  |
+| **Prune on infeasibility** | "sum exceeds target", "already worse than best" | Return early. PRUNING is what makes these pass, and it IS the interview |  |
+| **Grid backtracking** | word search, N-Queens, sudoku | Mark visited in place, restore after |  |
+| **Backtracking + trie** | grid + a word list | Never search per word — walk the trie |  |
+| **Partition into k groups** | "k equal-sum subsets", "matchsticks to square" | Sort descending, place each item, skip equal-sized empty buckets |  |
+| **Expression building** | "insert operators to reach a target" | Carry (value, lastOperand) for * precedence |  |
 
-### B · Tier 1–2
+### B · Tier 1–2  *(11)*
 
-| LC | Name | D | Teaches |
-|---|---|---|---|
-| 78/90 | Subsets I & II | M | Dedup on sorted |
-| 46/47 | Permutations I & II | M | `used[]`, then dedup |
-| 39/40 | Combination Sum I & II | M | Reuse vs single-use |
-| 77 | Combinations | M | Start index |
-| 17 | Letter Combinations of a Phone Number | M | — |
-| 22 | Generate Parentheses | M | Validity counters as pruning |
-| 79 | Word Search | M | **Amazon** — grid backtracking |
-| 131 | Palindrome Partitioning | M | Backtracking + palindrome check |
-| 93 | Restore IP Addresses | M | Bounded splitting |
-| 784/797 | Letter Case Permutation / All Paths | M | — |
-| 216 | Combination Sum III | M | — |
-| 698 | Partition to K Equal Sum Subsets | M | Sorting + pruning is everything |
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 78 | **Subsets I & II** | M | LC 78, 90 — dedup on sorted | Either the include/exclude recursion or the bitmask enumeration over 2^n. For duplicates, sort first and skip a value at the same depth when it equals the previous one. O(n * 2^n) time. |
+| 46 | **Permutations I & II** | M | LC 46, 47 — used[], then dedup | Swap-in-place recursion, or a used[] array with a result buffer. For duplicates, sort and skip when a[i] == a[i-1] and a[i-1] was NOT used at this level. O(n * n!) time. |
+| 39 | **Combination Sum I & II** | M | LC 39, 40 — reuse vs single-use | Recurse carrying a start index so combinations are not repeated; reuse is allowed by passing the same index down. Version II passes i+1 and skips same-value siblings. O(n^(target/min)) time. |
+| 77 | **Combinations** | M | Start index | Standard combination recursion with a start index, plus the pruning that you can stop when the remaining elements cannot fill k slots. O(k * C(n,k)) time. |
+| 17 | **Letter Combinations of a Phone Number** | M | — | Recursion over digit positions, looping the letters for each digit. Nothing subtle - it is the template problem. O(4^n) time. |
+| 22 | **Generate Parentheses** | M | Validity counters as pruning | Backtrack with two counters; open while open < n, close while close < open. That invariant prevents every invalid string with no validity check. O(4^n / sqrt(n)) time. |
+| 79 | **Word Search** | M | Amazon — grid backtracking | DFS from every cell, mutating the board to a sentinel to mark visited and restoring it on the way out. In-place marking avoids a visited set. O(nm * 4^L) time. |
+| 131 | **Palindrome Partitioning** | M | Backtracking + palindrome check | Recurse over the split point, testing each prefix for palindromicity. Precompute an isPalindrome[i][j] table so the check is O(1). O(n * 2^n) time. |
+| 93 | **Restore IP Addresses** | M | Bounded splitting | Recurse over four segments, each of length one to three, with the no-leading-zero and at-most-255 rules. Pure constraint enforcement. O(3^4) time. |
+| 216 | **Combination Sum III** | M | — | Combination recursion over digits 1..9 with a start index, pruning when the running sum exceeds n or too few digits remain. O(C(9,k)) time. |
+| 698 | **Partition to K Equal Sum Subsets** | M | Sorting + pruning is everything | Sort descending, then recurse assigning each number to a bucket, skipping buckets with the same running total and returning immediately if a number exactly fills a bucket. The bitmask DP over subsets is the other answer. O(k * 2^n) time. |
 
-### C · Google / Uber L4
+### C · Google / Uber L4  *(11)*
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| 51/52 | N-Queens I & II | H | Diagonal encoding; bitmask version as the follow-up |
-| 37 | Sudoku Solver | H | Constraint propagation + ordering heuristics |
-| 212 | Word Search II | H | **Trie + backtracking + pruning** |
-| 282 | Expression Add Operators | H | The `lastOperand` trick for `*` |
-| 301 | Remove Invalid Parentheses | H | BFS-by-level, or DFS with a computed removal count |
-| 489 | Robot Room Cleaner | H | *Premium.* **Google classic** |
-| 291 | Word Pattern II | H | *Premium.* Backtracking with two maps |
-| 425 | Word Squares | H | *Premium.* Trie-guided |
-| 465 | Optimal Account Balancing | H | *Premium.* **Google & Uber** — Splitwise as an algorithm; bitmask DP or backtracking |
-| 843 | Guess the Word | H | **Google pack.** Interactive + minimax. Unlike anything else on LeetCode |
-| 679 | 24 Game | H | Exhaustive with floating-point care |
+**Extra machinery.** constraint propagation · bitmask-encoded constraints · backtracking without coordinates · interactive/minimax search
+
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 51 | **N-Queens I & II** | H | LC 51, 52. Diagonal encoding; bitmask as the follow-up | Column, and two diagonal sets keyed by row+col and row-col, placed row by row. The two diagonal keys are the whole trick. Version II just counts. O(n!) time. |
+| 37 | **Sudoku Solver** | H | Constraint propagation + ordering heuristics | Backtracking with row, column and 3x3 box bit sets. Choosing the most-constrained empty cell first is the optimisation that makes hard boards fast. O(9^m) worst case. |
+| 212 | **Word Search II** | H | Trie + backtracking + pruning | Trie of the words plus board DFS carrying the trie node, deleting words from the trie once found so branches die. O(nm * 4^L) with pruning. |
+| 282 | **Expression Add Operators** | H | The lastOperand trick for * | Recurse over split points inserting +, - or *; carry both the running value and the LAST operand so multiplication can undo and reapply it. That last-operand carry is the whole problem. O(4^n) time. |
+| 301 | **Remove Invalid Parentheses** | H | BFS-by-level, or DFS with a computed removal count | BFS over strings by removal count so the first valid level is the minimum - or count the misplaced brackets first and DFS removing exactly that many, skipping consecutive duplicates. O(2^n) worst case. |
+| 489 | **Robot Room Cleaner** | H | PREMIUM. Google classic | Relative-coordinate backtracking with an exact go-back routine to restore position and heading. O(nm) time. |
+| 291 | **Word Pattern II** | H | PREMIUM. Backtracking with two maps | Backtrack over pattern characters trying every prefix of the remaining string, maintaining a bijection with both a forward map and a used-values set. O(n^m) time. |
+| 425 | **Word Squares** | H | PREMIUM. Trie-guided | Trie with per-node prefix word lists, filling the square row by row where the next prefix is read off the column already built. O(n * 26^L) with pruning. |
+| 465 | **Optimal Account Balancing** | H | PREMIUM. Google & Uber — Splitwise as an algorithm | Reduce to net balances per person, drop the zeros, then backtrack settling the first non-zero balance against every later opposite-signed one. The bitmask-over-subsets DP is the polynomial-in-2^n alternative. O(n!) or O(2^n * n). |
+| 843 | **Guess the Word** | H | Google pack. Interactive + minimax. Unlike anything else on LeetCode | Interactive minimax. Guess the word that MINIMISES the size of the largest possible remaining candidate group, then filter by the returned match count. Random guessing among candidates also passes but the minimax argument is the answer. O(n^2) per round. |
+| 679 | **24 Game** | H | Exhaustive with floating-point care | Recurse picking any two of the current numbers, applying all four operations (both orders for subtraction and division), and recursing on the reduced multiset. Compare against 24 with an epsilon because of floating point. O(1) - bounded search. |
 
 ---
 
-## §15 · DYNAMIC PROGRAMMING
+## §15 · DYNAMIC PROGRAMMING — the largest block
 
-> **The rule that decides this whole section:** if you cannot state **the state** in one English sentence, you do not have a solution — you have a vague feeling. Say `dp[i][j] = "the best X considering the first i of A and first j of B"` **out loud, before writing code, every single time.**
+**Derive it.** STATE FIRST, always. Write down what the smallest set of facts is that determines the rest of the problem, and the transition usually falls out. The tells: a decision at each index is linear DP; two strings is a 2-D table; "at most k of something" adds a dimension; n <= 20 means the state includes a bitmask; and if the answer depends on a range whose ends move independently, it is interval DP - where the reframing is usually to iterate over the LAST thing done rather than the first.
 
 ### A · Patterns
 
-| Family | The disguise | The state | Canonical |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| **Linear / decision at each index** | "at each step, take it or don't" | `dp[i]` = best using the first i | 198, 91, 746 |
-| **Fibonacci-shaped** | "how many ways to reach step n" | `dp[i] = dp[i-1] + dp[i-2]` | 70, 509 |
+| **STATE FIRST** | every DP problem | If you cannot state dp[i][j] in one English sentence, you do not have a solution — you have a vague feeling. Say it OUT LOUD before coding, every time |  |
+| **Linear / decision at each index** | "at each step, take it or don't" | dp[i] = best using the first i | 198, 91 |
+| **Fibonacci-shaped** | "how many ways to reach step n" | dp[i] = dp[i-1] + dp[i-2] | 70 |
 | **Kadane** | max/min subarray | running best ending here | 53, 152 |
-| **LIS family** | "longest increasing/chain", "minimum arrows/rooms after sorting" | `dp[i]` = best ending at i; or `tails[]` + bisect for O(n log n). **`tails` is not the actual subsequence** | 300, 354, 646 |
-| **0/1 knapsack** | pick items, capacity limit, **each used once** | `dp[i][w]`; 1-D version's capacity loop runs **backwards** | 416, 494, 1049 |
-| **Unbounded knapsack** | items reusable | 1-D loop runs **forwards** | 322, 518, 377 |
-| **Combinations vs permutations** | same items, different counting | **Purely loop order.** Items outer ⇒ combinations. Capacity outer ⇒ permutations | 518 vs 377 |
-| **Two-sequence grid** | "two strings, align them" | `dp[i][j]`: match / skip-left / skip-right. **Parent of a whole family** | 1143, 72, 583 |
-| **Palindrome / substring DP** | "longest palindromic subsequence", "min cuts" | `dp[i][j]` over the substring `[i..j]` | 516, 132, 5 |
-| **Interval DP** | **"choose a split point in a range"**, "which is processed LAST" | `dp[i][j] = best over k in (i,j)`. **Iterate by increasing length** | 312, 1039, 1130 |
-| **Grid DP** | paths, min falling path, obstacles | `dp[r][c]` from neighbours | 62, 64, 931 |
-| **State machine** | buy/sell/hold with cooldown or a transaction cap | `dp[i][state]` — enumerate the states first | 309, 188, 123 |
-| **Bitmask DP** | **n ≤ 20** and you must track a *subset* | `dp[mask]`; submask enumeration `for (s = m; s; s = (s-1)&m)` | 1349, 698, 847 |
-| **Tree DP** | see §11 | `dfs(node) -> tuple` | 337, 124, 968 |
-| **Digit DP** | "count numbers ≤ N with property P" | `dp[pos][tight][state]` | 233, 902 |
-| **DP + a data structure** | the transition needs a range query or a "best so far" | DP + heap / BIT / binary search | 1235, 315 |
-| **DP on the answer's shape** | "minimum number of X to cover Y" | Sometimes greedy beats DP — check | 45, 55 |
-| **Memo → tabulation** | any of the above | Write the memo first. Then convert **mechanically**. Do it every time until automatic | — |
+| **LIS family** | "longest increasing / chain" | dp[i] = best ending at i; or tails[] + bisect for O(n log n). tails is NOT the subsequence | 300, 354 |
+| **0/1 knapsack** | pick items, capacity limit, EACH USED ONCE | dp[i][w]; the 1-D capacity loop runs BACKWARDS | 416, 494 |
+| **Unbounded knapsack** | items reusable | 1-D loop runs FORWARDS | 322, 518 |
+| **Combinations vs permutations** | same items, different counting | PURELY LOOP ORDER. Items outer => combinations. Capacity outer => permutations | 518 vs 377 |
+| **Two-sequence grid** | "two strings, align them" | dp[i][j]: match / skip-left / skip-right. Parent of a whole family | 1143, 72 |
+| **Palindrome / substring DP** | "longest palindromic subsequence", "min cuts" | dp[i][j] over the substring [i..j] | 516, 132 |
+| **Interval DP** | "CHOOSE A SPLIT POINT in a range", "which is processed LAST" | dp[i][j] = best over k in (i,j). ITERATE BY INCREASING LENGTH | 312, 1039 |
+| **Grid DP** | paths, min falling path, obstacles | dp[r][c] from neighbours | 62, 64 |
+| **State machine** | buy/sell/hold with cooldown or a transaction cap | dp[i][state] — enumerate the states first | 309, 188 |
+| **Bitmask DP** | N <= 20 and you must track a SUBSET | dp[mask]; submask enumeration for (s = m; s; s = (s-1)&m) | 1349, 698 |
+| **Digit DP** | "count numbers <= N with property P" | dp[pos][tight][state] | 902 |
+| **DP + a data structure** | the transition needs a range query or best-so-far | DP + heap / BIT / binary search | 1235, 315 |
+| **Memo -> tabulation** | any of the above | Write the memo FIRST. Then convert mechanically. Every time, until automatic |  |
 
-### B · Tier 1–2
+### B · Tier 1–2  *(20)*
 
-| LC | Name | D | Teaches |
-|---|---|---|---|
-| 70/746 | Climbing Stairs / Min Cost | E | The base shape |
-| 198/213 | House Robber I & II | M | Circular = two runs |
-| 53/152 | Max Subarray / Product | M | Kadane |
-| 300 | Longest Increasing Subsequence | M | Both O(n²) and O(n log n) |
-| 322/518 | Coin Change I & II | M | Min vs count; loop order |
-| 377 | Combination Sum IV | M | **Loop order flips the meaning** |
-| 416 | Partition Equal Subset Sum | M | 0/1 knapsack |
-| 494 | Target Sum | M | Knapsack after a transform |
-| 1143 | Longest Common Subsequence | M | The grid parent |
-| 72 | Edit Distance | H | **Asked everywhere.** Three operations, three transitions |
-| 5/647/516 | Palindromic substring / count / subsequence | M | Expand vs DP |
-| 62/63/64 | Unique Paths I, II / Min Path Sum | M | Grid |
-| 91 | Decode Ways | M | Edge cases around `0` are the whole problem |
-| 139/140 | Word Break I & II | M/H | DP, then DP + backtracking |
-| 279 | Perfect Squares | M | Unbounded knapsack |
-| 121/122/309 | Stock I, II, with Cooldown | E/M | State machine |
-| 1137/509 | Tribonacci / Fibonacci | E | — |
-| 118/119 | Pascal's Triangle | E | Warm-up |
-| 1024 | Video Stitching | M | Interval greedy vs DP |
-| 337 | House Robber III | M | Tree DP |
-| 221 | Maximal Square | M | Grid DP with a min-of-three |
-| 837 | New 21 Game | M | **Google pack** — probability DP with a sliding-window sum |
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 70 | **Climbing Stairs / Min Cost** | E | LC 70, 746 — the base shape | dp[i] = dp[i-1] + dp[i-2], reduced to two rolling variables. Min Cost Climbing is the same recurrence with a cost added at each step. O(n) time, O(1) space. |
+| 198 | **House Robber I & II** | M | LC 198, 213. Circular = two runs | dp[i] = max(dp[i-1], dp[i-2] + a[i]), two rolling variables. For the circular version, run it twice - excluding the first house and excluding the last - and take the max. O(n) time. |
+| 53 | **Max Subarray / Max Product** | M | LC 53, 152 — Kadane | Kadane, which is the linear DP where the state is "best subarray ending here". Max Product tracks both the max and the min ending here. O(n) time. |
+| 300 | **Longest Increasing Subsequence** | M | Both O(n^2) and O(n log n) | The O(n^2) DP is dp[i] = 1 + max over j<i with a[j]<a[i]. The O(n log n) version maintains a tails array via binary search - and note the tails array is NOT itself a valid subsequence, only its length is right. |
+| 322 | **Coin Change I & II** | M | LC 322, 518. Min vs count; loop order | Unbounded knapsack: dp[amount] = 1 + min over coins of dp[amount-coin], iterating the amount in the OUTER loop for the minimum-count version. Coin Change II counts combinations, which needs the coin loop outside and the amount inside. O(n * amount) time. |
+| 377 | **Combination Sum IV** | M | LOOP ORDER FLIPS THE MEANING | Counts PERMUTATIONS, so the target loop must be outside and the coin loop inside - the exact mirror of Coin Change II. Getting this loop order right is the entire lesson. O(n * target) time. |
+| 416 | **Partition Equal Subset Sum** | M | 0/1 knapsack | 0/1 knapsack for a subset summing to half the total; if the total is odd, return false immediately. Iterate the capacity DOWNWARD so each item is used once. O(n * sum) time. |
+| 494 | **Target Sum** | M | Knapsack after a transform | Rewrite as a subset-sum: the positive subset must total (sum + target) / 2, which must be a non-negative integer. Then count subsets with 0/1 knapsack. O(n * sum) time. |
+| 1143 | **Longest Common Subsequence** | M | The grid parent | dp[i][j] = dp[i-1][j-1] + 1 on a match, else max(dp[i-1][j], dp[i][j-1]). Reduce to two rows. O(nm) time. |
+| 72 | **Edit Distance** | H | Asked everywhere. Three operations, three transitions | dp[i][j] = dp[i-1][j-1] on a match, else 1 + min of the three neighbours (replace, delete, insert). Know which neighbour is which operation. O(nm) time. |
+| 5 | **Palindromic substring / count / subsequence** | M | LC 5, 647, 516 — expand vs DP | Centre expansion is O(n^2) with O(1) space and is the expected answer. The interval DP dp[i][j] is O(n^2) space. Counting substrings uses the same expansion; the palindromic SUBSEQUENCE is a different, interval DP. |
+| 62 | **Unique Paths I, II / Min Path Sum** | M | LC 62, 63, 64 | dp[i][j] = dp[i-1][j] + dp[i][j-1], one row rolled. With obstacles, zero out the blocked cells; for min path sum, take the minimum instead of the sum. O(nm) time. |
+| 91 | **Decode Ways** | M | Edge cases around 0 are the whole problem | dp[i] = dp[i-1] if the single digit is valid, plus dp[i-2] if the two-digit pair is in 10..26. The zeros are where every bug lives. O(n) time. |
+| 139 | **Word Break I & II** | M | LC 139, 140. DP, then DP + backtracking | dp[i] = true if some j < i has dp[j] true and s[j..i) in the dictionary. Word Break II needs memoised DFS returning the list of sentences, not a boolean. O(n^2 * k) time. |
+| 279 | **Perfect Squares** | M | Unbounded knapsack | dp[i] = 1 + min over squares q <= i of dp[i-q]. Lagrange guarantees the answer is at most four, which is the mathematical shortcut. O(n sqrt(n)) time. |
+| 121 | **Stock I, II, with Cooldown** | M | LC 121, 122, 309 — state machine | One pass tracking the minimum so far. Version II sums positive differences. With cooldown it becomes a small state machine over hold, sold and rest. O(n) time. |
+| 221 | **Maximal Square** | M | Grid DP with a min-of-three | dp[i][j] = 1 + min of the three neighbours above and left when the cell is a 1. The side length squared is the area. O(nm) time. |
+| 1024 | **Video Stitching** | M | Interval greedy vs DP | Greedy jump-game shape: sweep the time axis tracking the furthest reachable end within the current clip, incrementing the count when you must commit. The interval DP also works. O(n log n) time. |
+| 337 | **House Robber III** | M | Tree DP | Tree DP returning (withThisNode, withoutThisNode) per node. O(n) time. |
+| 837 | **New 21 Game** | M | Google pack — probability DP with a sliding-window sum | Sliding-window probability DP: dp[i] = the average of the previous maxPts values, maintained with a running window sum. The subtlety is stopping the window from including states at or beyond K. O(n) time. |
 
-### C · Google / Uber L4
+### C · Google / Uber L4  *(21)*
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| **312** | Burst Balloons | H | **Interval DP, and the "which is LAST" mental flip.** The one to truly understand |
-| 1039 | Minimum Score Triangulation | M | Same skeleton |
-| 1130 | Minimum Cost Tree From Leaf Values | M | Interval DP **or** monotonic stack — see both |
-| 546 | Remove Boxes | H+ | Interval DP with a third dimension. Brutal and instructive |
-| 132 | Palindrome Partitioning II | H | Precompute `isPal`, then linear DP |
-| **10** | Regular Expression Matching | H | The two-sequence grid at its nastiest |
-| **44** | Wildcard Matching | H | Same family, greedy alternative exists |
-| 97 | Interleaving String | H | Two-sequence grid, restated |
-| 115 | Distinct Subsequences | H | Counting variant |
-| 188/123 | Best Time to Buy and Sell Stock IV / III | H | State machine with a transaction cap |
-| 1349 | Maximum Students Taking Exam | H | **Bitmask DP** over rows + submask enumeration |
-| 698 | Partition to K Equal Sum Subsets | M | Bitmask DP alternative |
-| 847 | Shortest Path Visiting All Nodes | H | Bitmask, but BFS not DP — know why |
-| 174 | Dungeon Game | H | **DP that must run backwards.** The direction *is* the insight |
-| **1235** | Maximum Profit in Job Scheduling | H | **Google pack.** DP + binary search |
-| 315 | Count of Smaller Numbers After Self | H | DP + BIT |
-| 552 | Student Attendance Record II | H | **Google pack** — state machine with a modulus |
-| 887 | Super Egg Drop | H+ | The inverted-DP reformulation. Famous |
-| 32 | Longest Valid Parentheses | H | DP **or** stack — do both |
-| 85 | Maximal Rectangle | H | Composition |
-| 1000 | Minimum Cost to Merge Stones | H+ | Interval DP with a k-step constraint |
-| 96/95 | Unique BSTs I & II | M | Catalan; II builds them |
-| 902 | Numbers At Most N Given Digit Set | H | **Digit DP** |
+**Extra machinery.** interval DP and the "which is LAST" flip · bitmask DP + submask enumeration · digit DP · DP that runs BACKWARDS · DP composed with a BIT, heap or binary search
+
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 312 | **Burst Balloons** | H | INTERVAL DP, and the "which is LAST" mental flip. The one to truly understand | INTERVAL DP, and the reframing is the whole problem: iterate over the LAST balloon to burst in each interval, so its neighbours are the interval boundaries. dp[i][j] = max over k of dp[i][k] + a[i]*a[k]*a[j] + dp[k][j] on padded arrays. O(n^3) time. |
+| 1039 | **Minimum Score Triangulation** | M | Same skeleton | Interval DP over the last triangle formed: dp[i][j] = min over k of dp[i][k] + dp[k][j] + a[i]*a[k]*a[j]. The same shape as 312. O(n^3) time. |
+| 1130 | **Minimum Cost Tree From Leaf Values** | M | Interval DP OR monotonic stack — see both | Interval DP over the split point, carrying the maximum leaf in each interval - or the O(n) monotonic stack solution that repeatedly removes the smallest leaf. O(n^3) or O(n). |
+| 546 | **Remove Boxes** | H | Interval DP with a third dimension. Brutal and instructive | Interval DP with an EXTRA dimension: dp[i][j][k] where k is the number of boxes equal to box[i] already attached to the left. The third dimension is what makes it solvable. O(n^4) time. |
+| 132 | **Palindrome Partitioning II** | H | Precompute isPal, then linear DP | Precompute an isPalindrome table, then dp[i] = min cuts for the prefix ending at i, taken over every j where s[j..i] is a palindrome. O(n^2) time. |
+| 10 | **Regular Expression Matching** | H | The two-sequence grid at its nastiest | dp[i][j] over pattern and text. The star case is the whole problem: it matches zero occurrences (dp[i][j-2]) or one more occurrence when the characters match (dp[i-1][j]). O(nm) time. |
+| 44 | **Wildcard Matching** | H | Same family; a greedy alternative exists | Same table shape but the star matches any sequence, so dp[i][j] = dp[i-1][j] or dp[i][j-1]. Simpler than 10 - do them adjacently to feel the difference. O(nm) time. |
+| 97 | **Interleaving String** | H | Two-sequence grid, restated | dp[i][j] = whether the first i of s1 and first j of s2 interleave to the first i+j of s3, taking a character from either side. The insight is that the third string index is DERIVED, not a dimension. O(nm) time. |
+| 115 | **Distinct Subsequences** | H | Counting variant | dp[i][j] = dp[i-1][j-1] + dp[i-1][j] on a match, else dp[i-1][j]. Reduce to one row iterated backwards. O(nm) time. |
+| 188 | **Best Time to Buy and Sell Stock IV / III** | H | LC 188, 123. State machine with a transaction cap | dp[k][i] = max(dp[k][i-1], price[i] + best) where best = max over j of dp[k-1][j] - price[j], maintained as a running maximum to keep it O(nk). When k exceeds n/2 it collapses to the unlimited-transactions greedy. |
+| 1349 | **Maximum Students Taking Exam** | H | BITMASK DP over rows + submask enumeration | Bitmask DP per row: enumerate valid seat masks with no adjacent seats, and for each, check compatibility with the previous row's mask on the diagonals. dp[row][mask]. O(rows * 4^cols) time. |
+| 698 | **Partition to K Equal Sum Subsets** | M | Bitmask DP alternative | Bitmask DP over subsets: dp[mask] = the remainder in the current bucket, filled greedily. The backtracking version with sorting and pruning is usually faster in practice. O(n * 2^n) time. |
+| 174 | **Dungeon Game** | H | DP THAT MUST RUN BACKWARDS. The direction IS the insight | DP BACKWARDS from the princess, because the health needed at a cell depends on the future, not the past. dp[i][j] = max(1, min(right, down) - grid[i][j]). Forward DP is the trap. O(nm) time. |
+| 1235 | **Maximum Profit in Job Scheduling** | H | Google pack. DP + binary search | Sort by end time, then dp[i] = max(dp[i-1], profit + dp[binary search for the last compatible job]). O(n log n) time. |
+| 315 | **Count of Smaller Numbers After Self** | H | DP + BIT | Merge sort counting, or a BIT over compressed ranks scanned right to left. O(n log n) time. |
+| 552 | **Student Attendance Record II** | H | Google pack — state machine with a modulus | DP over the state (absences so far, trailing lates), which is six states total, iterated n times with matrix exponentiation available for very large n. O(n) time. |
+| 887 | **Super Egg Drop** | H | The inverted-DP reformulation. Famous | dp[k][m] = the maximum number of floors testable with k eggs and m moves, using dp[k][m] = dp[k-1][m-1] + dp[k][m-1] + 1. Inverting the question from "minimum moves" to "maximum floors" is the trick. O(k * log n) time. |
+| 32 | **Longest Valid Parentheses** | H | DP OR stack — do both | Stack of indices seeded with -1, or two counter passes in both directions for O(1) space. The DP form is dp[i] = the length of the valid string ending at i. O(n) time. |
+| 1000 | **Minimum Cost to Merge Stones** | H | Interval DP with a k-step constraint | Interval DP with a third dimension for the number of remaining piles, and it is only possible when (n-1) mod (K-1) == 0. Check the feasibility condition before writing any DP. O(n^3 K) time. |
+| 96 | **Unique BSTs I & II** | M | LC 96, 95. Catalan; II builds them | Catalan numbers: dp[n] = sum over i of dp[i] * dp[n-1-i], choosing each value as the root. Version II builds the actual trees with the same recursion and memoisation on (low, high). O(n^2) time. |
+| 902 | **Numbers At Most N Given Digit Set** | H | DIGIT DP | DIGIT DP. Count numbers with fewer digits by direct powers, then walk the digits of N left to right accumulating the counts for digits strictly smaller, and stop when a digit is not in the set. O(digits * setSize) time. |
 
 ---
 
-## §16 · BIT MANIPULATION & MATH
+## §16 · BIT MANIPULATION & MATH — small on purpose
+
+**Derive it.** Bit tricks are recognition, not derivation - XOR cancels pairs, n & (n-1) clears the lowest set bit, n & -n isolates it, and a mask over n <= 20 elements is a set. The math side is different: ask whether the answer has a closed form (trailing zeroes, Catalan), whether it needs modular exponentiation, and whether the correct centre is the median rather than the mean.
 
 ### A · Patterns
 
-| Pattern | The disguise | The move |
-|---|---|---|
-| **XOR cancels pairs** | "everything appears twice except one" | XOR the whole array |
-| **XOR partitioning** | "two numbers appear once" | XOR all, isolate the lowest set bit, split into two groups |
-| **Counting bits per position** | "everything appears three times except one" | Sum bit counts mod 3 |
-| **`n & (n-1)`** | "count set bits", "is it a power of two" | Clears the lowest set bit |
-| **`n & -n`** | "lowest set bit" | Also the core of a Fenwick tree |
-| **Bitmask as a set** | **n ≤ 20**, subsets | `mask` is the set; `1<<i` is membership |
-| **Submask enumeration** | "partition a set", assignment problems | `for (s = m; s; s = (s-1) & m)` |
-| **Binary trie** | max XOR pair | See §12 |
-| **GCD / LCM** | "reduce a fraction", cycles, "meet again" | Euclid; `lcm = a/g*b` |
-| **Sieve** | "primes up to n", factor counts | Eratosthenes |
-| **Fast power / modular arithmetic** | "answer mod 1e9+7", huge exponents | Binary exponentiation |
-| **Reservoir sampling** | "pick uniformly from a stream of unknown length" | Keep item i with probability 1/i |
-| **Fisher–Yates** | "shuffle" | Swap with a random earlier index — **know why the naive shuffle is biased** |
-| **Median not mean** | "minimise total distance to a point" | The 1-D optimum is the median. **Prove it** |
-
-### B · Tier 1–2
-
-| LC | Name | D | Teaches |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| 136/137/260 | Single Number I, II, III | E/M | The three XOR tricks |
-| 191/338 | Number of 1 Bits / Counting Bits | E | `n&(n-1)`, then DP |
-| 231/342/326 | Power of Two / Four / Three | E | — |
-| 268 | Missing Number | E | XOR or sum |
-| 190 | Reverse Bits | E | — |
-| 371 | Sum of Two Integers | M | Add without `+` |
-| 7/9 | Reverse Integer / Palindrome Number | E | Overflow discipline |
-| 50 | Pow(x, n) | M | Fast power; negative exponent |
-| 172 | Factorial Trailing Zeroes | M | Count 5s |
-| 204 | Count Primes | M | Sieve |
-| 202 | Happy Number | E | Cycle detection |
-| 384 | Shuffle an Array | M | **Microsoft** — Fisher–Yates |
-| 528 | Random Pick with Weight | M | **Uber** |
-| 398 | Random Pick Index | M | Reservoir sampling |
-| 189 | Rotate Array | M | — |
-| 66 | Plus One | E | — |
+| **XOR cancels pairs** | "everything appears twice except one" | XOR the whole array |  |
+| **XOR partitioning** | "two numbers appear once" | XOR all, isolate the lowest set bit, split into two groups |  |
+| **Counting bits per position** | "everything appears three times except one" | Sum bit counts mod 3 |  |
+| **n & (n-1)** | "count set bits", "is it a power of two" | Clears the lowest set bit |  |
+| **n & -n** | "lowest set bit" | Also the core of a Fenwick tree |  |
+| **Bitmask as a set** | N <= 20, subsets | mask is the set; 1<<i is membership |  |
+| **Submask enumeration** | "partition a set", assignment problems | for (s = m; s; s = (s-1) & m) |  |
+| **GCD / LCM** | "reduce a fraction", cycles, "meet again" | Euclid; lcm = a/g*b |  |
+| **Sieve** | "primes up to n", factor counts | Eratosthenes |  |
+| **Fast power / modular arithmetic** | "answer mod 1e9+7", huge exponents | Binary exponentiation |  |
+| **Reservoir sampling** | "pick uniformly from a stream of unknown length" | Keep item i with probability 1/i |  |
+| **Fisher–Yates** | "shuffle" | Swap with a random earlier index — know WHY the naive shuffle is biased |  |
+| **Median not mean** | "minimise total distance to a point" | The 1-D optimum is the MEDIAN. Prove it |  |
+| **Matrix exponentiation** | a LINEAR recurrence with n up to 1e18 - "how many ways after n steps" | Write the recurrence as a transition matrix and raise it to the n-th power by fast exponentiation. Any DP whose state is a fixed-size vector qualifies | O(k^3 log n) |
 
-### C · Google / Uber L4
+### B · Tier 1–2  *(14)*
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| 421 | Maximum XOR of Two Numbers | M | Binary trie |
-| 1707 | Maximum XOR With an Element | H | + offline queries |
-| 296 | Best Meeting Point | H | *Premium.* **Google pack** — median, not mean. **Prove why** |
-| 899 | Orderly Queue | H | k=1 is rotations, k≥2 is a full sort. A one-line answer with a real proof |
-| 470 | Implement Rand10() Using Rand7() | M | Rejection sampling; expected-value analysis |
-| 382/398 | Linked List Random Node / Random Pick Index | M | Reservoir |
-| 780 | Reaching Points | H | Work backwards with modulo |
-| 372 | Super Pow | M | Modular exponentiation |
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 136 | **Single Number I, II, III** | E | LC 136, 137, 260 — the three XOR tricks | XOR everything - pairs cancel. Version II (every element three times) sums bits per position modulo 3, or uses the two-variable ones/twos state machine. Version III XORs everything then splits on any set bit of the result. O(n) time, O(1) space. |
+| 191 | **Number of 1 Bits / Counting Bits** | E | LC 191, 338. n&(n-1), then DP | Repeatedly clear the lowest set bit with n & (n-1) and count the iterations. Counting Bits uses dp[i] = dp[i >> 1] + (i & 1). O(setBits) / O(n). |
+| 231 | **Power of Two / Four / Three** | E | LC 231, 342, 326 | Power of two is n > 0 && (n & (n-1)) == 0. Power of four adds a mask check that the single bit is in an even position. Power of three has no bit trick - use the largest power of three divisibility test. O(1). |
+| 268 | **Missing Number** | E | XOR or sum | XOR all indices with all values; the missing one survives. O(n) time, O(1) space. |
+| 190 | **Reverse Bits** | E | — | Shift the result left and OR in the lowest bit of the input, 32 times. The divide-and-conquer swap of halves, then quarters, then bytes, is the O(log 32) flourish. |
+| 371 | **Sum of Two Integers** | M | Add without + | a XOR b is the sum without carries; (a AND b) << 1 is the carry. Loop until the carry is zero. Watch the language rules on negative shifts. O(1). |
+| 7 | **Reverse Integer / Palindrome Number** | E | LC 7, 9 — overflow discipline | Pop digits with modulo and push with multiplication, checking against INT_MAX/10 BEFORE each multiply rather than after. Palindrome Number reverses only half the digits. O(digits). |
+| 50 | **Pow(x, n)** | M | Fast power; negative exponent | Fast exponentiation: square the base and halve the exponent, multiplying into the result when the exponent is odd. Handle a negative exponent and the INT_MIN edge case. O(log n) time. |
+| 172 | **Factorial Trailing Zeroes** | M | Count 5s | Count factors of five: n/5 + n/25 + n/125 + ... Twos are always more plentiful, which is why only fives matter. O(log n) time. |
+| 204 | **Count Primes** | M | Sieve | Sieve of Eratosthenes, starting the inner loop at i*i and stepping by i. O(n log log n) time. |
+| 202 | **Happy Number** | E | Cycle detection | Cycle detection on the digit-square-sum function - either Floyd slow-fast or a seen set. O(log n) per step. |
+| 384 | **Shuffle an Array** | M | Microsoft — Fisher-Yates | Fisher-Yates: for i from the end down, swap a[i] with a random index in [0, i]. Swapping with a random index in [0, n) is the classic biased bug. O(n) time. |
+| 528 | **Random Pick with Weight** | M | Uber | Prefix sums of the weights plus a binary search for the first prefix exceeding a uniform draw. O(log n) per pick. |
+| 398 | **Random Pick Index** | M | Reservoir sampling | Reservoir sampling for a stream: on the kth matching index, replace the current answer with probability 1/k. O(n) per pick, O(1) space. |
+
+### C · Google / Uber L4  *(7)*
+
+**Extra machinery.** binary trie for XOR · rejection sampling with expected-value analysis · working backwards with modulo · proofs that a one-line answer is correct
+
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 421 | **Maximum XOR of Two Numbers** | M | Binary trie | Binary trie, or the prefix-set greedy: build the answer bit by bit from the top, and at each step test whether some pair can achieve the candidate prefix using a set of masked values. O(32n) time. |
+| 1707 | **Maximum XOR With an Element** | H | + offline queries | Offline - sort queries by limit and numbers ascending, inserting into the binary trie only up to the current limit before answering. O((n+q) log n) time. |
+| 296 | **Best Meeting Point** | H | PREMIUM. Google pack — median, not mean. PROVE WHY | The optimal meeting point is the MEDIAN, not the mean, in each dimension independently because the L1 distance separates. Collect the row and column coordinates, sort, take the medians. O(nm) time. |
+| 899 | **Orderly Queue** | H | k=1 is rotations, k>=2 is a full sort. A one-line answer with a real proof | If k is 1 you can only rotate, so the answer is the best of the n rotations. If k is 2 or more you can achieve any permutation, so the answer is the sorted string. Proving the k>=2 case is the interview. O(n^2) / O(n log n). |
+| 470 | **Implement Rand10() Using Rand7()** | M | Rejection sampling; expected-value analysis | Rejection sampling: generate a uniform value in 1..49 from two rand7 calls, reject anything above 40, and map the rest to 1..10. Rejecting rather than reusing the modulo is what keeps it uniform. O(1) expected. |
+| 780 | **Reaching Points** | H | Work backwards with modulo | Work BACKWARDS from the target using modulo instead of repeated subtraction, because the forward search branches and the backward one does not. Handle the boundary cases where one coordinate is already fixed. O(log(max)) time. |
+| 372 | **Super Pow** | M | Modular exponentiation | Fast exponentiation with the exponent given as a digit array: result = (result^10 * base^digit) modulo m, applied digit by digit. O(len * log 10) time. |
 
 ---
 
-## §17 · DESIGN & DATA-STRUCTURE COMPOSITION
+## §17 · DESIGN & COMPOSITION
+
+**Derive it.** Every design question is "one structure cannot do this alone, so which two". Name the operations and their required costs, find the one operation the obvious structure fails, then add the partner that fixes exactly that. Hashmap plus doubly linked list, array plus index map, two heaps, sorted structure plus binary search, buckets plus a pointer to the extreme. If a query needs a range aggregate under updates, that is a BIT or a segment tree.
 
 ### A · Patterns
 
-| Pattern | The disguise | The move |
-|---|---|---|
-| **Hashmap + doubly linked list** | **"O(1) get, put, and eviction"** | LRU. Sentinel head and tail — they remove every edge case |
-| **Hashmap + frequency buckets** | LFU, "max frequency stack" | Two maps: key→node, freq→list |
-| **Array + index map** | **"O(1) insert, delete, and getRandom"** | Swap-with-last on delete |
-| **Two stacks / two heaps** | min-stack, median, queue-from-stacks | Parallel structure carrying the auxiliary invariant |
-| **Sorted structure + binary search** | "value at time t", "closest to x" | Map key → sorted list of `(time, value)` |
-| **Difference map / sweep** | "how many booked at time t" | See §10 |
-| **Trie + payload** | autocomplete, file system | See §12 |
-| **Lazy deletion** | any structure needing "remove arbitrary" | Tombstones + a counter |
-| **Bucket by time** | hit counter, rate limiter, logger | Circular array of second-buckets. **The scaling follow-up is the interview** |
-| **Fenwick / BIT** | "range sum **with updates**" | `i & -i`; point update, prefix query. 15 lines — learn it cold |
-| **Segment tree** | range query + range update | Iterative point-update version is enough at L4. Lazy propagation: know it exists |
-| **Coordinate compression** | huge/sparse coordinate space | Map values to ranks first |
-
-### B · Tier 1–2
-
-| LC | Name | D | Teaches |
+| Pattern | The disguise — what you actually hear | The move | Cost |
 |---|---|---|---|
-| 146 | LRU Cache | M | **Be fastest at this. Under 15 minutes, cold.** Microsoft/Amazon/Uber |
-| 155 | Min Stack | M | — |
-| 380 | Insert Delete GetRandom O(1) | M | **Amazon/Uber** |
-| 232/225 | Queue/Stack from the other | E | — |
-| 705/706 | Design HashSet / HashMap | E | Chaining |
-| 622/641 | Design Circular Queue / Deque | M | **Uber/Microsoft** |
-| 348 | Design Tic-Tac-Toe | M | *Premium.* **Amazon/Microsoft** — OOD-flavoured |
-| 359 | Logger Rate Limiter | E | *Premium.* **Google/Uber** |
-| 362 | Design Hit Counter | M | *Premium.* **Uber — the scaling follow-up IS the interview** |
-| 981 | Time Based Key-Value Store | M | **Uber** |
-| 707 | Design Linked List | M | — |
-| 173 | BST Iterator | M | — |
-| 295 | Find Median from Data Stream | H | Two heaps |
+| **Hashmap + doubly linked list** | "O(1) GET, PUT, AND EVICTION" | LRU. Sentinel head and tail remove every edge case |  |
+| **Hashmap + frequency buckets** | LFU, "max frequency stack" | Two maps: key->node, freq->list |  |
+| **Array + index map** | "O(1) INSERT, DELETE, AND GETRANDOM" | Swap-with-last on delete |  |
+| **Two stacks / two heaps** | min-stack, median, queue-from-stacks | Parallel structure carrying the auxiliary invariant |  |
+| **Sorted structure + binary search** | "value at time t", "closest to x" | Map key -> sorted list of (time, value) |  |
+| **Bucket by time** | hit counter, rate limiter, logger | Circular array of second-buckets. THE SCALING FOLLOW-UP IS THE INTERVIEW |  |
+| **Lazy deletion** | any structure needing "remove arbitrary" | Tombstones + a counter |  |
+| **Fenwick / BIT** | "range sum WITH UPDATES" | i & -i; point update, prefix query. 15 lines — learn it cold |  |
+| **Segment tree** | range query + range update | Iterative point-update version is enough at L4. Lazy propagation: know it exists |  |
+| **Coordinate compression** | huge / sparse coordinate space | Map values to ranks first |  |
+| **Lazy propagation** | RANGE update AND range query together - "add v to [l,r]" then "sum/min over [l,r]" | Segment tree where a pending update sits at a node until a query forces it down. A BIT cannot do this; the moment updates are ranges rather than points, this is the structure | O(log n) |
+| **Sqrt decomposition** | range queries with an awkward operation no segment tree merges cleanly, or n small enough not to bother | Split into blocks of sqrt(n), keep an aggregate per block, and answer with whole blocks plus two partial ends. Much easier to write correctly under pressure than a segment tree | O(sqrt n) |
 
-### C · Google / Uber L4
+### B · Tier 1–2  *(12)*
 
-| LC | Name | D | Why |
-|---|---|---|---|
-| 460 | LFU Cache | H | Two-level bucketing |
-| 588 | Design In-Memory File System | H | *Premium.* **Google/Amazon** — tree + design |
-| 642 | Design Search Autocomplete System | H | *Premium.* **Google pack** |
-| 855 | Exam Room | H | **Uber.** Design + ordered set. Very on-brand |
-| 895 | Maximum Frequency Stack | H | **Uber** |
-| 900 | RLE Iterator | M | **Google pack** — lazy consumption |
-| 158 | Read N Characters Given read4 II | H | *Premium.* **Google pack.** The buffer state *between calls* is the whole problem |
-| 307 | Range Sum Query — Mutable | M | **BIT and segment tree — write both** |
-| 715 | Range Module | H | **Google pack** |
-| 729/731/732 | My Calendar I / II / III | M/H | **Google favourite** |
-| 1146 | Snapshot Array | M | Versioned values + binary search |
-| 432 | All O(1) Data Structure | H | Doubly linked list of frequency buckets |
-| 218 | The Skyline Problem | H+ | — |
+| LC | Name | D | The thing it teaches | The approach, and what it costs |
+|---|---|---|---|---|
+| 146 | **LRU Cache** | M | BE FASTEST AT THIS. Under 15 minutes, cold. Microsoft/Amazon/Uber | Hashmap to node plus a doubly linked list with sentinel head and tail. O(1) get and put. |
+| 155 | **Min Stack** | M | — | Second stack of running minima, or store (value, minSoFar) pairs. O(1) per operation. |
+| 380 | **Insert Delete GetRandom O(1)** | M | Amazon/Uber | Array plus a value-to-index map, deleting by swapping with the last element. O(1) all three operations. |
+| 232 | **Queue from Stacks / Stack from Queues** | E | LC 232, 225 | Two stacks with amortised O(1) pop: move from in to out only when out is empty. The queue-from-stacks direction makes one operation O(n). |
+| 705 | **Design HashSet / HashMap** | E | LC 705, 706 — chaining | Array of buckets with chaining, plus a load factor and a resize that rehashes. The interview is the collision strategy and when to resize. O(1) expected. |
+| 622 | **Design Circular Queue / Deque** | M | LC 622, 641. Uber/Microsoft | Fixed array with head index and size (rather than head and tail, which makes full and empty ambiguous). All operations O(1). |
+| 348 | **Design Tic-Tac-Toe** | M | PREMIUM. Amazon/Microsoft — OOD-flavoured | Do NOT scan the board. Keep per-row, per-column and two diagonal counters, adding +1 for player one and -1 for player two; a magnitude of n means a win. O(1) per move. |
+| 359 | **Logger Rate Limiter** | E | PREMIUM. Google/Uber | Map from message to the next allowed timestamp. O(1) per call, with the unbounded-memory follow-up being the real question. |
+| 362 | **Design Hit Counter** | M | PREMIUM. Uber — the scaling follow-up IS the interview | Circular array of 300 buckets holding (timestamp, count), overwriting a bucket whose timestamp is stale. The scaling follow-up - distributed, high volume - IS the interview. O(1) hit, O(300) count. |
+| 981 | **Time Based Key-Value Store** | M | Uber | Key to an append-only list of (timestamp, value) plus binary search. O(log n) per get. |
+| 173 | **BST Iterator** | M | — | Iterative inorder with the left spine held on a stack. O(1) amortised next, O(h) space. |
+| 295 | **Find Median from Data Stream** | H | Two heaps | Two heaps rebalanced by size. O(log n) add, O(1) find. |
+
+### C · Google / Uber L4  *(13)*
+
+**Extra machinery.** BIT and segment tree · interval TreeMap · versioned/snapshot structures · buffer state that survives between calls
+
+| LC | Name | D | Why it is here | The approach, and what it costs |
+|---|---|---|---|---|
+| 460 | **LFU Cache** | H | Two-level bucketing | Key to node, key to frequency, frequency to a doubly linked list, plus a minimum-frequency tracker. O(1) both operations. |
+| 588 | **Design In-Memory File System** | H | PREMIUM. Google/Amazon — tree + design | Directory tree of nodes with a children map and optional content; ls sorts the child names. O(path + children log children). |
+| 642 | **Design Search Autocomplete System** | H | PREMIUM. Google pack | Trie whose nodes carry the top three sentences below them, plus an input buffer committed on the hash character. O(k) per keystroke. |
+| 855 | **Exam Room** | H | Uber. Design + ordered set. Very on-brand | Sorted structure of occupied seats; on seat(), scan or maintain a max-heap of gaps keyed by (distance, index) with lazy deletion. The gap-heap version is the one that gets you the follow-up. O(log n) per call. |
+| 895 | **Maximum Frequency Stack** | H | Uber | Value to a stack of frequencies, frequency to a stack of values, plus a maximum-frequency counter. O(1) both. |
+| 900 | **RLE Iterator** | M | Google pack — lazy consumption | Store the run-length pairs and a pointer plus an offset into the current run, consuming whole runs at a time rather than one element at a time. O(1) amortised. |
+| 158 | **Read N Characters Given read4 II** | H | PREMIUM. Google pack. The buffer state BETWEEN CALLS is the whole problem | The state between calls is the whole problem: keep a four-character buffer and an offset, serving from it first and only calling read4 when it is exhausted. O(n) per call. |
+| 307 | **Range Sum Query — Mutable** | M | BIT and segment tree — WRITE BOTH | Fenwick tree (BIT) with point update and prefix-sum query, or a segment tree. Both O(log n) per operation; the BIT is half the code. |
+| 715 | **Range Module** | H | Google pack | TreeMap of disjoint intervals with merge on add and split on remove. O(log n) amortised. |
+| 729 | **My Calendar I / II / III** | H | LC 729, 731, 732. Google favourite | I is a sorted structure with a neighbour check; II tracks booked and double-booked sets; III is a difference map swept for the maximum. The three together are the interval-counting progression. O(log n) to O(n). |
+| 1146 | **Snapshot Array** | M | Versioned values + binary search | Per index, an append-only list of (snapId, value) plus binary search on get. snap() just increments a counter - copying the array is the trap. O(log n) per get. |
+| 432 | **All O(1) Data Structure** | H | Doubly linked list of frequency buckets | Doubly linked list of count-buckets, each holding a set of keys at that count, plus a key-to-bucket map. Increment moves a key to the neighbouring bucket. O(1) all operations. |
+| 218 | **The Skyline Problem** | H | — | Max-heap sweep with lazy deletion, emitting a point on every change of maximum. O(n log n) time. |
+
 ---
-
 # PART II — SYSTEM DESIGN
 
 **The recognition goal here is different.** In DSA you recognise *which algorithm*. In system design you recognise **which requirement implies which building block** — and then you survive the cross-question. Nobody fails an SD round for not knowing what a CDN is. They fail it on the follow-up.
@@ -9494,25 +9600,4583 @@ public class TokenBucketLimiter implements RateLimiter {
 
 ---
 
-## AMAZON LEADERSHIP PRINCIPLES
+## BEHAVIOURAL — CURATED COMPANIES LP
 
-LP is roughly half of the Amazon hiring signal and the bar-raiser can reject you on it alone. It has its own section in the tracker (16 principles, the follow-up probes, 10 anti-patterns and an annotated worked story). The story bank you fill in has these 15 slots:
+Behavioural is not one round with one framework. Every company on this ladder scores it, each against its own named rubric, and the story that wins at Amazon is not shaped like the story that wins at Google. **The story bank is one bank** — 15 stories, recut per room. That is the entire reason for putting the companies side by side.
 
-- **A problem nobody owned that you fixed anyway** — Ownership · Bias for Action. The clearest Ownership story. Cross a boundary, stay for the follow-through.
-- **The hardest thing you have ever debugged** — Dive Deep · Ownership. Must survive three levels of "how did you know?". Choose one you can still explain.
-- **A mistake you made that had real consequences** — Earn Trust · Ownership. Raised by you, not discovered. What process changed afterwards.
-- **A time you disagreed with your manager or a senior engineer** — Have Backbone · Earn Trust. BOTH halves: the disagreement AND the commitment afterwards.
-- **Your biggest professional failure** — Earn Trust · Learn and Be Curious. The other question that catches people. Real cost, real change.
-- **Delivering under a hard deadline or a blocking dependency** — Deliver Results · Bias for Action. Name what you cut. There must be a trade-off.
-- **A decision made with incomplete information** — Bias for Action · Are Right, A Lot. Use the two-way-door framing. Say what your rollback was.
-- **Something you simplified or automated away** — Invent and Simplify · Frugality. Quantify the reduction — steps, code, time, cost.
-- **A time you refused to ship something** — Insist on the Highest Standards. What the bar was, and what holding it cost.
-- **Improving something for the team or a downstream consumer** — Customer Obsession · Best Employer. Your "customer" can be internal. Say who, specifically.
-- **Something hard you taught yourself and then used** — Learn and Be Curious. Self-directed, applied, with an outcome.
-- **A time you were wrong and changed your mind** — Are Right, A Lot · Earn Trust. The disconfirmation step is the whole point.
-- **Mentoring or levelling someone up** — Hire and Develop the Best. One is enough at SDE2. Needs evidence they actually improved.
-- **A proposal bigger than your remit** — Think Big · Invent and Simplify. Even if rejected — what you learned about making the case.
-- **Spare — whatever your best story is that these prompts missed** — —. Every career has one that does not fit a template. Keep the slot.
+| Company | Rubric | Values | What it is worth |
+|---|---|---|---|
+| **Amazon** | Leadership Principles | 16 | Roughly half of the hiring decision. The largest behavioural weight on the ladder. |
+| **Google** | Googleyness & Leadership | 8 | One dedicated round of four or five, plus behavioural questions appended to technical rounds. It rarely saves a weak coder. It regularly sinks a strong one. |
+| **Microsoft** | Culture & the As-Appropriate round | 8 | Runs through every round, then concentrates into one: the As-Appropriate interviewer, who is usually the most senior person you meet and who effectively makes the call. |
+| **Adobe** | Core values: Genuine, Exceptional, Innovative, Involved | 5 | Lighter than Amazon or Microsoft, and concentrated in the hiring-manager round. The behavioural bar is not the hard part of an Adobe loop - but "why Adobe" is asked seriously and answered badly. |
+| **JP Morgan** | How We Do Business - the business principles | 6 | Two distinct gates. A pre-recorded video interview with no human in it, early, which filters before anyone reads your code. Then a hiring-manager and sometimes an MD conversation at the end. |
+| **Uber** | Cultural norms (2017 reset) | 8 | One dedicated round plus behavioural questions through the loop. Compressed, because the machine-coding round eats the schedule - which means each answer counts for more. |
+| **Salesforce** | Values: Trust, Customer Success, Innovation, Equality, Sustainability | 6 | Heavier than most product companies. Values are explicitly ranked and explicitly interviewed, usually in a dedicated round with a hiring manager or skip-level. |
+| **American Express** | The Blue Box Values | 6 | Moderate and consistent. Behavioural questions run through the loop and concentrate in a hiring-manager round. Closer to JPM than to a product company, with a little less ceremony. |
+| **Expedia** | Customer focus, data, collaboration | 4 | The lightest behavioural bar on the ladder. Concentrated in the hiring-manager round, conversational elsewhere. |
+| **Apple** | Craft, secrecy and claimed expertise | 5 | Highly variable by team. Some loops are almost entirely technical; others are heavily conversational. The consistent element is depth on whatever you claim. |
+| **Flipkart** | Audacity, Bias for Action, Customer First, Integrity, Inclusion | 5 | Light relative to the machine-coding round, which is the real gate. Behavioural sits with the hiring manager and a senior round. |
+
+> 11 companies · 77 individually drillable values and principles.
+
+### THE RECUT MATRIX — same story, eleven rooms
+
+You are not writing eleven story banks. You are writing fifteen stories and learning to recut them. The events do not change; the emphasis, the pronoun, the closing beat and the delivery speed do. This table is the whole reason for putting the companies side by side.
+
+| Room | Register | Add | Remove |
+|---|---|---|---|
+| **Amazon** | "I", relentlessly. Sixty percent action. One principle per story, named before you start. | Add: the number, the alternative you rejected, the decision you made alone. | Remove: the collaborator who dilutes your contribution. Remove the hedge. |
+| **Google** | "We" is allowed if your part is unambiguous. Forty percent action, twenty percent learning. | Add: the collaborators by role, the thing you got wrong, the moment you stepped back. | Remove: the conviction with no doubt in it. Remove anything dismissive about a colleague. |
+| **Microsoft** | Conversational. The learning goes inside the action, not after it. | Add: what you did not know at the start, the org boundary you crossed, the internal customer. | Remove: the intensity. Slow the delivery down. |
+| **Adobe** | Natural, slightly unpolished. Craft is the differentiator. | Add: one structural or naming decision, the maintenance outcome, someone you made better. | Remove: the over-rehearsed cadence. Let a real detail surface mid-sentence. |
+| **JP Morgan** | Formal. Control sentence mandatory. Speed is a liability unless paired with safety. | Add: what could have gone wrong, the rollback, who reviewed it, the named business client. | Remove: "we shipped it in two days" as a headline. Remove going around a process. |
+| **American Express** | JPM shape, less ceremony. Payments vocabulary is an asset you already have. | Add: the cardholder or merchant consequence, idempotency and reconciliation language. | Remove: nothing much - this is the JPM cut with a lighter touch. |
+| **Expedia** | Conversational, number-led. Low probe count, so volunteer everything. | Add: the measurement that settled it, the two-sided user trade-off. | Remove: nothing - but say more than you are asked, because nobody will draw it out. |
+| **Uber** | Ownership register, close to Amazon, plus a real ethics dimension. | Add: the disagreement with someone senior, the honest bad middle, the unassigned work. | Remove: the tidy arc. A story with no grind in it evidences nothing here. |
+| **Salesforce** | Values-named. Trust outranks the customer request and they test the ordering. | Add: the time you said no and found the safe route, the equality mechanism, the customer outcome. | Remove: delivery framed as success. Reframe as what the customer could then do. |
+| **Apple** | Depth register. Expect the follow-ups to keep descending. | Add: two more layers of mechanism, and a clean statement of where your knowledge stops. | Remove: any claim you cannot defend three levels down. Remove it from the resume too. |
+| **Flipkart** | Brisk. Bias for action is meant literally. | Add: the audacity, the incremental ship, the customer-facing consequence. | Remove: the careful staged register. It reads as slow here. |
+
+**One event, four rooms.** One event, four rooms. This is the same incident - the intermittent 5xx caused by connection-pool exhaustion - told for four different rubrics. Nothing is invented between versions; the emphasis moves.
+
+- **Amazon · Dive Deep** — "I correlated the 5xx timestamps against pod restarts, deploys and connection counts. My first hypothesis was a connection leak and it was wrong - the pool returned them fine. The actual mechanism was long transactions holding MVCC row versions, autovacuum falling behind, query latency creeping until requests queued past the pool timeout. I proved it by watching the in-use count return to baseline while latency stayed elevated." The mechanism, three levels down, in first person, with the falsification step.
+- **Google · Intellectual humility** — "I spent two days on the leak theory because it was the explanation I already knew how to check, not because the evidence pointed there. What ended it was writing down what I would expect to see if it were true. And I took the fix to the engineer who owned the reporting job rather than doing it myself, because she knew what it could tolerate." The error and the step-back, made central.
+- **JP Morgan · Control** — "The risk in the fix was that batching the job with commits between chunks changes its consistency, so we confirmed with the owner that a partial view was acceptable before changing anything. I added a pool-saturation alert with a threshold below the timeout, so the next occurrence is visible before it becomes 5xx rather than after." What could go wrong, who approved, how you would know.
+- **Salesforce · Trust** — "The forty errors a night were forty people whose checkout failed, most of whom did not retry. The operations team had been absorbing the complaints without telling us. Once I understood that, the alert I added was as much about them not having to be the monitoring as it was about the queue." The human on the other end, and the trust the fix restored.
+
+### THE TEN SHAPES — what to write, and what it covers
+
+One bank, many rubrics. A story that covers Amazon Ownership also covers Uber "we act like owners" and Microsoft accountability - but the closing beat is different in each room. This view is about gaps: a story shape you do not have anywhere is a hole across several companies at once.
+
+| Story shape | Covers | Note |
+|---|---|---|
+| **A problem nobody owned that you fixed anyway** | Amazon Ownership · Uber act like owners · Google emergent leadership · Microsoft accountability | The most reusable shape in the bank. If you write one story, write this one. |
+| **A time you were wrong** | Google intellectual humility · Microsoft growth mindset · Amazon Earn Trust · Adobe Genuine | The second most reusable, and the one candidates most often lack. Amazon needs it handled carefully; Google and Microsoft reward it directly. |
+| **You disagreed with someone senior** | Uber ideas over hierarchy · Amazon Have Backbone · Google collaboration · JPM integrity | Have both endings - the one where you were right and the one where you lost and committed. |
+| **You said no to a customer or stakeholder** | Salesforce Trust · JPM client service · Amex do what is right · Amazon Customer Obsession | The highest-value single story for Salesforce, and useful everywhere. |
+| **You went three levels deep on a mechanism** | Amazon Dive Deep · Apple depth · JPM operational excellence | The technical story. Pick one you understand to the bottom, because Apple and Amazon will both take it apart. |
+| **Something that was bad for months** | Uber persevere · Amazon Deliver Results · Amex will to win · Flipkart audacity | Almost nobody prepares this. The honest timeline is the whole value. |
+| **You made someone else better** | Adobe Involved · Microsoft One Microsoft · Salesforce Equality · Google collaboration | Mentoring, review, or a write-up someone used. Cheap to prepare, rare in candidates. |
+| **A production incident you caused or contributed to** | Microsoft accountability · JPM risk and control · Amex integrity · Amazon Earn Trust | Own it plainly. The mechanism you added afterwards is the half that scores. |
+| **A change you made safely to something critical** | JPM operational excellence · Amex risk · Uber act like owners | The bank-shaped story. Rollback, review, staged, monitored. |
+| **A measurement that ended an argument** | Expedia data over opinion · Amazon Are Right A Lot · Google bias to action | Cheap evidence beating expensive debate. Very transferable. |
+
+> Fifteen slots, ten shapes. Some shapes want two stories because they carry across four companies each. If a shape above has no story in your bank, that is a gap in several loops at once - and it is the most efficient thing you can fix.
+
+---
+
+### AMAZON · Leadership Principles
+
+**Rung two.** The most codified behavioural rubric in the industry, and the one that rejects the most otherwise-qualified engineers.
+
+**What it is worth.** Roughly half of the hiring decision. The largest behavioural weight on the ladder.
+
+**Where behaviour is scored**
+
+| Round | Time | What happens |
+|---|---|---|
+| **Every technical round** | 15–20 min at the end | Your coding interviewer also scores LP. They will ask one or two behavioural questions after the problem, and they write them up against named principles. |
+| **The dedicated behavioural round** | 45–60 min | Usually 3–5 stories, each with 4–8 follow-up probes. This is where depth is tested. |
+| **The bar-raiser** | 45–60 min | A trained interviewer from OUTSIDE the hiring team, with veto power. They are not measuring you against this team — they are measuring whether you raise the bar for Amazon overall. Often the hardest LP probing of the loop. |
+| **Debrief** | after | Every interviewer submits written notes tagged to principles. Gaps are visible: if nobody scored you on Dive Deep, that is itself a problem. |
+
+| What they are scoring | Why it matters |
+|---|---|
+| **What they write down** | Interviewers take near-verbatim notes as you speak. Vague answers produce vague notes, and vague notes do not get you hired. |
+| **They score the ACTION** | Not the outcome, not the team. What did YOU do, decide, and change? |
+| **They probe for depth** | The story is the setup. The follow-ups are the test. A polished story with thin follow-ups reads as rehearsed rather than lived. |
+| **They look for data** | "It got much faster" is a claim. "p99 went from 3.2s to 380ms" is evidence. Amazon is a metrics culture and this is scored. |
+| **They look for failure** | A candidate with no failure stories is either inexperienced or not self-aware. Both are rejections. |
+| **Coverage matters** | You are scored against specific principles. If you tell four Deliver Results stories, you have one data point across four rounds. |
+
+**Things nobody tells you**
+
+- The bar-raiser can reject you when every coding round passed. This happens constantly.
+- You will be interrupted mid-story. That is not rudeness — they are steering toward the part they need to score.
+- Two hours of stories from a 45-minute round means you told too few, too long. Aim for a 2-minute story plus 6 minutes of probing.
+- They can tell a fabricated story within three follow-ups, because invented detail does not survive "what exactly did you say to them?"
+
+**The story format they want**
+
+| Part | Budget | What goes in it |
+|---|---|---|
+| **S — Situation** | 15 sec · ~10% | Context only. Company, team, what the system did, what was wrong. Two or three sentences. If you are still describing the architecture at 60 seconds, you have lost them. |
+| **T — Task** | 15 sec · ~10% | YOUR specific responsibility. Not the team goal — the part you owned. "I was asked to…" or "I decided to…". |
+| **A — Action** | 60–75 sec · ~60% | THE BULK. What you did, in first person, in sequence. Decisions you made, alternatives you rejected and why, who you convinced, what you built. This is the only part that gets scored properly. |
+| **R — Result** | 20 sec · ~15% | Quantified. Latency, cost, revenue, incident count, hours saved, users affected. If you genuinely cannot measure it, say what you observed and be explicit that it was not measured. |
+| **L — Learning** | 10 sec · ~5% | Not formally in STAR, but Amazon expects it. What you would do differently. Volunteering this pre-empts the most common follow-up. |
+
+**Rules for this room**
+
+- Say "I", not "we". Amazon scores your actions. If a story genuinely was a team effort, say what YOUR part was inside it.
+- Present tense for the situation, past tense for actions. It keeps the narration crisp.
+- One story, one primary principle. Know which one you are answering before you start talking.
+- Have the numbers ready before the interview. Digging for them mid-story kills the pace.
+- Practise the 2-minute version AND the 30-second version. Sometimes they only want the headline.
+- Never read from notes. Rehearsed-but-natural is the target; recited is worse than rough.
+
+> **Timing.** Target: 2 minutes for the story, then 5–8 minutes of follow-ups. If you talk for five minutes uninterrupted, the interviewer has no time to probe, and un-probed stories score low because they cannot be verified.
+
+**The follow-up probes**
+
+*On your specific contribution*
+
+- What exactly was YOUR part in this?
+- Who else was involved, and what did they do?
+- What would have happened if you had not been there?
+- Was this your idea, or were you assigned it?
+
+*On the decision*
+
+- What alternatives did you consider?
+- Why did you reject the other options?
+- What data did you have at the time?
+- What did you get wrong in your initial assessment?
+- Who disagreed with you, and how did you handle it?
+
+*On depth (this is Dive Deep, and it is where people fail)*
+
+- Walk me through how it actually worked, technically.
+- How did you know that was the root cause and not a symptom?
+- What did the metric look like before and after?
+- How did you measure that?
+- What was the hardest bug, and how did you find it?
+
+*On difficulty and failure*
+
+- What was the hardest part?
+- What went wrong?
+- What would you do differently?
+- What did you learn?
+- If you had twice the time, what would you have changed?
+
+*On impact*
+
+- How do you know it worked?
+- What was the business impact?
+- Did it hold up over time?
+- What did it cost — in effort, in money, in complexity?
+
+*On people*
+
+- How did you convince them?
+- What did they say?
+- What happened to the relationship afterwards?
+- How did you handle it when someone pushed back?
+
+| Situation | What to do |
+|---|---|
+| **When you do not know a number** | Say so, then give the shape: "I do not have the exact figure, but it was roughly a 5x improvement and we stopped getting paged." Guessing precisely is worse than being honest about approximation. |
+| **When you are interrupted** | Stop and answer. Do not finish your sentence first. They are steering toward what they need to score. |
+| **When the probe goes deeper than your story** | Go with it. This is what Dive Deep looks like — you are being invited to demonstrate real understanding. Never bluff; they will keep going. |
+| **When you genuinely did not do the thing** | Say so and reframe: "I was not the one who built that, but I did X." Claiming someone else's work is the fastest rejection there is. |
+| **When they ask for a second example** | Have one. "Give me another time you did this" is standard, and having only one story per principle shows. |
+
+**Anti-patterns — 10 ways to lose this room**
+
+1. **Saying "we" throughout** — The single most common failure. Amazon scores individual actions. Record yourself and count — most people say "we" 20+ times in a two-minute story without noticing.
+   *FIX: rewrite every story in first person, then rehearse it. Where the work truly was collective, say "the team decided X; I owned Y and did Z."*
+2. **No numbers** — "It improved performance a lot" is unverifiable and scores as a claim, not a result.
+   *FIX: dig out the real figures now, before the interview. Latency, error rate, throughput, cost, hours, incident count, number of users. Any real number beats an adjective.*
+3. **A 6-minute story** — You have crowded out the follow-ups, and un-probed stories score low because they cannot be verified.
+   *FIX: time yourself. Two minutes. Cut the architecture description first — it is almost always the bloat.*
+4. **No failure stories** — A candidate who has never failed is either junior or not self-aware. Both are rejections, and "biggest failure" is asked in most loops.
+   *FIX: prepare two genuine failures with real consequences, and what changed in your behaviour afterwards. Not "I worked too hard."*
+5. **A fake failure** — "My weakness is that I care too much" is transparent and actively damaging — it reads as evasion.
+   *FIX: pick something that actually cost the business, that you actually caused, and that you actually fixed your process over.*
+6. **One story reused for everything** — Interviewers compare notes at debrief. The same story in three rounds is visible and reads as thin experience.
+   *FIX: build the coverage matrix. 12–15 distinct stories mapped across the principles.*
+7. **Blaming others** — "The other team gave us bad requirements" reads as lack of ownership, which is the LP they care most about.
+   *FIX: even when it was genuinely someone else's fault, the story is about what YOU did about it.*
+8. **Only success stories with tidy endings** — Real engineering is messy. Perfect arcs read as fabricated.
+   *FIX: include the part that went badly, the thing you missed, the pushback you got.*
+9. **Reciting** — A word-perfect story delivered at speed sounds memorised, and memorised sounds untrue.
+   *FIX: rehearse the STRUCTURE and the numbers, not the sentences. Different words each time is a good sign.*
+10. **Answering a different principle** — Being asked about Have Backbone and telling a Deliver Results story means the interviewer has nothing to score.
+   *FIX: before you speak, name the principle to yourself. If you are unsure what they are asking for, ask them to clarify — that is allowed and reads well.*
+
+**Leadership Principles**
+
+| # | Value | Freq | What it means | Strong | Weak |
+|---|---|---|---|---|---|
+| 1 | Ownership | high | You did something because it needed doing, not because it was assigned to you — and you stayed with it past the point where you could have handed it off. | You crossed a boundary deliberately, you can say why the easy option was wrong, and you stayed involved through the follow-through — including the unglamorous parts like documentation, alerting, or handover. | "I helped out another team when they asked." That is cooperation, not ownership. Ownership starts with nobody asking. |
+| 2 | Dive Deep | high | You went to the actual mechanism rather than stopping at the plausible explanation. | You can go three levels deeper than the story required, unprompted. You name the specific tool, the specific metric, the specific line of reasoning that eliminated the wrong hypothesis. | "I looked at the logs and found the issue." No mechanism, no elimination, no measurement. Also weak: a deep story you can no longer explain, which reads as someone else's work. |
+| 3 | Deliver Results | high | You shipped, under constraint, and the outcome was measurable. | A named constraint (time, people, dependency), an explicit trade-off you chose, and a quantified outcome that survived contact with reality. | A story where nothing went wrong. There was no obstacle, so there was nothing to demonstrate. |
+| 4 | Customer Obsession | high | You changed a technical decision because of what it did to the person using the thing. | Your "customer" can be an internal team, another service, or the on-call engineer downstream — say so explicitly and it counts. The strength is showing you traced a technical choice to a human consequence. | "I do not have customer contact." Reframe it. Every backend engineer has consumers of their API, their data or their alerts. |
+| 5 | Bias for Action | high | You moved without full information, having correctly judged that the decision was reversible. | You explicitly reasoned about reversibility, and you had a rollback. Using the two-way-door framing unprompted lands very well because it is Amazon's own language. | Recklessness dressed as speed — acting fast with no assessment of downside. And its opposite: a story where you gathered data for six weeks first. |
+| 6 | Earn Trust | high | You said the awkward true thing, or you admitted your own mistake before anyone caught it. | You raised it yourself before it was discovered, you owned the consequence without hedging, and you changed a process rather than just promising to be careful. | A mistake with no consequence, or one you were caught doing. Also weak: blaming the process rather than owning your part in it. |
+| 7 | Have Backbone; Disagree and Commit | high | You pushed back on someone with more authority, with evidence — and then, if you lost, you executed the decision properly anyway. | Named disagreement, evidence rather than opinion, an explicit escalation path, and then — crucially — genuine commitment afterwards. "I still think I was right, and I made it work anyway" is a very strong ending. | Only disagreeing (no commit half), or only committing (no backbone). Also weak: disagreeing with a peer. The signal is stronger when there was a power gradient. |
+| 8 | Invent and Simplify | med | You removed complexity, or you solved something in a way nobody on the team had considered. | A measurable reduction — lines of code, steps in a process, services, deploy time, manual work eliminated. Simplification with a number is very strong and very underused. | Describing normal feature work as invention. Also weak: a "simplification" that just moved complexity somewhere else, with no acknowledgement. |
+| 9 | Insist on the Highest Standards | med | You refused to ship something that met the requirement but not the bar, and you can say what the bar was. | A specific, articulable standard, a real cost paid to hold it, and — importantly — evidence you know when NOT to. Perfectionism without judgement is a negative signal. | "I am a perfectionist." Also weak: holding a standard nobody else agreed with and shipping late for no measurable benefit. |
+| 10 | Learn and Be Curious | med | You learned something hard because you were curious, not because you were told to. | Self-directed, applied to something real, with an outcome. "I learned X and then used it to do Y" beats "I read about X." | Listing courses or certifications with no application. Also weak: having no answer to "what are you learning right now?" — that question is nearly always asked. |
+| 11 | Are Right, A Lot | med | You made a judgement call that turned out well — and you actively looked for evidence you were wrong before committing. | Showing the disconfirmation step explicitly: "I went to the person most likely to disagree with me and asked them to break it." That single sentence is what this principle is looking for. | A story that is just "I was right." No process, no doubt, no seeking of other views — that reads as arrogance rather than judgement. |
+| 12 | Frugality | low | You achieved the outcome without the resources that seemed necessary. | A real number — cloud spend, licence cost, engineer-hours saved by automation, capacity reclaimed. Right-sizing over-provisioned infrastructure is a very natural version of this. | Cutting corners and calling it frugality. Frugality is about resourcefulness, not about lower quality. |
+| 13 | Hire and Develop the Best | low | You made someone else better, deliberately. | A named change in the other person's capability, with evidence. "They went from needing review on every PR to reviewing mine" is concrete. | "I answer questions when people ask." That is being helpful, not developing anyone. |
+| 14 | Think Big | low | You proposed something significantly beyond the immediate scope, and made the case for it. | An idea larger than your remit that you actually advanced — a proposal document, a prototype, a funded piece of work. Even "it was rejected, and here is what I learned about how to pitch" is usable. | A vision with no action attached. Thinking big without doing anything is just talking. |
+| 15 | Strive to be Earth's Best Employer | low | You improved the working environment for the people around you. | A concrete process change with a human outcome — reducing on-call burden, fixing a painful deploy, making onboarding shorter. | Generic statements about team culture with nothing you actually did. |
+| 16 | Success and Scale Bring Broad Responsibility | low | You considered the second-order consequences of a technical decision. | A specific second-order effect you noticed and acted on — data retention, a security implication, a downstream team you would have broken. | Abstract statements about responsibility with no decision attached. |
+
+<details><summary><b>Every value in full — how it is asked, the probes, your angle</b></summary>
+
+#### Amazon · 1. Ownership  *(high frequency)*
+
+> *How Amazon words it:* Leaders are owners. They think long term and do not sacrifice long-term value for short-term results. They act on behalf of the entire company, beyond just their own team. They never say "that is not my job."
+
+**Means.** You did something because it needed doing, not because it was assigned to you — and you stayed with it past the point where you could have handed it off.
+
+**What they are testing.** Will this person let a problem rot because it sits in someone else's column? Amazon is deliberately under-staffed relative to scope, so people who wait to be told are expensive.
+
+**How it is asked**
+
+- Tell me about a time you took on something outside your job responsibilities.
+- Describe a time you saw a problem nobody owned and acted on it.
+- Tell me about a time you had to make a decision with long-term consequences.
+- When have you sacrificed a short-term win for a long-term one?
+
+**The probes that follow**
+
+- Why was it your problem?
+- What would have happened if you had done nothing?
+- Did anyone tell you to stop?
+- How did you balance this against your actual assigned work?
+
+**Strong.** You crossed a boundary deliberately, you can say why the easy option was wrong, and you stayed involved through the follow-through — including the unglamorous parts like documentation, alerting, or handover.
+
+**Weak.** "I helped out another team when they asked." That is cooperation, not ownership. Ownership starts with nobody asking.
+
+**Pairs with.** Bias for Action · Dive Deep · Deliver Results
+
+**Your angle.** Your on-call and production experience is the natural source here. An incident you chased past the point of "restart it and go back to bed" is an Ownership story.
+
+#### Amazon · 2. Dive Deep  *(high frequency)*
+
+> *How Amazon words it:* Leaders operate at all levels, stay connected to the details, audit frequently, and are sceptical when metrics and anecdote differ. No task is beneath them.
+
+**Means.** You went to the actual mechanism rather than stopping at the plausible explanation.
+
+**What they are testing.** The single most-probed principle for engineers. They are testing whether you understand what you built or merely operated it. This is the one where bluffing is detected fastest.
+
+**How it is asked**
+
+- Tell me about the most complex problem you have debugged.
+- Describe a time the data contradicted what everyone believed.
+- Tell me about a time you found a root cause others had missed.
+- When did you have to learn something deeply and quickly?
+
+**The probes that follow**
+
+- Walk me through exactly how it worked.
+- How did you know that was the root cause and not a symptom?
+- What did you rule out, and how?
+- What tools did you use?
+- What did the numbers look like before and after?
+
+**Strong.** You can go three levels deeper than the story required, unprompted. You name the specific tool, the specific metric, the specific line of reasoning that eliminated the wrong hypothesis.
+
+**Weak.** "I looked at the logs and found the issue." No mechanism, no elimination, no measurement. Also weak: a deep story you can no longer explain, which reads as someone else's work.
+
+**Pairs with.** Ownership · Insist on the Highest Standards · Are Right, A Lot
+
+**Your angle.** A slow Postgres query you traced through EXPLAIN, or a Kubernetes issue where the obvious cause was wrong. These are your strongest raw material — you have felt them.
+
+#### Amazon · 3. Deliver Results  *(high frequency)*
+
+> *How Amazon words it:* Leaders focus on the key inputs for their business and deliver them with the right quality and in a timely fashion. Despite setbacks, they rise to the occasion and never settle.
+
+**Means.** You shipped, under constraint, and the outcome was measurable.
+
+**What they are testing.** Can you finish? Amazon has plenty of people with good ideas. This principle is about whether the thing actually landed.
+
+**How it is asked**
+
+- Tell me about a time you delivered under a tight deadline.
+- Describe a project where you had to overcome significant obstacles.
+- Tell me about a goal you achieved that seemed out of reach.
+- When did you have to push through despite setbacks?
+
+**The probes that follow**
+
+- What did you cut to make the date?
+- What was the setback and how did you get past it?
+- What did the result actually measure?
+- Did it hold up afterwards?
+
+**Strong.** A named constraint (time, people, dependency), an explicit trade-off you chose, and a quantified outcome that survived contact with reality.
+
+**Weak.** A story where nothing went wrong. There was no obstacle, so there was nothing to demonstrate.
+
+**Pairs with.** Bias for Action · Ownership · Insist on the Highest Standards
+
+**Your angle.** A release you got out despite a blocking dependency, or a migration you completed without downtime. Have the before/after numbers.
+
+#### Amazon · 4. Customer Obsession  *(high frequency)*
+
+> *How Amazon words it:* Leaders start with the customer and work backwards. They work vigorously to earn and keep customer trust. Although leaders pay attention to competitors, they obsess over customers.
+
+**Means.** You changed a technical decision because of what it did to the person using the thing.
+
+**What they are testing.** Amazon's founding principle, asked in almost every loop. For backend engineers the trap is having no customer story at all because "I do not talk to customers."
+
+**How it is asked**
+
+- Tell me about a time you went above and beyond for a customer.
+- Describe a time you used customer feedback to drive a change.
+- Tell me about a time you had to balance customer needs against business or technical constraints.
+- When did you say no to a customer?
+
+**The probes that follow**
+
+- Who was the customer, specifically?
+- How did you know that was what they needed?
+- What did it cost you to do that?
+- How did you measure whether it helped?
+
+**Strong.** Your "customer" can be an internal team, another service, or the on-call engineer downstream — say so explicitly and it counts. The strength is showing you traced a technical choice to a human consequence.
+
+**Weak.** "I do not have customer contact." Reframe it. Every backend engineer has consumers of their API, their data or their alerts.
+
+**Pairs with.** Ownership · Insist on the Highest Standards · Earn Trust
+
+**Your angle.** You have a frontend consuming your backend pods. Their experience of your latency or your error responses IS the customer relationship.
+
+#### Amazon · 5. Bias for Action  *(high frequency)*
+
+> *How Amazon words it:* Speed matters in business. Many decisions and actions are reversible and do not need extensive study. We value calculated risk taking.
+
+**Means.** You moved without full information, having correctly judged that the decision was reversible.
+
+**What they are testing.** Do you stall? Amazon distinguishes one-way doors (irreversible, deliberate) from two-way doors (reversible, act fast). Knowing the difference is the actual test.
+
+**How it is asked**
+
+- Tell me about a time you made a decision with incomplete information.
+- Describe a time you had to move fast on something.
+- Tell me about a calculated risk you took.
+- When did you act without waiting for approval?
+
+**The probes that follow**
+
+- What information were you missing?
+- What was the worst case if you were wrong?
+- How would you have reversed it?
+- Did it turn out to be the right call?
+
+**Strong.** You explicitly reasoned about reversibility, and you had a rollback. Using the two-way-door framing unprompted lands very well because it is Amazon's own language.
+
+**Weak.** Recklessness dressed as speed — acting fast with no assessment of downside. And its opposite: a story where you gathered data for six weeks first.
+
+**Pairs with.** Ownership · Deliver Results · Are Right, A Lot
+
+**Your angle.** A production hotfix you shipped behind a flag, or a config change you made during an incident with a rollback ready.
+
+#### Amazon · 6. Earn Trust  *(high frequency)*
+
+> *How Amazon words it:* Leaders listen attentively, speak candidly, and treat others respectfully. They are vocally self-critical, even when doing so is awkward. They benchmark themselves against the best.
+
+**Means.** You said the awkward true thing, or you admitted your own mistake before anyone caught it.
+
+**What they are testing.** "Vocally self-critical" is the operative phrase. They want someone who surfaces their own errors, not someone who is merely pleasant.
+
+**How it is asked**
+
+- Tell me about a time you made a mistake. What did you do?
+- Describe a time you had to give difficult feedback.
+- Tell me about a time you lost someone's trust and rebuilt it.
+- When have you been vocally self-critical?
+
+**The probes that follow**
+
+- Who did you tell, and how quickly?
+- What was the consequence?
+- How did they react?
+- What did you change afterwards?
+
+**Strong.** You raised it yourself before it was discovered, you owned the consequence without hedging, and you changed a process rather than just promising to be careful.
+
+**Weak.** A mistake with no consequence, or one you were caught doing. Also weak: blaming the process rather than owning your part in it.
+
+**Pairs with.** Ownership · Have Backbone · Insist on the Highest Standards
+
+**Your angle.** A production issue you caused. Everyone has one. The story is what you did in the first ten minutes and what you changed afterwards.
+
+#### Amazon · 7. Have Backbone; Disagree and Commit  *(high frequency)*
+
+> *How Amazon words it:* Leaders are obligated to respectfully challenge decisions when they disagree, even when doing so is uncomfortable or exhausting. Once a decision is determined, they commit wholly.
+
+**Means.** You pushed back on someone with more authority, with evidence — and then, if you lost, you executed the decision properly anyway.
+
+**What they are testing.** BOTH halves are scored, and most candidates only tell the first. Disagreeing is easy; committing wholeheartedly to a decision you argued against is the harder, rarer signal.
+
+**How it is asked**
+
+- Tell me about a time you disagreed with your manager.
+- Describe a time you challenged a decision you thought was wrong.
+- Tell me about a time you had to commit to a decision you disagreed with.
+- When did you stand alone on a position?
+
+**The probes that follow**
+
+- What exactly did you say?
+- What data did you bring?
+- What happened after the decision was made?
+- Did you turn out to be right?
+- How is your relationship with that person now?
+
+**Strong.** Named disagreement, evidence rather than opinion, an explicit escalation path, and then — crucially — genuine commitment afterwards. "I still think I was right, and I made it work anyway" is a very strong ending.
+
+**Weak.** Only disagreeing (no commit half), or only committing (no backbone). Also weak: disagreeing with a peer. The signal is stronger when there was a power gradient.
+
+**Pairs with.** Earn Trust · Are Right, A Lot · Dive Deep
+
+**Your angle.** This is one of the two questions that catches people. Prepare it specifically. A technical decision you argued against with data — architecture, tooling, a deadline.
+
+#### Amazon · 8. Invent and Simplify  *(med frequency)*
+
+> *How Amazon words it:* Leaders expect and require innovation and invention from their teams and always find ways to simplify. They are externally aware, look for new ideas from everywhere, and are not limited by "not invented here."
+
+**Means.** You removed complexity, or you solved something in a way nobody on the team had considered.
+
+**What they are testing.** Simplification counts as much as invention, and is far more available to a mid-level engineer. Deleting things is a legitimate answer.
+
+**How it is asked**
+
+- Tell me about a time you simplified a complex process.
+- Describe something you invented or an unconventional solution you found.
+- Tell me about a time you improved an existing system significantly.
+- When did you challenge how something had always been done?
+
+**The probes that follow**
+
+- What made it complex in the first place?
+- What did you remove?
+- Why had nobody done this before?
+- What did the simplification cost you?
+
+**Strong.** A measurable reduction — lines of code, steps in a process, services, deploy time, manual work eliminated. Simplification with a number is very strong and very underused.
+
+**Weak.** Describing normal feature work as invention. Also weak: a "simplification" that just moved complexity somewhere else, with no acknowledgement.
+
+**Pairs with.** Deliver Results · Dive Deep · Frugality
+
+**Your angle.** Automating something manual, collapsing duplicated code, or replacing a hand-rolled component with something standard. Your custom event-driven components are also an invention story if you can say why you built rather than bought.
+
+#### Amazon · 9. Insist on the Highest Standards  *(med frequency)*
+
+> *How Amazon words it:* Leaders have relentlessly high standards — many people may think these standards are unreasonably high. Leaders continually raise the bar and drive their teams to deliver high-quality products, services and processes. They ensure defects do not get sent down the line.
+
+**Means.** You refused to ship something that met the requirement but not the bar, and you can say what the bar was.
+
+**What they are testing.** Do you have a bar at all, and can you articulate it? Also: do you hold OTHERS to it, which is the harder half.
+
+**How it is asked**
+
+- Tell me about a time you were not satisfied with the quality of something.
+- Describe a time you pushed back on shipping.
+- Tell me about how you have raised the bar for your team.
+- When did you refuse to accept "good enough"?
+
+**The probes that follow**
+
+- What specifically was not good enough?
+- What was the cost of holding the line?
+- Did anyone push back?
+- How do you decide when good enough IS good enough?
+
+**Strong.** A specific, articulable standard, a real cost paid to hold it, and — importantly — evidence you know when NOT to. Perfectionism without judgement is a negative signal.
+
+**Weak.** "I am a perfectionist." Also weak: holding a standard nobody else agreed with and shipping late for no measurable benefit.
+
+**Pairs with.** Earn Trust · Dive Deep · Deliver Results
+
+**Your angle.** A code review where you blocked a merge, a test suite you insisted on, or an incident postmortem where you pushed for the real fix over the quick one.
+
+#### Amazon · 10. Learn and Be Curious  *(med frequency)*
+
+> *How Amazon words it:* Leaders are never done learning and always seek to improve themselves. They are curious about new possibilities and act to explore them.
+
+**Means.** You learned something hard because you were curious, not because you were told to.
+
+**What they are testing.** Amazon changes stack and domain frequently. They want people who self-direct their learning rather than waiting for training.
+
+**How it is asked**
+
+- Tell me about something you learned recently outside your job.
+- Describe a time you had to get up to speed on something unfamiliar, fast.
+- Tell me about a time your curiosity led to a better outcome.
+- How do you stay current?
+
+**The probes that follow**
+
+- Why that, specifically?
+- How did you go about learning it?
+- What did you do with it?
+- What are you learning right now?
+
+**Strong.** Self-directed, applied to something real, with an outcome. "I learned X and then used it to do Y" beats "I read about X."
+
+**Weak.** Listing courses or certifications with no application. Also weak: having no answer to "what are you learning right now?" — that question is nearly always asked.
+
+**Pairs with.** Dive Deep · Invent and Simplify
+
+**Your angle.** Kafka and microservices, which you are learning without using at work, is a genuinely good answer — self-directed, and you will have a built artefact to point at.
+
+#### Amazon · 11. Are Right, A Lot  *(med frequency)*
+
+> *How Amazon words it:* Leaders are right a lot. They have strong judgement and good instincts. They seek diverse perspectives and work to disconfirm their beliefs.
+
+**Means.** You made a judgement call that turned out well — and you actively looked for evidence you were wrong before committing.
+
+**What they are testing.** "Work to disconfirm their beliefs" is the part being tested. They want someone who seeks the counter-argument, not someone who is merely confident.
+
+**How it is asked**
+
+- Tell me about a time you had to make a judgement call without data.
+- Describe a time you were wrong. How did you realise?
+- Tell me about a decision you made that others disagreed with.
+- How do you know when your instinct is wrong?
+
+**The probes that follow**
+
+- What made you confident?
+- Who did you ask, and what did they say?
+- What would have changed your mind?
+- Have you been wrong about something similar?
+
+**Strong.** Showing the disconfirmation step explicitly: "I went to the person most likely to disagree with me and asked them to break it." That single sentence is what this principle is looking for.
+
+**Weak.** A story that is just "I was right." No process, no doubt, no seeking of other views — that reads as arrogance rather than judgement.
+
+**Pairs with.** Dive Deep · Have Backbone · Bias for Action
+
+**Your angle.** A design decision where you deliberately sought the strongest objection before committing.
+
+#### Amazon · 12. Frugality  *(low frequency)*
+
+> *How Amazon words it:* Accomplish more with less. Constraints breed resourcefulness, self-sufficiency and invention. There are no extra points for growing headcount, budget size or fixed expense.
+
+**Means.** You achieved the outcome without the resources that seemed necessary.
+
+**What they are testing.** Resourcefulness under constraint. For engineers this is usually cost, or doing something with existing tools rather than new infrastructure.
+
+**How it is asked**
+
+- Tell me about a time you achieved something with limited resources.
+- Describe a time you reduced cost.
+- Tell me about a time you had to do more with less.
+
+**The probes that follow**
+
+- What resource were you short of?
+- What did you give up?
+- What did it save, quantified?
+
+**Strong.** A real number — cloud spend, licence cost, engineer-hours saved by automation, capacity reclaimed. Right-sizing over-provisioned infrastructure is a very natural version of this.
+
+**Weak.** Cutting corners and calling it frugality. Frugality is about resourcefulness, not about lower quality.
+
+**Pairs with.** Invent and Simplify · Deliver Results
+
+**Your angle.** Right-sizing Kubernetes resource requests, or removing an unnecessary dependency. Both have measurable cost impact.
+
+#### Amazon · 13. Hire and Develop the Best  *(low frequency)*
+
+> *How Amazon words it:* Leaders raise the performance bar with every hire and promotion. They recognise exceptional talent and willingly move them throughout the organisation. Leaders develop leaders and take seriously their role in coaching others.
+
+**Means.** You made someone else better, deliberately.
+
+**What they are testing.** Rarely a primary question at SDE2, but a mentoring story is often accepted where one is asked. Have one, do not build three.
+
+**How it is asked**
+
+- Tell me about a time you mentored someone.
+- Describe how you have helped a colleague grow.
+- Tell me about feedback you gave that changed someone's performance.
+
+**The probes that follow**
+
+- What specifically did you do?
+- How did you know they improved?
+- What did you learn from mentoring them?
+
+**Strong.** A named change in the other person's capability, with evidence. "They went from needing review on every PR to reviewing mine" is concrete.
+
+**Weak.** "I answer questions when people ask." That is being helpful, not developing anyone.
+
+**Pairs with.** Earn Trust · Insist on the Highest Standards
+
+**Your angle.** Onboarding a new joiner, or a code review habit you taught that stuck. One story is enough at this level.
+
+#### Amazon · 14. Think Big  *(low frequency)*
+
+> *How Amazon words it:* Thinking small is a self-fulfilling prophecy. Leaders create and communicate a bold direction that inspires results. They think differently and look around corners for ways to serve customers.
+
+**Means.** You proposed something significantly beyond the immediate scope, and made the case for it.
+
+**What they are testing.** Hard to demonstrate genuinely at SDE2 and interviewers know that. A scoped-up proposal that you actually got funded counts.
+
+**How it is asked**
+
+- Tell me about a time you proposed something ambitious.
+- Describe a time you looked beyond the immediate problem.
+- Where do you think your current system should be in two years?
+
+**The probes that follow**
+
+- Who did you have to convince?
+- What happened to the idea?
+- What would it have taken to do it properly?
+
+**Strong.** An idea larger than your remit that you actually advanced — a proposal document, a prototype, a funded piece of work. Even "it was rejected, and here is what I learned about how to pitch" is usable.
+
+**Weak.** A vision with no action attached. Thinking big without doing anything is just talking.
+
+**Pairs with.** Invent and Simplify · Ownership
+
+**Your angle.** Your monolith-to-microservices analysis is exactly this — a case for a direction bigger than any one ticket, with an honest cost assessment.
+
+#### Amazon · 15. Strive to be Earth's Best Employer  *(low frequency)*
+
+> *How Amazon words it:* Leaders work every day to create a safer, more productive, higher performing, more diverse and more just work environment. They lead with empathy, have fun at work, and make it easy for others to have fun.
+
+**Means.** You improved the working environment for the people around you.
+
+**What they are testing.** Rarely asked below senior. If it comes up, a story about improving team process or supporting a struggling colleague works.
+
+**How it is asked**
+
+- Tell me about a time you improved your team's working environment.
+- Describe how you have supported a struggling teammate.
+
+**The probes that follow**
+
+- What changed as a result?
+- How did others respond?
+
+**Strong.** A concrete process change with a human outcome — reducing on-call burden, fixing a painful deploy, making onboarding shorter.
+
+**Weak.** Generic statements about team culture with nothing you actually did.
+
+**Pairs with.** Earn Trust · Hire and Develop the Best
+
+**Your angle.** If your on-call rota improved because of the alerting you fixed, that is this principle as well as Ownership.
+
+#### Amazon · 16. Success and Scale Bring Broad Responsibility  *(low frequency)*
+
+> *How Amazon words it:* We started in a garage, but we are not there any more. We are big, we impact the world, and we are far from perfect. We must be humble and thoughtful about even the secondary effects of our actions.
+
+**Means.** You considered the second-order consequences of a technical decision.
+
+**What they are testing.** Rarely asked below senior. Security, privacy, accessibility, environmental cost and data handling are the realistic angles for an engineer.
+
+**How it is asked**
+
+- Tell me about a time you considered the wider impact of a decision.
+- Describe a time you raised a concern about privacy, security or ethics.
+
+**The probes that follow**
+
+- Who else was affected?
+- What did you do about it?
+
+**Strong.** A specific second-order effect you noticed and acted on — data retention, a security implication, a downstream team you would have broken.
+
+**Weak.** Abstract statements about responsibility with no decision attached.
+
+**Pairs with.** Earn Trust · Are Right, A Lot
+
+**Your angle.** Data handling on the upstream Postgres data you work with, or a security concern you raised in review.
+
+</details>
+
+<details><summary><b>A worked story, annotated, with the probes answered</b></summary>
+
+**Question.** Tell me about a time you took ownership of something outside your remit.
+
+**Scoring against.** Ownership (primary) · Dive Deep and Bias for Action (secondary)
+
+**S — Situation (18 sec)**
+
+> Our backend runs as a monolith on Kubernetes, and we started getting paged two or three nights a week for pods restarting under load. It was logged as an infra issue and sat with the platform team for about three weeks with no progress.
+
+*Why it is shaped this way:* Short. Enough context to follow, no architecture tour. Note the concrete pain — "two or three nights a week" is already a number.
+
+**T — Task (12 sec)**
+
+> It was not my service and not my team, but I was on the on-call rota being woken up by it, so I decided to find the actual cause rather than keep acknowledging alerts.
+
+*Why it is shaped this way:* This is the Ownership hook: explicitly outside the remit, explicitly a decision to act. "I decided" not "I was asked."
+
+**A — Action (75 sec)**
+
+> I started with the pod events rather than the application logs, and saw exit code 137 — OOMKilled, not a crash. The container limit was 1GB and the JVM had no heap configuration, so it was sizing the heap from the node's memory, about 16GB, and blowing past the container limit. I reproduced it locally by running the image with a 1GB constraint and driving load at it. Two options: raise the limit, which was the fast fix everyone wanted, or make the JVM container-aware, which meant a config change plus a rollout. I pushed for the second because raising the limit would have masked it until the next traffic increase. I set MaxRAMPercentage to 75 and accounted for metaspace and thread stacks on top of heap. The platform lead pushed back — he thought it was a genuine leak. I took a heap dump under load and showed him the dominator tree: it was steady-state, no leak. He agreed and we shipped it. I also added a Grafana panel for container memory versus JVM heap, because nobody could see the gap.
+
+*Why it is shaped this way:* This is 60% of the runtime and it is all first-person decisions. Notice: a rejected alternative WITH the reason, a named disagreement and how it was resolved, and evidence rather than assertion. The heap dump is the Dive Deep moment.
+
+**R — Result (20 sec)**
+
+> Restarts went from roughly 15 a week to zero, and they stayed at zero through the next quarter including a traffic increase. We stopped being paged for it entirely. The dashboard later caught the same class of problem in a different service before it caused an incident.
+
+*Why it is shaped this way:* Numbers, durability ("stayed at zero"), and a second-order impact. The last sentence quietly demonstrates broader value.
+
+**L — Learning (12 sec)**
+
+> What I would do differently is escalate sooner. I sat with three weeks of bad sleep before deciding it was mine to fix. Now when something wakes me twice, I either own it or get it explicitly owned by someone else that week.
+
+*Why it is shaped this way:* A real, specific behaviour change. This pre-empts "what would you do differently?" and it is not a humblebrag.
+
+**The probes, and how they are answered**
+
+- **How did you know it was OOMKilled and not an application crash?** — Exit code 137 in kubectl describe, and the kernel OOM message in the node events. An application exception would exit 1 and leave a stack trace in the logs — there was none.
+- **Why not just raise the memory limit?** — It would have worked until the next traffic increase, and it would have cost us capacity across every replica. The JVM was misconfigured; raising the limit treats the symptom. I said that explicitly at the time.
+- **What did the platform lead actually say?** — He thought it was a memory leak and wanted a profiler run before any config change. That was a reasonable position — I just had evidence it was not. I took the heap dump, showed him retained size was flat across an hour under load, and he changed his mind in about ten minutes.
+- **What was the hardest part?** — Convincing people it was worth fixing properly when a one-line limit increase would have stopped the pages that night. The pressure to take the fast fix was real.
+- **How did you measure the result?** — Restart count from the kube-state metrics, weekly. It was about 15 a week before and zero after, sustained over the following quarter.
+- **Would this have been caught earlier with better process?** — Yes. We had no alert on container memory versus heap, and no default JVM configuration in the base image. I fixed the first; the second is still open, and I would push for it if I were doing it again.
+
+**Why this one works here.** This story works because: it names a decision made against the easy option, it contains a disagreement resolved with evidence, every claim has a number behind it, the learning is a genuine behaviour change, and the follow-ups go deeper than the story without running out of material. It also happens to be true for the person telling it — which is why the probes are answerable.
+
+</details>
+
+**The schedule for this room**
+
+| When | What | Note |
+|---|---|---|
+| Weeks 2–4 | Write stories 1–5 | Draft only. Get them on paper with real numbers dug out of Jira, Grafana, git history — whatever you still have access to. Do this while you are still employed. |
+| Weeks 5–8 | Write stories 6–11 | By now you know the format. Faster. |
+| Weeks 9–11 | Write stories 12–15, build the coverage matrix | Check every high-frequency principle has at least two stories. |
+| Week 12 | Rehearse all 15 out loud, recorded | Two minutes each. Count how many times you say "we". Rewrite the ones over 2:30. |
+| Week 13 | Probe drill | Have someone ask you the follow-ups cold. If you cannot answer six probes on a story, it is not ready. |
+| Ongoing | Two per Sunday | This is the schedule that actually gets it done. Fifteen stories in one weekend does not work. |
+
+**How this room differs.** Against Google: Amazon wants "I", Google tolerates "we". Amazon rewards conviction (Are Right, A Lot); Google rewards changing your mind (intellectual humility). The same story, told the same way, scores differently in the two rooms.
+
+> *Source and confidence.* Fully published. Amazon lists all 16 Leadership Principles with official wording on its jobs site, and the bar-raiser programme is publicly acknowledged. The scoring detail here comes from candidate reports and published interviewer guidance.
+
+---
+
+### GOOGLE · Googleyness & Leadership
+
+**Rung three.** Scored by a hiring committee that never met you, from written notes - so the job is to hand your interviewer sentences worth writing down.
+
+**What it is worth.** One dedicated round of four or five, plus behavioural questions appended to technical rounds. It rarely saves a weak coder. It regularly sinks a strong one.
+
+**Where behaviour is scored**
+
+| Round | Time | What happens |
+|---|---|---|
+| **Recruiter screen** | 30 min | Motivation, level calibration, timeline. Lightly behavioural, but "why Google" and "why now" are logged. |
+| **Googleyness & Leadership round** | ~45 min | The dedicated round. Three to five behavioural questions, often including hypotheticals ("what would you do if..."), scored against a rubric on ambiguity, collaboration, humility and emergent leadership. |
+| **Every technical round** | 5-10 min at the end | Most interviewers close with one behavioural question. It is short, it is still written up, and a flat answer here is a flat data point in your packet. |
+| **Hiring committee** | after, without you | Googlers who did not interview you read the written feedback and the scores. They can and do reject candidates whose interviewers all said hire. Notes that say "candidate was collaborative" are worthless to them; notes that quote you are not. |
+| **Team match** | after HC | A separate stage. You can pass the committee and still wait months. Behaviour matters again here, informally, in conversations with prospective managers. |
+
+| What they are scoring | Why it matters |
+|---|---|
+| **Written notes, read by strangers** | This is the structural difference from Amazon. Give the interviewer a specific, quotable line: a number, a decision, a sentence you actually said. Vague warmth does not survive transcription. |
+| **Scored on a scale, not a verdict** | Interviewers submit a rating - strong hire through strong no-hire - plus prose. A middling behavioural score next to a middling coding score is a reject even with no red flag anywhere. |
+| **Emergent leadership, not authority** | The named construct. Did you step up when the gap appeared, and - this is the half everyone misses - did you step back when someone better placed took over? |
+| **Intellectual humility is measured directly** | Google research made this famous: the willingness to admit error and be persuaded is treated as a predictor, not a weakness. "I was wrong, here is what changed my mind" scores positively here. At Amazon that same sentence needs careful handling. |
+| **Hypotheticals are fair game** | "What would you do if a teammate consistently missed deadlines?" Google asks situational questions more than Amazon does. Answer with a real precedent if you have one, then the hypothetical: "here is what I did last time, and here is what I would do here." |
+| **No red flags is a requirement, not a bonus** | The committee is scanning for reasons to say no. One story where you talk about a colleague dismissively can end it regardless of your coding. |
+
+**Things nobody tells you**
+
+- Roughly three of four rounds strong with no red flags is the shape that passes. A single strong-no-hire on Googleyness is usually terminal.
+- You will not be interrupted as often as at Amazon. That is not approval - it means the interviewer is taking notes, and silence is them writing.
+- The committee sees your packet cold. Anything that needed your tone of voice to land did not survive the trip.
+- The internal name and scope of this round has changed more than once. The attributes below are stable across every version of it; the label is not.
+
+**The story format they want**
+
+| Part | Budget | What goes in it |
+|---|---|---|
+| **S - Situation** | 20 sec · ~15% | Slightly more context than Amazon allows, because Google interviewers are often outside your domain and the committee certainly is. One sentence of "why this was hard" belongs here. |
+| **T - Task** | 15 sec · ~10% | What was ambiguous about it. Google’s favourite setup is a problem with no clear owner and no clear definition - say which part was undefined. |
+| **A - Action** | 50-60 sec · ~40% | What you did, and crucially who you did it with. Naming the collaboration is scored; at Amazon it dilutes the story, here it is the point. Say what you rejected and why. |
+| **R - Result** | 20 sec · ~15% | Quantified, same as everywhere. Add the second-order effect if there was one - did the approach get reused, did the team keep the practice? |
+| **L - Learning** | 25 sec · ~20% | The big one. Amazon treats this as a nice extra. Google treats it as evidence of intellectual humility, which is a named attribute. "What I would do differently" answered thinly is a missed score, not a missed flourish. |
+
+**Rules for this room**
+
+- "We" is permitted here in a way it is not at Amazon - but your own contribution must still be unambiguous. The formula that works: "the team decided X; I argued for it because Y, and I built Z."
+- Volunteer one thing you got wrong in every story. Not a fake weakness - a real call that did not work. This is the single highest-scoring habit in a Google behavioural round.
+- Name the people you disagreed with respectfully. Contempt for a colleague, even a deserving one, is the most common red flag written up.
+- Have one story where you stepped BACK - handed something over, deferred to someone better placed, killed your own proposal. Almost nobody prepares this and it is half of emergent leadership.
+- Prepare for hypotheticals. Two or three "what would you do if" answers, each anchored to something you actually did.
+- Speak in specifics the interviewer can copy down. "Latency went from 3.2s to 380ms" is transcribable. "It got much better" is not.
+
+> **Timing.** Target two to two and a half minutes, then follow-ups. Google interviewers usually let you finish, so policing the length is on you. A five-minute answer in a 45-minute round means they get three questions instead of five, and a thin packet is a reject.
+
+**The follow-up probes**
+
+*On ambiguity*
+
+- What was unclear when you started?
+- How did you decide where to begin?
+- What did you do when you realised the requirements were wrong?
+- How much of this was defined for you, and how much did you define?
+
+*On collaboration and disagreement*
+
+- Who did you work with on this?
+- Tell me about someone who disagreed with you.
+- How did you handle it when they did not come around?
+- What would that person say about working with you?
+- Did you ever hand something over? Why?
+
+*On humility (this is the scored one)*
+
+- What did you get wrong?
+- When did you change your mind, and what changed it?
+- What feedback have you received that was hard to hear?
+- Tell me about a time someone else had a better idea than yours.
+
+*On impact and users*
+
+- Who benefited from this, and how do you know?
+- What did the users actually experience before and after?
+- Did it hold up? Is it still running?
+- What was the cost - to you, to the team, to the codebase?
+
+*Hypotheticals*
+
+- What would you do if a teammate was consistently missing deadlines?
+- How would you handle being assigned a project you thought was a bad idea?
+- You disagree with your manager on a technical decision. What happens next?
+- You inherit a system nobody understands and it breaks. Walk me through the first day.
+
+| Situation | What to do |
+|---|---|
+| **When asked what you got wrong** | Answer immediately and concretely. Hesitation here reads as either no self-awareness or a rehearsed evasion, and both get written up. Have the answer ready before the question. |
+| **When given a hypothetical** | Anchor it: "the closest thing I have actually done is X, and it taught me Y - so here I would...". A pure hypothetical answer is a guess; an anchored one is evidence. |
+| **When they ask what a colleague would say about you** | Give the real critical version, not the flattering one. "She would say I push for decisions too early, and she has told me so" scores far above "she would say I am collaborative." |
+| **When there is silence** | Let it sit. They are writing. Filling the gap with more talking is how good stories get diluted. |
+| **When you genuinely do not have the story** | Say so and offer the nearest real one. Google interviewers accept "I have not faced exactly that; the closest is..." - inventing does not survive the follow-ups. |
+
+**Anti-patterns — 8 ways to lose this room**
+
+1. **Only stepping up, never stepping back** — Emergent leadership is a two-sided construct at Google. Every story ends with you heroically taking over. That reads as someone who cannot be a teammate, only a lead.
+   *FIX: prepare one story where you handed something off, deferred, or killed your own idea - and say why that was the right call.*
+2. **No admitted error anywhere** — Four stories, zero mistakes. Intellectual humility is a named, measured attribute, and this pattern scores against you directly.
+   *FIX: put one genuine, consequential error into every story’s Learning section. Not "I should have documented it better."*
+3. **Contempt for a colleague** — "The other team was incompetent so I rewrote it." One sentence like this is the most commonly written red flag in the whole loop.
+   *FIX: describe the constraint the other person was under, then what you did. You can say the code was bad. Do not say the person was.*
+4. **Amazon-shaped answers at Google** — Relentless "I", conviction with no doubt, no collaborators named. It reads as an aggressive lone operator, which is exactly the profile Google filters for.
+   *FIX: same stories, recut. Add the people, add the doubt, add the handover. Keep the numbers.*
+5. **Vague, untranscribable language** — "I took ownership and drove alignment." The committee reads this and learns nothing. Notes made of abstractions score as a weak interview even if the conversation felt warm.
+   *FIX: one number, one named decision, one sentence you actually said, per story.*
+6. **Treating the hypothetical as a trick** — Freezing or deflecting on "what would you do if...". These are standard here and refusing to engage reads as rigidity.
+   *FIX: prepare three. Deadline-missing teammate, disagreeing with your manager, inheriting an unowned mess.*
+7. **"Why Google" answered with scale** — "Because of the scale and the impact." Everyone says it. It is not a reason, it is a description.
+   *FIX: name a specific system, team or published paper, and connect it to something you have actually built.*
+8. **Talking past the round** — A five-minute answer starves the packet. Three deep questions is a thinner file than five, and the committee sees the file, not the warmth.
+   *FIX: two minutes, then stop talking and let them probe.*
+
+**Googleyness & Leadership**
+
+| # | Value | Freq | What it means | Strong | Weak |
+|---|---|---|---|---|---|
+| 1 | Comfort with ambiguity | high | You made real progress on something nobody had specified, and you can explain how you chose where to start. | You name the specific unknowns, the cheapest experiment that would resolve one of them, and the fact that you went and ran it. You are comfortable saying you started in the wrong place and corrected. | "I asked my manager for clarification and then did what he said." That is a story about someone else resolving the ambiguity. Also weak: a story where nothing was ever actually unclear. |
+| 2 | Intellectual humility | high | You changed your mind because the evidence changed, and you can say so without discomfort. | A real, consequential error with a named cost, followed by a specific and durable change in behaviour. Bonus: you credit the person who corrected you and describe their argument accurately. | "I was wrong about a variable name." Trivial. Or a humblebrag error - "I was wrong to work so many hours." Or, worst, a long defence of why you were actually mostly right. |
+| 3 | Bias to action | high | Faced with uncertainty you ran the cheap experiment instead of scheduling a meeting about it. | You show the risk calculation, not just the speed. A small reversible step taken quickly, with a stated way to undo it, beats a large confident one. | Recklessness dressed as decisiveness - shipping without a rollback, going around a process because it was slow, with no acknowledgement of the risk you took. |
+| 4 | Collaboration and no ego | high | The people around you did better work because you were there, and you can name them. | You describe the other person’s constraints accurately and sympathetically, and you changed something about your own behaviour rather than only theirs. You can name what they were right about. | The colleague is an obstacle with no interior life. "They were resistant to change." "The other team was incompetent." Every such sentence is a written note. |
+| 5 | Emergent leadership | high | You led when nobody appointed you, and you stopped leading when it was right to. | Both halves in one story: you took it on because you had the context, and you handed it back the moment somebody better placed could carry it. You describe the handover as a decision, not an exit. | Every story ends with you taking over and staying in charge. It reads as a person who cannot be led, which is a specific and disqualifying profile here. |
+| 6 | User focus | med | You can name the human being affected by your work and what changed for them. | You translate every metric into an experience. "Forty 5xx a night" becomes "about forty people an evening got an error page mid-checkout, and most of them did not try again." | Pure system language throughout. Latency, throughput, error rate, and no person anywhere in the story. |
+| 7 | Challenging the status quo | med | You changed something everyone had accepted, and you brought people with you. | You state the opposing argument fairly and well, and the change survived you. Steel-manning the other side is unusual and scores immediately. | A complaint with no outcome, or a change you forced through that reverted the moment you left. Also weak: describing the resistance as irrational. |
+| 8 | Doing the right thing | low | You raised something inconvenient because it was correct to raise it. | Real cost - a slipped date, an uncomfortable conversation with someone senior, a decision that went against you and that you accepted. Proportionate, not dramatic. | A story with no cost, so nothing was actually risked. Or a whistleblower narrative that suggests you escalate before you talk to anyone. |
+
+<details><summary><b>Every value in full — how it is asked, the probes, your angle</b></summary>
+
+#### Google · 1. Comfort with ambiguity  *(high frequency)*
+
+> *How Google words it:* Google describes thriving without complete information, and being energised rather than blocked by problems that are not yet well defined.
+
+**Means.** You made real progress on something nobody had specified, and you can explain how you chose where to start.
+
+**What they are testing.** The most reliably asked Googleyness theme, because Google’s own work looks like this. They are testing whether an undefined problem makes you productive or paralysed.
+
+**How it is asked**
+
+- Tell me about a project with unclear requirements.
+- Describe a time you had to make a decision without enough information.
+- How do you start on something nobody has scoped?
+- Tell me about a time the goal changed halfway through.
+
+**The probes that follow**
+
+- What was actually undefined?
+- How did you decide where to begin?
+- What did you do when it turned out you had guessed wrong?
+- Who did you go to for the missing context?
+
+**Strong.** You name the specific unknowns, the cheapest experiment that would resolve one of them, and the fact that you went and ran it. You are comfortable saying you started in the wrong place and corrected.
+
+**Weak.** "I asked my manager for clarification and then did what he said." That is a story about someone else resolving the ambiguity. Also weak: a story where nothing was ever actually unclear.
+
+**Pairs with.** Bias to action · Intellectual humility
+
+**Your angle.** An incident with no obvious owner is the ideal raw material, and you have them - an intermittent production problem where two teams each thought it was the other one.
+
+#### Google · 2. Intellectual humility  *(high frequency)*
+
+> *How Google words it:* Google has publicly identified the willingness to admit error and to be persuaded by better evidence as one of the attributes it selects for.
+
+**Means.** You changed your mind because the evidence changed, and you can say so without discomfort.
+
+**What they are testing.** The attribute Google talks about most in public and the one candidates handle worst, because every other company has trained them to project certainty. Here, admitting error is the score.
+
+**How it is asked**
+
+- Tell me about a time you were wrong.
+- When did someone change your mind?
+- What is a piece of feedback that was hard to hear?
+- Tell me about a time a colleague had a better solution than yours.
+
+**The probes that follow**
+
+- What specifically changed your mind?
+- How long did it take you to accept it?
+- What did you do about it afterwards?
+- Has it changed how you approach that kind of problem?
+
+**Strong.** A real, consequential error with a named cost, followed by a specific and durable change in behaviour. Bonus: you credit the person who corrected you and describe their argument accurately.
+
+**Weak.** "I was wrong about a variable name." Trivial. Or a humblebrag error - "I was wrong to work so many hours." Or, worst, a long defence of why you were actually mostly right.
+
+**Pairs with.** Comfort with ambiguity · Collaboration
+
+**Your angle.** The two days you spent on a wrong hypothesis before the evidence killed it. Debugging stories carry this naturally, because the wrong theory is part of the narrative rather than an admission bolted on.
+
+#### Google · 3. Bias to action  *(high frequency)*
+
+> *How Google words it:* Google describes a preference for doing over deliberating - shipping something small and learning from it rather than waiting for certainty.
+
+**Means.** Faced with uncertainty you ran the cheap experiment instead of scheduling a meeting about it.
+
+**What they are testing.** Paired with ambiguity in almost every round. They want the smallest thing you could do to learn something, not a plan.
+
+**How it is asked**
+
+- Tell me about a time you moved without full information.
+- Describe something you shipped fast.
+- When did you decide not to wait for consensus?
+- Tell me about a time you fixed something outside your remit.
+
+**The probes that follow**
+
+- What was the risk of moving early?
+- What would waiting have cost?
+- How did you limit the blast radius?
+- Did it work? What did you do when it did not?
+
+**Strong.** You show the risk calculation, not just the speed. A small reversible step taken quickly, with a stated way to undo it, beats a large confident one.
+
+**Weak.** Recklessness dressed as decisiveness - shipping without a rollback, going around a process because it was slow, with no acknowledgement of the risk you took.
+
+**Pairs with.** Comfort with ambiguity · Emergent leadership
+
+**Your angle.** Adding the metric or the alert before anyone asked for it. Small, reversible, and it changes what the team can see.
+
+#### Google · 4. Collaboration and no ego  *(high frequency)*
+
+> *How Google words it:* Google describes wanting people who make the team better and who are genuinely good to work through hard problems with.
+
+**Means.** The people around you did better work because you were there, and you can name them.
+
+**What they are testing.** This is where red flags get written. One dismissive sentence about a colleague outweighs a paragraph of technical strength.
+
+**How it is asked**
+
+- Tell me about working with a difficult colleague.
+- Describe a time you had to build consensus.
+- How do you handle a teammate who is not delivering?
+- Tell me about mentoring someone.
+
+**The probes that follow**
+
+- What was their perspective?
+- What would they say about you?
+- Did the relationship survive?
+- What did you change about your own approach?
+
+**Strong.** You describe the other person’s constraints accurately and sympathetically, and you changed something about your own behaviour rather than only theirs. You can name what they were right about.
+
+**Weak.** The colleague is an obstacle with no interior life. "They were resistant to change." "The other team was incompetent." Every such sentence is a written note.
+
+**Pairs with.** Intellectual humility · Emergent leadership
+
+**Your angle.** The disagreement where you turned up with evidence rather than a conclusion, and the other person moved because the evidence was good.
+
+#### Google · 5. Emergent leadership  *(high frequency)*
+
+> *How Google words it:* Google explicitly asks for leadership without authority - stepping up when a gap appears, and stepping back when someone else is better placed.
+
+**Means.** You led when nobody appointed you, and you stopped leading when it was right to.
+
+**What they are testing.** A two-sided construct, and candidates prepare only one side. The step-back story is rare enough that having one is a genuine differentiator.
+
+**How it is asked**
+
+- Tell me about a time you led without being the lead.
+- Describe stepping into a gap nobody was filling.
+- When did you hand something over?
+- Tell me about a time you deferred to someone else’s judgement.
+
+**The probes that follow**
+
+- Why you?
+- Who else could have done it?
+- When did you stop leading it, and why?
+- What happened to it after you let go?
+
+**Strong.** Both halves in one story: you took it on because you had the context, and you handed it back the moment somebody better placed could carry it. You describe the handover as a decision, not an exit.
+
+**Weak.** Every story ends with you taking over and staying in charge. It reads as a person who cannot be led, which is a specific and disqualifying profile here.
+
+**Pairs with.** Bias to action · Collaboration
+
+**Your angle.** Finding the root cause but giving the fix to whoever owned the code. That is the exact shape of the step-back half.
+
+#### Google · 6. User focus  *(med frequency)*
+
+> *How Google words it:* "Focus on the user and all else will follow" is the first of Google’s published Ten Things. It is quoted at candidates and it is scored.
+
+**Means.** You can name the human being affected by your work and what changed for them.
+
+**What they are testing.** Backend engineers fail this by describing systems rather than people. The 5xx rate is not the user experience - the user experience is a booking that failed at the payment step.
+
+**How it is asked**
+
+- Who used what you built?
+- Tell me about a time you pushed back on a requirement for the user’s sake.
+- How did you know it was working for people?
+- Describe a trade-off between a technical goal and a user outcome.
+
+**The probes that follow**
+
+- What did the user actually see?
+- How did you measure their experience rather than the system’s?
+- Did anyone complain? What did they say?
+- What would you have built differently knowing that?
+
+**Strong.** You translate every metric into an experience. "Forty 5xx a night" becomes "about forty people an evening got an error page mid-checkout, and most of them did not try again."
+
+**Weak.** Pure system language throughout. Latency, throughput, error rate, and no person anywhere in the story.
+
+**Pairs with.** Doing the right thing · Collaboration
+
+**Your angle.** You run a real production system with real users. Translate one of its metrics into what a person experienced - that translation is the whole answer.
+
+#### Google · 7. Challenging the status quo  *(med frequency)*
+
+> *How Google words it:* Google describes wanting people who question how things are done, and who do it in a way that improves things rather than just objecting.
+
+**Means.** You changed something everyone had accepted, and you brought people with you.
+
+**What they are testing.** The constructive half is the test. Objecting is easy; the score is in whether the thing actually changed and whether people were still on your side afterwards.
+
+**How it is asked**
+
+- Tell me about a process you changed.
+- When did you disagree with how something was being done?
+- Describe convincing people to do something differently.
+- What is something your team does that you think is wrong?
+
+**The probes that follow**
+
+- Who resisted, and why?
+- What was their strongest argument?
+- How did you get from disagreement to a decision?
+- Did it stick after you moved on?
+
+**Strong.** You state the opposing argument fairly and well, and the change survived you. Steel-manning the other side is unusual and scores immediately.
+
+**Weak.** A complaint with no outcome, or a change you forced through that reverted the moment you left. Also weak: describing the resistance as irrational.
+
+**Pairs with.** Emergent leadership · Intellectual humility
+
+**Your angle.** Any convention in your codebase you argued to change - and be honest if it only half-stuck.
+
+#### Google · 8. Doing the right thing  *(low frequency)*
+
+> *How Google words it:* "You can make money without doing evil" is one of Google’s published Ten Things, and ethics questions do appear in the Googleyness round.
+
+**Means.** You raised something inconvenient because it was correct to raise it.
+
+**What they are testing.** Asked less often than the others, but a bad answer here is disproportionately damaging - this is a red-flag detector, not a differentiator.
+
+**How it is asked**
+
+- Tell me about a time you raised a concern nobody wanted to hear.
+- Describe a shortcut you refused to take.
+- When did you have to say something was not ready?
+- Tell me about a problem that was easier to ignore.
+
+**The probes that follow**
+
+- What was the pressure to stay quiet?
+- Who did you tell, and how?
+- What did it cost you?
+- What happened next?
+
+**Strong.** Real cost - a slipped date, an uncomfortable conversation with someone senior, a decision that went against you and that you accepted. Proportionate, not dramatic.
+
+**Weak.** A story with no cost, so nothing was actually risked. Or a whistleblower narrative that suggests you escalate before you talk to anyone.
+
+**Pairs with.** User focus · Collaboration
+
+**Your angle.** A release you argued to hold, or a data-handling shortcut you refused. Small and real beats large and rehearsed.
+
+</details>
+
+<details><summary><b>A worked story, annotated, with the probes answered</b></summary>
+
+**Question.** Tell me about a time you had to make progress on something that was not clearly defined.
+
+**Scoring against.** Comfort with ambiguity · Emergent leadership · Intellectual humility
+
+**S - Situation**
+
+> Our platform ran a mix of frontend and backend pods on Kubernetes with Postgres behind them. We started getting intermittent 5xx spikes in the evening - maybe forty a night out of a few hundred thousand requests. Nobody owned it. It was too small to page on and too persistent to ignore, and two teams each had a plausible reason it was the other one.
+
+*Why it is shaped this way:* Names the ambiguity explicitly and quantifies the problem in the first breath. "Nobody owned it" is the Google setup - an undefined problem with no assigned owner is exactly what the ambiguity attribute looks for.
+
+**T - Task**
+
+> Nothing was assigned to me. I decided to spend a week on it because I was the only person who had recently touched both the ingress config and the connection pooling, and it was going to keep getting deprioritised otherwise.
+
+*Why it is shaped this way:* States that it was self-initiated, and gives a non-heroic reason - you had context nobody else had. Initiative without self-congratulation is the tone that scores.
+
+**A - Action**
+
+> I started by asking what I could rule out cheaply. I correlated the 5xx timestamps against pod restarts, deploys, and Postgres connection counts, and the only clean correlation was with connection-pool exhaustion during the nightly reporting job. My first theory was that the job was leaking connections. I spent two days on that and it was wrong - the pool was returning them fine. What was actually happening was that the job held long transactions, so MVCC kept old row versions alive, autovacuum fell behind, and query latency crept up until requests queued past the pool timeout. I took that to the data engineer who owned the reporting job rather than changing it myself, because she knew what the job could tolerate. We agreed on batching it into chunks with commits between them. She made the change; I added the pool-saturation metric and the alert so the next person would not need a week.
+
+*Why it is shaped this way:* The action carries three scored things at once. The rejected hypothesis, stated plainly and without embarrassment, is intellectual humility with evidence. Handing the fix to the person who owned the job is emergent leadership stepping BACK - the half candidates never prepare. And the alert at the end is the second-order thinking the Learning section rewards.
+
+**R - Result**
+
+> The 5xx spikes went to zero and stayed there for the eight months I watched it. The saturation alert fired twice afterwards for unrelated reasons and both times someone caught the cause in under an hour rather than a week.
+
+*Why it is shaped this way:* Quantified, and then the second-order result - the practice outlived the incident. That sentence is what a committee member underlines.
+
+**L - Learning**
+
+> Two things. I spent two days on the leak theory because it was the explanation I already knew how to check, not because the evidence pointed there - I now write down what I would expect to see if a hypothesis were true before I go looking. And I nearly patched the reporting job myself to save time. That would have been faster that week and worse afterwards, because I would have owned a job I did not understand.
+
+*Why it is shaped this way:* Two real errors, one of process and one of judgement, each with a specific behaviour change. This is the highest-scoring paragraph in the whole answer and it is the one most candidates leave off.
+
+**The probes, and how they are answered**
+
+- **What made you think it was connection pooling rather than the application?** — The correlation was clean and the alternatives were not. Pod restarts did not line up, and the errors were 503s from the ingress rather than 500s from the app, which meant requests were not reaching a healthy pod at all. That points at saturation rather than a code path.
+- **You said your first theory was wrong. How long did it take you to accept that?** — Longer than it should have - about two days. What ended it was writing down the falsifier: if connections were leaking, the pool’s in-use count would not return to baseline after the job finished. It did return. That was unambiguous and I stopped.
+- **Why not just fix the reporting job yourself?** — I could have, and it would have been a small diff. But I did not know the job’s consistency requirements - whether committing between chunks was safe for the report it produced. The person who owned it answered that in ten minutes. Guessing would have traded a week of my time for a correctness risk I could not evaluate.
+- **What would the data engineer say about working with you on this?** — That I turned up with the evidence rather than the conclusion, which I know she appreciated because she said so. She would also probably say I was pushy about the timeline - I wanted it in that sprint and it was not her top priority, and I pressed harder than I needed to.
+- **What would you do differently if it happened again tomorrow?** — Add the metric first. I built the pool-saturation dashboard at the end as a gift to the next person, and if I had built it on day one it would have pointed straight at the answer and saved most of the week.
+
+**Why this one works here.** It is an undefined problem with no owner, so it hits the ambiguity attribute directly. It contains a hypothesis that was wrong, stated without defensiveness, which is intellectual humility with evidence attached rather than a claim about yourself. It contains a deliberate step back - giving the fix to its owner - which is the half of emergent leadership almost nobody prepares. The colleague is described as a collaborator with her own valid priorities, not an obstacle. And every claim has a number or a mechanism a stranger can write down.
+
+</details>
+
+**The schedule for this room**
+
+| When | What | Note |
+|---|---|---|
+| Week 13 | Apply - Google’s pipeline is 8-12 weeks | Behavioural prep can trail the application. The application cannot trail the prep. |
+| Week 14 | Recut four existing Amazon stories for Google | Same events. Add the collaborators, add the error, add the step-back. Keep the numbers. |
+| Week 15 | Write the step-back story | The one where you handed something over. If you genuinely do not have one, that is worth knowing now. |
+| Week 16 | Three hypotheticals, anchored | Missed deadlines · disagreeing with your manager · inheriting an unowned mess. Each anchored to something real. |
+| Week 17 | "Why Google", specifically | Name a system, a team or a paper. Connect it to something you have built. Ten sentences, not a paragraph of admiration. |
+| Week 18 | Record one Googleyness round | Five questions, 45 minutes, on camera. Watch for contempt, for missing collaborators, and for stories with no admitted error. |
+
+**How this room differs.** Against Amazon: same stories, different cut. Amazon wants conviction, ownership and "I". Google wants the collaborator named, the error volunteered, and at least one moment where you stepped back. Against Microsoft: Google is more formal and more written, and the decision sits with a committee rather than with the last interviewer in the room.
+
+> *Source and confidence.* Partly published. Google publishes the Ten Things and has spoken publicly - including in Laszlo Bock’s Work Rules! - about intellectual humility, emergent leadership, comfort with ambiguity and conscientiousness as selection attributes. Google does not publish a numbered rubric the way Amazon publishes the Leadership Principles, and the internal name for this round has changed more than once. The eight attributes here are the stable set across those versions plus consistent candidate reporting; treat the grouping as a working model, not an official list.
+
+---
+
+### MICROSOFT · Culture & the As-Appropriate round
+
+**Rung two.** The most conversational behavioural bar on the ladder, and the one where "here is what I got wrong and what I changed" is the literal answer they are looking for.
+
+**What it is worth.** Runs through every round, then concentrates into one: the As-Appropriate interviewer, who is usually the most senior person you meet and who effectively makes the call.
+
+**Where behaviour is scored**
+
+| Round | Time | What happens |
+|---|---|---|
+| **Recruiter screen** | 30 min | Motivation, level, team fit. "Why Microsoft" and "what do you want to work on" are asked seriously and passed on. |
+| **Technical rounds (3-4)** | 45-60 min each | Coding and design, each closing with one or two behavioural questions. Interviewers debrief with each other during the day, sometimes between rounds, so a weak signal in round one shapes the questions in round three. |
+| **As-Appropriate (AA) round** | 45-60 min | The distinctive Microsoft round. A senior engineer or manager from outside the immediate team, brought in near the end, who has seen the running feedback. Heavily behavioural: growth mindset, collaboration across boundaries, motivation, and "why this team". In practice this person makes the hire decision. |
+| **Hiring manager conversation** | 30-45 min | Sometimes separate, sometimes folded into the AA. Team fit, what you want next, how you like to be managed. |
+
+| What they are scoring | Why it matters |
+|---|---|
+| **Growth mindset is the named construct** | What did you learn, what changed, what would you do differently. A candidate who has never revised a belief is the anti-profile. This is scored more directly here than anywhere except Google. |
+| **Collaboration across boundaries** | "One Microsoft" is the internal phrase for not optimising your own team at the company’s expense. Stories that cross an org boundary land better than stories inside one team. |
+| **Customer obsession, in Microsoft’s sense** | Usually an internal or enterprise customer, not a consumer. "Who depends on this and what did they need" is the question underneath. |
+| **Respect, integrity, accountability** | Microsoft’s three published company values. Accountability shows up as owning an outcome that went badly without distributing the blame. |
+| **Conversational, not rubric-recited** | Notes are shorter and less formal than Amazon’s. That cuts both ways: you have more room to be a person, and less structure to hide behind if the story is thin. |
+| **Live debriefing** | Interviewers talk to each other during the loop. A concern raised in round two gets tested in round four, so the same story told twice with different details is noticed. |
+
+**Things nobody tells you**
+
+- The AA interviewer usually knows the running feedback before they walk in. If an earlier round flagged something, this round will probe exactly that.
+- The coding bar is the most forgiving of your tier-two set. Behaviour and collaboration carry proportionally more weight than they do at Amazon or Google.
+- A polished, hard-charging Amazon delivery does not land as well here. Microsoft interviewers report reading it as a lack of self-awareness.
+- "Why Microsoft" and "why this team" are asked more sincerely than at most companies, and answered badly by almost everyone.
+
+**The story format they want**
+
+| Part | Budget | What goes in it |
+|---|---|---|
+| **S - Situation** | 20 sec · ~15% | Include who the customer was - internal team, external client, another service. Microsoft frames almost everything around who depends on the work. |
+| **T - Task** | 15 sec · ~10% | What you owned. If it crossed a team boundary, say so here; that is the One Microsoft hook. |
+| **A - Action** | 55-65 sec · ~45% | What you did. Include at least one point where you did not know something and went and learned it - the learning is not a footnote at Microsoft, it belongs inside the action. |
+| **R - Result** | 20 sec · ~15% | Quantified, and say who benefited rather than only what improved. |
+| **L - Learning** | 20 sec · ~15% | Explicit. "What I took from that" is close to a required sentence here. Growth mindset is measured by whether you have one of these ready without being asked. |
+
+**Rules for this room**
+
+- Say what you did not know at the start and how you closed the gap. That single sentence is the growth-mindset marker, and its absence is noticed.
+- Cross an org boundary in at least two stories. Working well with the team you are already on is the baseline, not the signal.
+- Name the customer. Internal counts - the team consuming your API is a customer, and treating them as one is the answer.
+- Own a bad outcome cleanly in one story. No distributed blame, no "the requirements changed". Accountability is a published value and it is tested.
+- Match the conversational register without losing the structure. Answer like a person, but hit S-T-A-R-L or the write-up will be vague.
+- Have a real answer to "why this team". Microsoft loops are team-specific and generic enthusiasm is transparent.
+
+> **Timing.** Two minutes, but expect to be interrupted with genuine curiosity rather than steering. Follow the tangent for thirty seconds, then bring it back yourself - the interviewer will not always do it for you, and an unfinished story is an unscored one.
+
+**The follow-up probes**
+
+*On growth mindset*
+
+- What did you learn from that?
+- What would you do differently now?
+- Tell me about a time you failed.
+- What is something you believed a year ago that you no longer believe?
+- How do you learn something new when there is no documentation?
+
+*On collaboration across boundaries*
+
+- Who else was involved, and were they on your team?
+- How did you get another team to prioritise something for you?
+- Tell me about a time two teams disagreed about ownership.
+- How do you work with someone in a different timezone or org?
+
+*On customers*
+
+- Who was the customer here?
+- How did you know what they actually needed?
+- Tell me about a time you pushed back on what a customer asked for.
+- What did they say afterwards?
+
+*On accountability*
+
+- What went wrong, and what was your part in it?
+- How did you tell people?
+- What did you change so it would not happen again?
+- Did it happen again?
+
+*On motivation*
+
+- Why Microsoft?
+- Why this team?
+- What do you want to be doing in three years?
+- What kind of work do you find genuinely interesting?
+- How do you like to be managed?
+
+| Situation | What to do |
+|---|---|
+| **When the round feels like a chat** | It is still scored. Keep the structure even while matching the register - a friendly ramble produces a write-up that says "pleasant, hard to assess". |
+| **When asked what you failed at** | Give a real failure with a real consequence and a real change. Microsoft rewards this answer more than any other company on the ladder; a deflection wastes the single best-scoring question in the loop. |
+| **When the AA interviewer probes one specific area repeatedly** | An earlier round flagged it. Answer that concern directly rather than working around it - they are giving you the chance to close it. |
+| **When asked "why this team"** | Name what the team builds and connect it to something you have done. If you genuinely do not know, ask them to describe it and respond honestly to the answer; that is better received here than a fabricated enthusiasm. |
+| **When you disagree with the interviewer** | Engage. Microsoft reads a willingness to be persuaded, and to persuade, as the point. Capitulating instantly scores as poorly as digging in. |
+
+**Anti-patterns — 7 ways to lose this room**
+
+1. **The know-it-all delivery** — Total confidence, nothing learned, no gaps admitted. This is the specific anti-profile Microsoft named its culture change after, and interviewers are primed for it.
+   *FIX: one sentence per story about what you did not know at the start and how you closed it.*
+2. **Every story inside one team** — Nothing crosses a boundary, so there is no evidence you can work with the rest of a large company - which is most of the job at Microsoft.
+   *FIX: two stories minimum involving another team, another org, or an external partner.*
+3. **No customer anywhere** — A story about a system with no human or team on the other end of it. Customer obsession is a published value and internal customers count.
+   *FIX: name who consumed the thing you built and what changed for them.*
+4. **Distributed blame** — "The requirements changed and the other team was late." Accountability is a published value; this sentence is scored against directly.
+   *FIX: name your own contribution to the bad outcome first, then the context.*
+5. **Amazon intensity** — Relentless "I", constant urgency, colleagues as obstacles. It reads as a lack of self-awareness rather than as drive, and the AA interviewer writes that down.
+   *FIX: same stories, slower delivery, collaborators present, one thing you got wrong.*
+6. **Generic "why Microsoft"** — "It is a great company with great products." The recruiter, the hiring manager and the AA interviewer will all ask, and they compare answers.
+   *FIX: one honest reason about the work, one about the team, and one about what you want to learn.*
+7. **Rambling because the round is friendly** — The conversational tone lulls candidates into five-minute answers with no shape, which produce write-ups that say very little.
+   *FIX: keep the structure. Two minutes, land the result, offer the learning.*
+
+**Culture & the As-Appropriate round**
+
+| # | Value | Freq | What it means | Strong | Weak |
+|---|---|---|---|---|---|
+| 1 | Growth mindset | high | You did not know something, you noticed, and you closed the gap - and you can say so without discomfort. | A real gap with a real consequence, closed by specific effort you can describe, followed by a durable change in practice. Correcting yourself publicly is the strongest version. | A failure that was somebody else’s fault. A "failure" that is really a success with a delay. Or a learning that amounts to "I learned to communicate more". |
+| 2 | Customer obsession | high | You know who depends on your work and you found out what they actually needed rather than what they asked for. | You went and talked to them. You can quote what they said. You changed the design as a result, and you can say what you removed as well as what you added. | The customer never appears. Or they appear as a source of unreasonable requirements rather than as someone with a problem. |
+| 3 | One Microsoft | high | You worked across a boundary where you had no authority and no shared manager, and something got better because of it. | You made it cheap for the other team to say yes - you turned up with the analysis, the diff, or the migration path already done. You can state their competing priority fairly. | Escalating to a manager as the first move. Or a story where the other team is simply an obstruction that you eventually went around. |
+| 4 | Accountability | high | Something went badly, you owned your share of it plainly, and you changed what caused it. | Your own contribution stated first and without hedging, told to the people affected quickly, and followed by a specific mechanism - a test, an alert, a checklist - that prevents the repeat. | A chain of external causes with your own role buried at the end, or absent. Also weak: an incident with no follow-through, so nothing actually changed. |
+| 5 | Respect | med | You worked well with someone you found difficult, and you can describe their point of view fairly. | You can state the other person’s case well enough that it sounds reasonable, and you changed something about your own approach. | Contempt anywhere in the description. Also weak: a story where you were purely patient and nothing was required of you. |
+| 6 | Diverse and inclusive | med | You changed how a discussion ran so that a voice that was not being heard got heard. | A specific mechanism - going around the room, asking for written input before a meeting, pairing a newer engineer on a design - with an outcome you can point to. | "I treat everyone the same." That answers a different question and reads as having nothing to say. |
+| 7 | Integrity | low | You told an inconvenient truth when staying quiet was available and cheaper. | Told early, told to the right person, with a real cost accepted. Proportionate rather than dramatic. | Nothing was at stake, so nothing was demonstrated. Or an escalation that skipped every reasonable step first. |
+| 8 | Why Microsoft, why this team | high | You can say what this team builds and why it interests you, without flattery. | One reason about the work itself, one about this specific team, one about what you want to learn. Concrete, and consistent every time you are asked. | Scale, brand, and "great products". Or an answer that would apply unchanged to any of the ten companies you are interviewing at. |
+
+<details><summary><b>Every value in full — how it is asked, the probes, your angle</b></summary>
+
+#### Microsoft · 1. Growth mindset  *(high frequency)*
+
+> *How Microsoft words it:* Microsoft describes its culture as "learn-it-all, not know-it-all" - the belief that ability is developed rather than fixed, and that mistakes are information.
+
+**Means.** You did not know something, you noticed, and you closed the gap - and you can say so without discomfort.
+
+**What they are testing.** The defining Microsoft construct and the most reliably probed. Every "what did you learn" and "what would you do differently" is scoring this. A candidate with no revised beliefs is the anti-profile the culture change was aimed at.
+
+**How it is asked**
+
+- Tell me about a time you failed.
+- What have you learned recently?
+- What would you do differently?
+- What is something you believed that turned out to be wrong?
+- How do you get up to speed on something unfamiliar?
+
+**The probes that follow**
+
+- How did you realise you were wrong?
+- What did you do about it?
+- Has anything actually changed in how you work?
+- Did you tell anyone?
+
+**Strong.** A real gap with a real consequence, closed by specific effort you can describe, followed by a durable change in practice. Correcting yourself publicly is the strongest version.
+
+**Weak.** A failure that was somebody else’s fault. A "failure" that is really a success with a delay. Or a learning that amounts to "I learned to communicate more".
+
+**Pairs with.** Accountability · One Microsoft
+
+**Your angle.** Any assumption about your own stack you carried for months before checking it - delivery semantics, an isolation level, what a timeout actually does. These are honest and they are technical.
+
+#### Microsoft · 2. Customer obsession  *(high frequency)*
+
+> *How Microsoft words it:* One of Microsoft’s stated cultural attributes. In practice the customer is frequently internal or enterprise rather than a consumer.
+
+**Means.** You know who depends on your work and you found out what they actually needed rather than what they asked for.
+
+**What they are testing.** Backend engineers answer this badly by describing the system. The consuming team is a customer, and treating them as one - going to them, asking, changing what you built - is the whole answer.
+
+**How it is asked**
+
+- Who was the customer for this?
+- Tell me about a time you changed something based on user feedback.
+- Describe pushing back on what a customer asked for.
+- How do you know what you built was useful?
+
+**The probes that follow**
+
+- How did you find out what they needed?
+- What did they ask for versus what they needed?
+- How did you tell them no?
+- What did they say afterwards?
+
+**Strong.** You went and talked to them. You can quote what they said. You changed the design as a result, and you can say what you removed as well as what you added.
+
+**Weak.** The customer never appears. Or they appear as a source of unreasonable requirements rather than as someone with a problem.
+
+**Pairs with.** One Microsoft · Respect
+
+**Your angle.** The teams consuming your APIs and events. You know exactly what they complain about, and that is the material.
+
+#### Microsoft · 3. One Microsoft  *(high frequency)*
+
+> *How Microsoft words it:* Microsoft’s shorthand for collaborating across organisational boundaries rather than optimising for your own team.
+
+**Means.** You worked across a boundary where you had no authority and no shared manager, and something got better because of it.
+
+**What they are testing.** Microsoft is very large and much of the job is influence across orgs. A candidate whose every story lives inside one team has not shown they can do the actual work.
+
+**How it is asked**
+
+- Tell me about working with another team.
+- How did you get a team that does not report to you to prioritise something?
+- Describe a disagreement about ownership between teams.
+- Tell me about a time you helped a team you were not part of.
+
+**The probes that follow**
+
+- What was in it for them?
+- What did you do when they said no?
+- How did you keep it moving without authority?
+- Would they work with you again?
+
+**Strong.** You made it cheap for the other team to say yes - you turned up with the analysis, the diff, or the migration path already done. You can state their competing priority fairly.
+
+**Weak.** Escalating to a manager as the first move. Or a story where the other team is simply an obstruction that you eventually went around.
+
+**Pairs with.** Customer obsession · Respect
+
+**Your angle.** Any change that needed a downstream consumer to move with you. The event-contract change is the archetype.
+
+#### Microsoft · 4. Accountability  *(high frequency)*
+
+> *How Microsoft words it:* One of Microsoft’s three published company values, alongside Respect and Integrity.
+
+**Means.** Something went badly, you owned your share of it plainly, and you changed what caused it.
+
+**What they are testing.** Tested through failure questions. The scored behaviour is naming your own contribution first, before any context about what else went wrong.
+
+**How it is asked**
+
+- Tell me about something that went wrong on your watch.
+- Describe a decision you made that you regret.
+- What is the worst production incident you have been part of?
+- How did you handle it when you missed a commitment?
+
+**The probes that follow**
+
+- What was your part in it?
+- How did you communicate it, and to whom?
+- What did you change afterwards?
+- Did it recur?
+
+**Strong.** Your own contribution stated first and without hedging, told to the people affected quickly, and followed by a specific mechanism - a test, an alert, a checklist - that prevents the repeat.
+
+**Weak.** A chain of external causes with your own role buried at the end, or absent. Also weak: an incident with no follow-through, so nothing actually changed.
+
+**Pairs with.** Growth mindset · Integrity
+
+**Your angle.** A production incident where a change of yours contributed. The alert or the test you added afterwards is the proof.
+
+#### Microsoft · 5. Respect  *(med frequency)*
+
+> *How Microsoft words it:* A published Microsoft value: valuing others, listening, and assuming good intent.
+
+**Means.** You worked well with someone you found difficult, and you can describe their point of view fairly.
+
+**What they are testing.** A red-flag detector more than a differentiator. How you describe a frustrating colleague is the measurement, not what you did about them.
+
+**How it is asked**
+
+- Tell me about a difficult colleague.
+- Describe a time you received harsh feedback.
+- How do you handle someone who dismisses your ideas?
+- Tell me about a disagreement that got personal.
+
+**The probes that follow**
+
+- What was their perspective?
+- What did you do to understand it?
+- How did it end?
+- What would they say about you?
+
+**Strong.** You can state the other person’s case well enough that it sounds reasonable, and you changed something about your own approach.
+
+**Weak.** Contempt anywhere in the description. Also weak: a story where you were purely patient and nothing was required of you.
+
+**Pairs with.** One Microsoft · Integrity
+
+**Your angle.** A code review disagreement that got heated, and what the other reviewer turned out to be right about.
+
+#### Microsoft · 6. Diverse and inclusive  *(med frequency)*
+
+> *How Microsoft words it:* A stated Microsoft cultural attribute: seeking out different perspectives and making sure they are heard.
+
+**Means.** You changed how a discussion ran so that a voice that was not being heard got heard.
+
+**What they are testing.** Asked more often at Microsoft than at most companies on this ladder, and answered vaguely by almost everyone. A concrete mechanism beats a sentiment every time.
+
+**How it is asked**
+
+- Tell me about working with someone very different from you.
+- How do you make sure quieter people are heard?
+- Describe a time a different perspective changed your mind.
+- How do you onboard someone new to the team?
+
+**The probes that follow**
+
+- What did you actually do differently?
+- Did it change the outcome?
+- How did you know it was working?
+- Have you kept doing it?
+
+**Strong.** A specific mechanism - going around the room, asking for written input before a meeting, pairing a newer engineer on a design - with an outcome you can point to.
+
+**Weak.** "I treat everyone the same." That answers a different question and reads as having nothing to say.
+
+**Pairs with.** Respect · One Microsoft
+
+**Your angle.** How you run design discussions or onboard someone. Written proposals ahead of a meeting is a real mechanism and you can describe its effect.
+
+#### Microsoft · 7. Integrity  *(low frequency)*
+
+> *How Microsoft words it:* A published Microsoft value: being honest, ethical and trustworthy in how the work gets done.
+
+**Means.** You told an inconvenient truth when staying quiet was available and cheaper.
+
+**What they are testing.** Low frequency, high damage. A bad answer here is disqualifying; a good one is rarely the reason you are hired.
+
+**How it is asked**
+
+- Tell me about a time you had to deliver bad news.
+- Describe a shortcut you refused to take.
+- When did you disagree with a decision on principle?
+- Tell me about a time you were asked to do something you were not comfortable with.
+
+**The probes that follow**
+
+- Who did you tell?
+- How quickly?
+- What did it cost?
+- What happened next?
+
+**Strong.** Told early, told to the right person, with a real cost accepted. Proportionate rather than dramatic.
+
+**Weak.** Nothing was at stake, so nothing was demonstrated. Or an escalation that skipped every reasonable step first.
+
+**Pairs with.** Accountability · Respect
+
+**Your angle.** Telling a stakeholder a date was going to slip before you were asked, and what that conversation cost.
+
+#### Microsoft · 8. Why Microsoft, why this team  *(high frequency)*
+
+> *How Microsoft words it:* Not a value - a scored question. Microsoft loops are team-specific and every interviewer asks some version of it.
+
+**Means.** You can say what this team builds and why it interests you, without flattery.
+
+**What they are testing.** Asked by the recruiter, the hiring manager and the AA interviewer, who compare answers. Inconsistency across the three is noticed.
+
+**How it is asked**
+
+- Why Microsoft?
+- Why this team?
+- What do you want to work on?
+- Where do you want to be in three years?
+- How do you like to be managed?
+
+**The probes that follow**
+
+- What do you know about what we build?
+- What would you want to change about it?
+- What else are you considering?
+- What would make this the wrong move for you?
+
+**Strong.** One reason about the work itself, one about this specific team, one about what you want to learn. Concrete, and consistent every time you are asked.
+
+**Weak.** Scale, brand, and "great products". Or an answer that would apply unchanged to any of the ten companies you are interviewing at.
+
+**Pairs with.** Growth mindset
+
+**Your angle.** You run Kubernetes, Postgres and event-driven services daily. Find the Microsoft team whose product is one of those things and be specific about it.
+
+</details>
+
+<details><summary><b>A worked story, annotated, with the probes answered</b></summary>
+
+**Question.** Tell me about a time you had to learn something you did not know in order to get something done.
+
+**Scoring against.** Growth mindset · One Microsoft · Accountability
+
+**S - Situation**
+
+> We had a Spring Boot service publishing domain events that three downstream teams consumed. One of them - the reporting team - kept getting duplicate rows, maybe a few hundred a week, and they had built a nightly dedupe job to work around it. That job had been running for months and everyone had stopped treating the duplicates as a bug.
+
+*Why it is shaped this way:* The customer is named in the first sentence and it is an internal one, which is the normal Microsoft shape. The detail that everyone had accepted the workaround sets up both the accountability and the growth-mindset beats.
+
+**T - Task**
+
+> It was our events causing it, so it was our problem, even though nobody had escalated it. I picked it up. I also had to admit at the start that I did not really understand our delivery guarantees - I had been treating the publisher as if it were exactly-once, and I had never checked.
+
+*Why it is shaped this way:* The admission is placed early and stated flatly. At Microsoft this is not a risk; it is the thing being measured, and putting it in the Task rather than saving it for the Learning makes it read as honesty rather than as a closing flourish.
+
+**A - Action**
+
+> I spent two evenings actually reading how our broker handled redelivery and what our consumer offsets were doing on rebalance, rather than assuming. It was at-least-once, which meant duplicates were guaranteed and not a bug at all - the bug was that we had never made the consumers idempotent. I wrote that up in a page and took it to all three consuming teams together rather than fixing only the reporting team’s symptom, because the other two almost certainly had the same problem and had not noticed. One had; one had not. We agreed on an event id plus a dedupe key at the consumer, and I changed our publisher to emit a stable id rather than generating one per attempt. The reporting team deleted their nightly job.
+
+*Why it is shaped this way:* The learning sits inside the action, which is the Microsoft placement. Going to all three teams instead of the one that complained is the One Microsoft beat, made concrete rather than claimed. And the fix is at the right layer - the publisher change plus the consumer contract - which shows the understanding was real.
+
+**R - Result**
+
+> Duplicate rows went to zero across all three consumers. The reporting team removed a nightly job that had been running for about eight months, and the third team found two silent double-counts in their own numbers once they went looking.
+
+*Why it is shaped this way:* Quantified, and the benefit is spread across three teams rather than one. The silent double-count is the detail that shows the cross-team move was worth making.
+
+**L - Learning**
+
+> The real lesson was that I had been operating a system whose delivery semantics I had never checked, and I had been confidently telling people it was fine. Now, when I inherit or build anything on a queue, the first thing I write down is the delivery guarantee and what the consumer does with a repeat. The second lesson was cheaper: the team that complains is rarely the only team affected.
+
+*Why it is shaped this way:* Two learnings, one about a real gap in your own understanding and one about how to work in a big organisation. That pairing is exactly the profile the AA round is calibrated for.
+
+**The probes, and how they are answered**
+
+- **Why had nobody looked at this before?** — It had a workaround that worked. The nightly job made the symptom invisible, so the cost had already been paid and nobody was feeling it any more. That is generally when a bug becomes permanent.
+- **You said you had assumed exactly-once. Had you told anyone that?** — Yes, and that is the uncomfortable part. I had answered a question about it in a design review months earlier and given the wrong answer confidently. I went back and corrected it in the same channel.
+- **How did you get three teams into one conversation?** — I wrote the page first and sent it, so nobody had to attend a meeting to find out what it was about. Two of the three answered in the thread and we only needed twenty minutes live. Turning up with the written analysis is what made it cheap for them to say yes.
+- **What did the team that had not noticed say?** — They were not thrilled, understandably - it meant some historical numbers were wrong. We agreed I would help them work out which reports were affected, which took another day, and we corrected two of them.
+- **What would you do differently?** — Check the delivery semantics before I publish anything on a queue rather than after someone complains, and put it in the service README so the next person does not have to rediscover it. I did that afterwards, but it should have existed from the start.
+
+**Why this one works here.** It opens with an internal customer, names a real gap in the candidate’s own knowledge without flinching, and puts the learning inside the action where Microsoft looks for it. It crosses three team boundaries deliberately rather than fixing the one complaint, which is One Microsoft demonstrated rather than asserted. It contains a genuinely uncomfortable admission - having confidently told people the wrong thing - and a correction made in public. And it ends with a durable behaviour change rather than a resolution.
+
+</details>
+
+**The schedule for this room**
+
+| When | What | Note |
+|---|---|---|
+| Week 7 | Apply - Microsoft loops take 4-8 weeks to reach onsite | The AA round is at the end, so behavioural prep has runway. |
+| Week 8 | Recut three Amazon stories for Microsoft | Add the learning inside the action, add the cross-team boundary, soften the intensity. Keep the numbers. |
+| Week 9 | Write the failure story properly | Real consequence, your part first, durable change. This is the highest-yield single answer in a Microsoft loop. |
+| Week 10 | Two cross-boundary stories | Another team, another org, or an external partner - where you had no authority. |
+| Week 11 | "Why Microsoft, why this team" | Written down, three sentences, and consistent across recruiter, hiring manager and AA. |
+| Week 12 | Record an AA simulation | 45 minutes, mostly behavioural, one interviewer probing the same weak area repeatedly. Practise answering the concern rather than routing around it. |
+
+**How this room differs.** Against Amazon: much less rubric-recitation, much more conversation, and the failure question is a gift rather than a trap. Against Google: the decision sits with a person you meet - the AA interviewer - rather than a committee reading notes, so the room matters more and the transcript matters less.
+
+> *Source and confidence.* Partly published. Microsoft publishes its three company values (Respect, Integrity, Accountability) and its cultural attributes (growth mindset, customer obsessed, diverse and inclusive, One Microsoft, making a difference), and Satya Nadella has written publicly about growth mindset and "learn-it-all" as the organising idea. The As-Appropriate round is not formally documented by Microsoft; its role and weight here come from consistent candidate reporting. Treat the round mechanics as a working model.
+
+---
+
+### ADOBE · Core values: Genuine, Exceptional, Innovative, Involved
+
+**Rung two.** The one company on this ladder where code craft itself is a behavioural signal: "Exceptional" is a value, and they notice how you write, not only whether it runs.
+
+**What it is worth.** Lighter than Amazon or Microsoft, and concentrated in the hiring-manager round. The behavioural bar is not the hard part of an Adobe loop - but "why Adobe" is asked seriously and answered badly.
+
+**Where behaviour is scored**
+
+| Round | Time | What happens |
+|---|---|---|
+| **Recruiter screen** | 30 min | Background, motivation, level. "Why Adobe" starts here. |
+| **Technical rounds (2-4)** | 45-60 min | Algorithms and OOD. Behavioural questions appear at the end but briefly. Code quality is being assessed as a signal in its own right - naming, structure, edge cases - not just correctness. |
+| **Hiring manager round** | 45-60 min | Where the behavioural weight sits. Past projects in depth, how you work, why Adobe, what you want next. |
+| **Director / skip-level** | 30-45 min | Not always present. Broader: motivation, longevity, how you think about the product and the craft. |
+
+| What they are scoring | Why it matters |
+|---|---|
+| **Craft counts as behaviour** | "Exceptional" is a published value and Adobe interviewers are unusually attentive to clean, well-named, edge-case-complete code. Sloppy code that passes the tests scores worse here than at Microsoft. |
+| **Depth on your own projects** | The hiring-manager round goes deep on what you have built. Anything on your resume is fair game and shallow answers are visible. |
+| **Genuine means unpolished is fine** | Adobe’s first value is Genuine, and candidates who over-rehearse read badly. A slightly rougher, obviously real answer outperforms a smooth generic one. |
+| **Product interest is scored** | More than at Amazon or Google. Adobe builds tools people love and they notice whether you have any relationship with them or with the domain. |
+| **Involved means mentoring and community** | Code review, mentoring, open source, internal talks. This is the value most candidates have no story for. |
+| **Fewer probes than Amazon** | Two or three follow-ups per story, not eight. That sounds easier and is a trap: it means one thin answer is a larger share of the evidence. |
+
+**Things nobody tells you**
+
+- The loop is less adversarial than Amazon or Google. That does not mean the bar is low - it means the signal is thinner, so each answer carries more.
+- "Why Adobe" and "which of our products do you use or care about" come up more often than candidates expect, and "I use Photoshop" is not an answer.
+- Adobe is a large product company with a long history; longevity and genuine interest are weighed. Someone who reads as using them as a stepping stone is noticed.
+- The OOD round doubles as a behavioural signal - how you take feedback mid-design tells them how you take feedback generally.
+
+**The story format they want**
+
+| Part | Budget | What goes in it |
+|---|---|---|
+| **S - Situation** | 20 sec · ~15% | Real context, including what you cared about. Adobe tolerates - and slightly rewards - a bit of personality here. |
+| **T - Task** | 15 sec · ~10% | What you owned. |
+| **A - Action** | 55-65 sec · ~45% | What you did. Include one craft decision: why you structured it that way, what you refactored, what you named and why. That is the Exceptional signal and it costs one sentence. |
+| **R - Result** | 20 sec · ~15% | Quantified, plus what it was like to maintain afterwards. Adobe cares about the second half. |
+| **L - Learning** | 20 sec · ~15% | What you would do differently, and anything you passed on to someone else - that is the Involved hook. |
+
+**Rules for this room**
+
+- Put one code-craft decision in every technical story. Not "I wrote clean code" - the actual choice you made and the alternative you rejected.
+- Do not over-rehearse. Genuine is their first value and the polish that wins at Amazon reads as performance here.
+- Have one mentoring or code-review story. Involved is the value with the fewest prepared answers and the easiest differentiation.
+- Know what Adobe builds beyond the consumer apps - Experience Cloud, Document Cloud, the developer platform. Engineers are frequently hired onto the parts nobody outside recognises.
+- Be ready to go three levels deep on anything on your resume. The hiring-manager round is where depth is tested and the probing is gentle but persistent.
+- Say what the code was like to live with six months later. Maintainability is the Adobe-shaped version of "result".
+
+> **Timing.** Two minutes, with fewer follow-ups than Amazon. Because the probe count is lower, the story itself has to carry more - land the result and the craft decision inside the answer rather than waiting to be asked.
+
+**The follow-up probes**
+
+*On craft*
+
+- Why did you structure it that way?
+- What would you refactor if you went back?
+- How did you handle the edge cases?
+- What was it like to maintain six months later?
+- How do you decide when code is done?
+
+*On your projects*
+
+- Walk me through the hardest part of that system.
+- What was your specific contribution?
+- What would you build differently now?
+- What did you not get to do that you wanted to?
+
+*On collaboration and mentoring*
+
+- Tell me about a code review that changed your mind.
+- Have you mentored anyone? What did they need?
+- How do you give feedback on someone else’s design?
+- Tell me about disagreeing with a teammate about implementation.
+
+*On motivation*
+
+- Why Adobe?
+- Which of our products do you know?
+- What kind of problems do you want to work on?
+- Where do you see yourself in a few years?
+
+*On innovation*
+
+- Tell me about something you built that did not exist before.
+- Describe a time you proposed an idea nobody asked for.
+- What is the most creative solution you have shipped?
+
+| Situation | What to do |
+|---|---|
+| **When the round feels easy** | Assume the signal is thin and fill it yourself. Volunteer the craft decision, the maintenance outcome and the learning without waiting for a probe. |
+| **When asked "why Adobe"** | Answer about the engineering problem, not the brand. Document processing at scale, rendering, a creative-tools pipeline, the Experience Cloud data volume - pick something real. |
+| **When asked which products you know** | Honesty beats bluffing. "I have not used Illustrator seriously, but I have worked with the PDF spec and it is a genuinely hard format" is a good answer. |
+| **When you have no mentoring story** | Use code review. Reviewing well is mentoring, and describing how you review - what you comment on and what you let go - is a real answer to Involved. |
+| **When they push on a resume item** | Go deep immediately and say plainly where your knowledge stops. The gentle probing is still probing, and a confident vagueness is the thing it catches. |
+
+**Anti-patterns — 6 ways to lose this room**
+
+1. **Over-rehearsed delivery** — Smooth, identical cadence on every story, no hesitation anywhere. Genuine is Adobe’s first published value and the polish that wins at Amazon reads as performance here.
+   *FIX: know the content cold, but let the delivery be a conversation. Pausing to remember a real detail is fine.*
+2. **No craft anywhere** — Every story is about what the system did and nothing about how it was written. Exceptional is a published value and code quality is a scored signal at Adobe.
+   *FIX: one structural or naming decision per technical story, with the alternative you rejected.*
+3. **No Involved story** — Nothing about mentoring, review, or making anyone else better. This is the value with the fewest prepared answers, which makes it the cheapest one to win.
+   *FIX: prepare one review or mentoring story. Describing how you review code counts.*
+4. **"Why Adobe" answered with Photoshop** — Naming a consumer app you barely use. Most Adobe engineering is not that, and the answer signals no research.
+   *FIX: name a real engineering problem in their space - document processing, rendering, Experience Cloud scale - and connect it to what you do.*
+5. **Thin answers because nobody pushed** — The probe count is low, so a candidate who answers only what was asked leaves a small evidence base behind.
+   *FIX: volunteer the second layer. The result, the maintenance outcome, the thing you would change.*
+6. **Sloppy code in the technical round** — Passing the tests with poor naming, no edge cases, no structure. This costs more at Adobe than anywhere else on the ladder.
+   *FIX: name things properly, handle the empty and null cases out loud, and say what you would extract if this were production.*
+
+**Core values: Genuine, Exceptional, Innovative, Involved**
+
+| # | Value | Freq | What it means | Strong | Weak |
+|---|---|---|---|---|---|
+| 1 | Genuine | high | You answer honestly, including about the parts that did not work or that you do not know. | Plain honesty with no spin. Admitting the limits of your knowledge inside a technical answer, unprompted, is the strongest form of it. | A flawlessly polished narrative with no rough edges. Or a "weakness" that is a strength in disguise. |
+| 2 | Exceptional | high | Your code is good to read and good to change, and you can explain the decisions that made it so. | A design decision derived from what varies, with the rejected alternative named, and a maintenance outcome measured in the cost of the next change. | "I write clean code and follow best practices." No decision, no alternative, no consequence. Also weak: a rewrite with no migration story. |
+| 3 | Innovative | med | You built something that did not exist, or solved a problem in a way the team had not considered. | A reframing rather than a technology choice. The interesting part is why the obvious approach was wrong, and how you saw that. | Adopting a new library and calling it innovation. Or an idea that never shipped and has no outcome. |
+| 4 | Involved | med | Someone else is better at their job because of something you did. | A named person, a specific gap, a specific thing you did, and what changed for them. Reviewing code well counts - describe what you comment on and what you deliberately let go. | "I am always happy to help the team." No person, no gap, no outcome. |
+| 5 | Why Adobe | high | You know what Adobe engineering actually is, beyond the consumer applications. | One real engineering problem in their space connected to something you have built, plus honesty about which products you do and do not know. | "I love Photoshop." Or an answer that would apply unchanged to any large product company. |
+
+<details><summary><b>Every value in full — how it is asked, the probes, your angle</b></summary>
+
+#### Adobe · 1. Genuine  *(high frequency)*
+
+> *How Adobe words it:* Adobe: sincere, trustworthy and reliable - what you say is what you mean.
+
+**Means.** You answer honestly, including about the parts that did not work or that you do not know.
+
+**What they are testing.** Adobe’s first value, and it changes the register of the whole loop. An obviously rehearsed candidate scores worse here than a slightly rough one who is clearly describing something real.
+
+**How it is asked**
+
+- Tell me about a project that did not go well.
+- What are you not good at?
+- What did you not get to finish?
+- What is something you are still figuring out?
+
+**The probes that follow**
+
+- What was your part in it?
+- What did you tell people at the time?
+- What do you wish you had said?
+- How do you feel about it now?
+
+**Strong.** Plain honesty with no spin. Admitting the limits of your knowledge inside a technical answer, unprompted, is the strongest form of it.
+
+**Weak.** A flawlessly polished narrative with no rough edges. Or a "weakness" that is a strength in disguise.
+
+**Pairs with.** Involved · Exceptional
+
+**Your angle.** The thing you shipped that you would not build the same way. Say it plainly, including why it seemed right at the time.
+
+#### Adobe · 2. Exceptional  *(high frequency)*
+
+> *How Adobe words it:* Adobe: setting high standards and delivering work you are proud of.
+
+**Means.** Your code is good to read and good to change, and you can explain the decisions that made it so.
+
+**What they are testing.** The value with the most direct engineering meaning, and Adobe interviewers assess it in the coding round itself. Naming, structure and edge cases are scored, not just correctness.
+
+**How it is asked**
+
+- Tell me about code you are proud of.
+- What does good code look like to you?
+- Describe a refactor you did.
+- How do you decide when something is done?
+
+**The probes that follow**
+
+- Why that structure?
+- What did you reject?
+- What was it like to maintain?
+- What would you change now?
+
+**Strong.** A design decision derived from what varies, with the rejected alternative named, and a maintenance outcome measured in the cost of the next change.
+
+**Weak.** "I write clean code and follow best practices." No decision, no alternative, no consequence. Also weak: a rewrite with no migration story.
+
+**Pairs with.** Innovative · Genuine
+
+**Your angle.** The strategy-shaped refactor in your order or pricing code. The "what varies" derivation is the part worth narrating.
+
+#### Adobe · 3. Innovative  *(med frequency)*
+
+> *How Adobe words it:* Adobe: imaginative and creative in solving problems, and willing to try things that have not been tried.
+
+**Means.** You built something that did not exist, or solved a problem in a way the team had not considered.
+
+**What they are testing.** Adobe is a product company built on creative tools and this value is meant literally. It is not "I used a new framework" - it is a problem framed differently.
+
+**How it is asked**
+
+- Tell me about something you built that nobody asked for.
+- Describe the most creative solution you have shipped.
+- When did you solve a problem in an unexpected way?
+- What have you automated?
+
+**The probes that follow**
+
+- What made you think of it?
+- Who else had tried?
+- How did you get permission?
+- Did it survive?
+
+**Strong.** A reframing rather than a technology choice. The interesting part is why the obvious approach was wrong, and how you saw that.
+
+**Weak.** Adopting a new library and calling it innovation. Or an idea that never shipped and has no outcome.
+
+**Pairs with.** Exceptional · Involved
+
+**Your angle.** Any internal tool or automation you built because a manual process annoyed you. Small and real is fine; it needs a before and an after.
+
+#### Adobe · 4. Involved  *(med frequency)*
+
+> *How Adobe words it:* Adobe: engaged with the team, the company and the community - making other people better.
+
+**Means.** Someone else is better at their job because of something you did.
+
+**What they are testing.** The value with the fewest prepared answers on the whole ladder, which makes it the cheapest place to differentiate at Adobe.
+
+**How it is asked**
+
+- Have you mentored anyone?
+- Tell me about a code review that mattered.
+- How do you help new people get up to speed?
+- What have you contributed outside your own tickets?
+
+**The probes that follow**
+
+- What did they need?
+- What did you actually do?
+- How did it turn out for them?
+- Do you still do it?
+
+**Strong.** A named person, a specific gap, a specific thing you did, and what changed for them. Reviewing code well counts - describe what you comment on and what you deliberately let go.
+
+**Weak.** "I am always happy to help the team." No person, no gap, no outcome.
+
+**Pairs with.** Genuine · Innovative
+
+**Your angle.** How you review code, or the write-up you did that another engineer then used. Documentation that someone actually followed is a real Involved story.
+
+#### Adobe · 5. Why Adobe  *(high frequency)*
+
+> *How Adobe words it:* Not a value - a question, asked seriously and repeatedly through an Adobe loop.
+
+**Means.** You know what Adobe engineering actually is, beyond the consumer applications.
+
+**What they are testing.** Adobe hires many engineers onto Experience Cloud, Document Cloud and platform work that nobody outside the company recognises. Naming one of those is immediate evidence of research.
+
+**How it is asked**
+
+- Why Adobe?
+- Which of our products do you know?
+- What would you want to work on?
+- What do you know about this team?
+
+**The probes that follow**
+
+- What interests you about that problem specifically?
+- Have you used it?
+- What else are you looking at?
+- What would make this a bad fit for you?
+
+**Strong.** One real engineering problem in their space connected to something you have built, plus honesty about which products you do and do not know.
+
+**Weak.** "I love Photoshop." Or an answer that would apply unchanged to any large product company.
+
+**Pairs with.** Genuine
+
+**Your angle.** Document Cloud and Experience Cloud are backend-heavy, high-volume, Java-and-data problems. That is your stack; say so concretely.
+
+</details>
+
+<details><summary><b>A worked story, annotated, with the probes answered</b></summary>
+
+**Question.** Tell me about a piece of code or a system you are particularly proud of.
+
+**Scoring against.** Exceptional · Involved · Genuine
+
+**S - Situation**
+
+> We had a pricing component inside our order service that had grown into a single method of about four hundred lines. Every new promotion type added another branch. It was correct - we had good tests - but every change took a day and a half, and two people had introduced bugs in it in the previous quarter.
+
+*Why it is shaped this way:* Names the real problem honestly, including the fact that the code was correct. Admitting that the thing you rewrote worked is the Genuine register - it resists the temptation to make the before-state worse than it was.
+
+**T - Task**
+
+> Nobody asked me to fix it. I picked it up during a quarter where we had two new promotion types coming, because I was going to be the one adding both of them.
+
+*Why it is shaped this way:* Self-initiated, with a plain and slightly self-interested reason. That reads as real rather than heroic.
+
+**A - Action**
+
+> I did not start by rewriting. I started by listing every promotion type we had and asking what actually varied between them - it turned out to be exactly two things: how the discount was computed, and what made an order eligible. Everything else in those four hundred lines was shared. So it became a small interface with a compute method and a predicate, one implementation per promotion type, and a resolver that picked the applicable ones in a defined order. I kept the old method as a delegating shim for one release and ran both paths in parallel against production traffic, comparing outputs, before deleting it. On naming: I deliberately called the interface PricingRule rather than PricingStrategy, because the domain people already said "rule" and matching their vocabulary meant they could read the class list and check it. Two of them did, and they caught an ordering mistake I had made between percentage and fixed-amount discounts.
+
+*Why it is shaped this way:* This is the Exceptional beat done properly. The design derives from "what varies", the migration is safe rather than brave, and the naming decision is justified in domain terms with an outcome attached. The parallel-run detail is the one that convinces an interviewer this actually happened.
+
+**R - Result**
+
+> The two new promotion types took about two hours each instead of a day and a half. The class list is readable by non-engineers, which is how the ordering bug got caught before it shipped. And that area has not had a production bug since - about a year now.
+
+*Why it is shaped this way:* Quantified in the currency that matters for a refactor - cost of the next change - plus the maintenance outcome Adobe asks about.
+
+**L - Learning**
+
+> The thing I would do differently is the parallel run. I compared outputs by logging both and diffing offline, which was fiddly and I nearly gave up on it. Writing a proper shadow comparison with a metric would have taken an extra afternoon and made it boring instead of nervy. I have done it that way since. The thing I would keep is asking the domain people to read the class names - that cost nothing and caught a real bug.
+
+*Why it is shaped this way:* A genuine, specific regret about method rather than outcome, and a practice worth passing on. The last sentence is the Involved hook - a habit other people can adopt.
+
+**The probes, and how they are answered**
+
+- **Why an interface rather than just splitting the method up?** — Because the axis of change was clear. Two things varied per promotion and everything else was shared, so an interface with those two operations meant a new promotion is one new class and no edits to existing code. If the variation had been messier I would have started with private methods and waited - I have over-abstracted before and it is worse than a long method.
+- **What would you refactor if you went back?** — The resolver ordering is still implicit - it depends on the order rules are registered, which is a comment rather than a constraint. I would make precedence an explicit property on the rule so it cannot be got wrong by re-ordering a list.
+- **How did you make sure the behaviour was identical?** — Parallel run against real traffic, comparing old and new output for every order for a release, and the existing test suite which was genuinely good. The tests were the reason this was safe to attempt at all.
+- **You said domain people read the class list. How did that work?** — I sent them the list of rule class names and asked whether it matched what they thought the promotions were. That is all. One of them said the order looked wrong between two discount types, and she was right.
+- **Have you shared this approach with anyone else?** — I wrote up the "list what varies before you extract anything" step for our team wiki, because that is the part people skip. Two other refactors since have used it, and one person came back and told me it stopped them extracting the wrong abstraction.
+
+**Why this one works here.** It leads with craft, which is what Adobe notices. The design decision is derived rather than asserted - "what varies" is a visible piece of reasoning, not a pattern name dropped in. The naming choice is justified in domain terms and has a measurable consequence. The migration is careful rather than bold, which reads as someone who has broken production before. The regret is about method and is specific. And it ends with something passed on to other people, which is the Involved value that almost nobody prepares for.
+
+</details>
+
+**The schedule for this room**
+
+| When | What | Note |
+|---|---|---|
+| Week 7 | Apply alongside Amazon and Microsoft | Adobe loops move at a similar pace, 4-8 weeks to onsite. |
+| Week 8 | Write the craft story | A refactor or a design decision, with the rejected alternative and the maintenance outcome. |
+| Week 9 | Write the Involved story | Mentoring, code review, or a write-up someone else used. This is the cheapest differentiation in the loop. |
+| Week 10 | Research Adobe engineering properly | Experience Cloud, Document Cloud, the developer platform. One paragraph you could say out loud. |
+| Week 11 | Deliberately under-polish | Rehearse for content, not for delivery. Practise the stories until you know them, then stop. |
+| Week 12 | One OOD mock, judged on code quality | Not just whether it works. Naming, edge cases, structure - the Exceptional signal is assessed live. |
+
+**How this room differs.** Against Amazon: far fewer probes and no bar raiser, which means each answer carries more evidence rather than less. Against Microsoft: similar warmth, but Adobe assesses code craft as a behavioural signal in a way Microsoft does not, and cares more about whether you have a genuine relationship with the product domain.
+
+> *Source and confidence.* Partly published. Adobe publishes its four core values - Genuine, Exceptional, Innovative, Involved - on its careers site. The loop structure, the weight on code craft, and the emphasis on the hiring-manager round come from consistent candidate reporting rather than from Adobe documentation; treat those as a working model.
+
+---
+
+### JP MORGAN · How We Do Business - the business principles
+
+**Rung one.** The only company on this ladder that scores you on risk thinking - and the first one you will interview at, in week four, on a format you have probably never practised.
+
+**What it is worth.** Two distinct gates. A pre-recorded video interview with no human in it, early, which filters before anyone reads your code. Then a hiring-manager and sometimes an MD conversation at the end.
+
+**Where behaviour is scored**
+
+| Round | Time | What happens |
+|---|---|---|
+| **HireVue / pre-recorded video** | 20-30 min, no human | Three to five behavioural questions. Around 30 seconds to prepare, 60-90 seconds to answer, sometimes one retake, sometimes none. Nobody interrupts, nobody probes, nobody nods. It is reviewed later - increasingly with automated assistance - and it is a real filter. |
+| **Technical rounds (2-3)** | 45-60 min | Java, Spring, SQL, concurrency, and a deep dive on a system you actually run. Behavioural questions bracket the technical content. |
+| **Hiring manager** | 45-60 min | The main behavioural round. Your production experience in depth, how you handle risk and change, why JPM, and stability of intent. |
+| **MD / senior round** | 30-45 min | Not always present. Broader and more values-shaped: integrity, client focus, how you work under scrutiny, and why financial services. |
+
+| What they are scoring | Why it matters |
+|---|---|
+| **Risk and control thinking** | The differentiator, and the thing nobody prepares. Every story should be able to answer: what could have gone wrong, who signed off, how would you have known, how would you have rolled back. |
+| **The client is real and specific** | Trading desks, operations, compliance, an external corporate client. "The business" is a person with a name and a deadline, and knowing who yours was is scored. |
+| **Integrity and escalation** | Banks care disproportionately about whether you raise problems rather than absorb them quietly. Sitting on a defect to protect a date is the wrong answer here in a way it is not everywhere. |
+| **Follow-through and stability** | JPM interviews for people who will still be there in three years operating the thing they built. Enthusiasm for disruption reads worse here than at any product company. |
+| **Teamwork in a large hierarchy** | Working through a structure - approvals, change boards, other teams - rather than around it. |
+| **The video round is scored blind** | No probes, no chemistry, no recovery. Your answer has to be self-contained, structured and inside the time limit, which is a different skill from a conversation. |
+
+**Things nobody tells you**
+
+- The HireVue is the first real gate and candidates lose here without ever knowing why. Practise it on camera, to a timer, with no audience - it is genuinely unpleasant the first time.
+- This is your week-four interview. It arrives before your behavioural prep would naturally be finished, which is why it is scheduled early in the plan rather than late.
+- "Why JP Morgan" and "why financial services" are asked sincerely. Engineers answer them badly because they have not thought about it, and the answer "it is a stable large company" is heard as "I will leave".
+- Your production experience is worth more here than anywhere else on the ladder. A candidate who runs Kubernetes and Postgres in anger and can talk about a real incident is exactly what this rung is buying.
+
+**The story format they want**
+
+| Part | Budget | What goes in it |
+|---|---|---|
+| **S - Situation** | 20 sec · ~15% | Name the client or the business function. "The reconciliation team", "the settlements desk", "the fraud operations group" - not "stakeholders". |
+| **T - Task** | 15 sec · ~10% | What you owned, and what the deadline or regulatory constraint was if there was one. |
+| **A - Action** | 50-60 sec · ~40% | What you did, including how you got it approved and who reviewed it. In a bank, "I merged it" is not a complete sentence. |
+| **C - Control** | 15 sec · ~10% | The JPM-specific part. What could have gone wrong, what you put in place - a rollback, a feature flag, a reconciliation check, a dual-run, an alert - and how you would have known if it had. |
+| **R - Result** | 20 sec · ~15% | Quantified, and include the absence of incidents as a result. "Zero breaks in eighteen months" is a strong sentence in this room. |
+| **L - Learning** | 15 sec · ~10% | What you changed afterwards. Process changes count for more here than at a product company. |
+
+**Rules for this room**
+
+- Add the control sentence to every technical story. This is the adaptation that separates a bank-ready answer from a product-company one, and it costs fifteen seconds.
+- Name a real client or business function. Vague "stakeholders" reads as someone who has never been close to the business.
+- Do not lead with speed. "We shipped it in two days" is a warning here unless it is immediately followed by how it was made safe.
+- For the HireVue: 90 seconds means roughly 200 words. Write and time three answers. No probes are coming, so the story must be complete without them.
+- Have an escalation story - a time you raised something inconvenient early. This is scored more heavily at a bank than anywhere else on the ladder.
+- Answer "why financial services" with something about the problem domain: correctness, money, reconciliation, latency, regulation. Not stability, not the brand.
+
+> **Timing.** Video round: 60-90 seconds, hard stop, no recovery. Live rounds: two minutes and normal follow-ups. Practise both - they are different skills and the video one is the one you will meet first.
+
+**The follow-up probes**
+
+*On risk and control*
+
+- What could have gone wrong?
+- How would you have known if it had?
+- What was your rollback?
+- Who reviewed or approved the change?
+- Have you ever caused a production incident? Walk me through it.
+
+*On the client*
+
+- Who was the business user here?
+- How did you know what they needed?
+- Tell me about a time you pushed back on a business request.
+- What happened when you missed something they needed?
+
+*On integrity and escalation*
+
+- Tell me about a time you raised a problem nobody wanted to hear.
+- Have you ever been asked to cut a corner?
+- When did you have to say something was not ready?
+- What would you do if you found a defect the day before a release?
+
+*On working in a large organisation*
+
+- How do you get a change through when three teams have to agree?
+- Tell me about working with a team you had no authority over.
+- How do you handle a process you think is unnecessary?
+- Describe a time you had to work within a constraint you disagreed with.
+
+*On motivation and stability*
+
+- Why JP Morgan?
+- Why financial services?
+- Why are you leaving your current role?
+- Where do you want to be in three to five years?
+- What do you want from your next team?
+
+| Situation | What to do |
+|---|---|
+| **On the HireVue, with no interviewer** | Look at the camera lens, not the screen. Structure out loud - "there were three things I did" - because there is nobody to steer you. Stop before the timer rather than being cut off mid-sentence. |
+| **When asked what could have gone wrong** | Answer with a real failure mode and the specific control, not a general reassurance. "The migration could have locked the table under load, so we backfilled in batches with a kill switch and watched lock waits" is the register. |
+| **When asked about a process you disagree with** | Show you worked within it and then tried to change it, in that order. "I went around it" is the wrong answer in a regulated environment, however justified it felt. |
+| **When asked why you are leaving** | Be plain and forward-looking. Criticism of your current employer lands worse here than at a product company - discretion is itself a signal. |
+| **When asked "why financial services"** | Talk about correctness and consequence. Money that has to reconcile, transactions that cannot be lost, systems where being approximately right is a defect. That is a real answer and it is also true. |
+
+**Anti-patterns — 8 ways to lose this room**
+
+1. **No risk thinking anywhere** — Stories about shipping fast with no mention of what could break, who approved it, or how you would have rolled back. This is the single most common way product-company engineers underperform at a bank.
+   *FIX: add the control sentence to every technical story. Rollback, flag, dual-run, reconciliation, alert - name the specific one.*
+2. **Treating the HireVue as a formality** — No practice, no timer, reading from notes off-screen, rambling past the limit. It is a real filter and it happens before any human sees your code.
+   *FIX: three answers, on camera, to a 90-second timer, watched back. Do it twice.*
+3. **Speed as the headline** — "We had it in production in two days." In a bank this raises a question rather than answering one.
+   *FIX: lead with the outcome and the safety, and let the speed be a detail inside it.*
+4. **"The business" as an abstraction** — No named client, no named function, no idea who used the thing. It reads as an engineer who has never been near the people paying for the work.
+   *FIX: name the desk, the team or the operation. If you genuinely do not know who consumed your system, that is worth finding out before the interview.*
+5. **Going around the process** — A story where the change board or the approval step was the obstacle you cleverly avoided. In a regulated environment this is disqualifying rather than resourceful.
+   *FIX: worked within it, then argued to change it. That is the story they want and it is usually the true one.*
+6. **"Why JPM" answered with stability** — "It is a large, stable company." Every interviewer hears "I will leave when something more interesting comes along."
+   *FIX: the problem domain. Correctness, scale, regulation, latency, the fact that the systems have to be right rather than approximately right.*
+7. **Criticising your current employer** — Common, and it reads as a discretion risk in an industry built on discretion.
+   *FIX: forward-looking reasons only. What you want next, not what you are escaping.*
+8. **No escalation story** — Nothing where you raised an inconvenient problem. Banks weight this heavily because absorbing problems quietly is how they become incidents with regulators attached.
+   *FIX: prepare one. A defect found late, a date you said would slip, a design you flagged as unsafe.*
+
+**How We Do Business - the business principles**
+
+| # | Value | Freq | What it means | Strong | Weak |
+|---|---|---|---|---|---|
+| 1 | Exceptional client service | high | You know who consumed your system, what they needed, and what it cost them when it was wrong. | A named function, a specific need, and a change you made because you understood their workflow rather than their ticket. | "Stakeholders" throughout. Or a story where requirements arrived as a document and nobody was ever spoken to. |
+| 2 | Operational excellence | high | You changed production safely - staged, reversible, monitored, reviewed - and can describe how. | Named failure modes, a specific control for each, a documented abort, and a detection mechanism added afterwards. Absence of incident stated as a result. | "We deployed it and monitored it." No named risk, no rollback, no reviewer. Or a story where speed is the point. |
+| 3 | Integrity, fairness and responsibility | high | You raised something inconvenient early, to the right person, and accepted the cost. | Raised early, through the right channel, with a real cost - a slipped date, an awkward conversation with someone senior - and no drama in the telling. | Nothing at stake. Or an escalation that skipped the person who should have heard it first. |
+| 4 | A great team and winning culture | med | You got things done through a large organisation - approvals, other teams, people you had no authority over - without going around it. | You made it cheap for others to agree, worked within the process, and then argued to improve it with evidence from having followed it. | A story where the process is the villain and you cleverly bypassed it. Also weak: escalating to a manager as the first move. |
+| 5 | Risk and control mindset | high | Before you change anything you have already asked what could go wrong, how you would know, and how you would undo it. | Specific failure modes with specific controls, an abort you had prepared before you started, and detection added afterwards so the same class of problem is visible next time. | General reassurance - "we tested it thoroughly" - with no named failure mode and no rollback. Or risk mentioned only when asked. |
+| 6 | Why JPM, why financial services | high | You have an actual reason to work on financial systems that is about the problems rather than the salary or the stability. | The domain: correctness, reconciliation, money that must not be lost, latency with consequences, regulation as a design constraint. Connected to something you have actually built. | Stability, brand, size, or compensation. Or criticism of your current employer as the reason. |
+
+<details><summary><b>Every value in full — how it is asked, the probes, your angle</b></summary>
+
+#### JP Morgan · 1. Exceptional client service  *(high frequency)*
+
+> *How JP Morgan words it:* The first of JPMorgan Chase’s published business principles: be field and client focused, and do the right thing for the client.
+
+**Means.** You know who consumed your system, what they needed, and what it cost them when it was wrong.
+
+**What they are testing.** Engineers at banks sit closer to the business than at product companies, and JPM tests whether you have made that connection. A named desk or operations team in the first sentence of a story is worth a great deal.
+
+**How it is asked**
+
+- Who used the system you built?
+- Tell me about working directly with a business user.
+- Describe a time you pushed back on a business request.
+- How do you find out what they actually need?
+
+**The probes that follow**
+
+- What was their deadline and why?
+- What did they ask for versus what they needed?
+- How did you tell them no?
+- What happened when you got it wrong?
+
+**Strong.** A named function, a specific need, and a change you made because you understood their workflow rather than their ticket.
+
+**Weak.** "Stakeholders" throughout. Or a story where requirements arrived as a document and nobody was ever spoken to.
+
+**Pairs with.** Operational excellence · Integrity
+
+**Your angle.** Whoever operates or reconciles against your system - support, operations, finance. Find out who they are before the interview if you do not know.
+
+#### JP Morgan · 2. Operational excellence  *(high frequency)*
+
+> *How JP Morgan words it:* A published business principle: set the highest standards of performance, execute with discipline, and get it right the first time.
+
+**Means.** You changed production safely - staged, reversible, monitored, reviewed - and can describe how.
+
+**What they are testing.** The core of the JPM engineering behavioural bar and where your actual experience is worth the most. Anyone can describe a deploy; describing a safe one is the differentiator.
+
+**How it is asked**
+
+- Tell me about a significant production change.
+- How do you deploy something risky?
+- Describe a migration you ran.
+- Tell me about a production incident you were part of.
+
+**The probes that follow**
+
+- What was your rollback?
+- How would you have known it was going wrong?
+- Who reviewed it?
+- What would you do differently?
+
+**Strong.** Named failure modes, a specific control for each, a documented abort, and a detection mechanism added afterwards. Absence of incident stated as a result.
+
+**Weak.** "We deployed it and monitored it." No named risk, no rollback, no reviewer. Or a story where speed is the point.
+
+**Pairs with.** Client service · Integrity
+
+**Your angle.** Your Postgres migrations and your Kubernetes rollouts. Expand-migrate-contract, CONCURRENTLY, canary, readiness probes - this is your strongest ground on the whole ladder.
+
+#### JP Morgan · 3. Integrity, fairness and responsibility  *(high frequency)*
+
+> *How JP Morgan words it:* A published business principle: a commitment to integrity, fairness and responsibility in how the business is conducted.
+
+**Means.** You raised something inconvenient early, to the right person, and accepted the cost.
+
+**What they are testing.** Weighted more heavily at a bank than anywhere else on this ladder, because quietly absorbed problems become regulatory events. The scored behaviour is raising it, not solving it heroically.
+
+**How it is asked**
+
+- Tell me about a time you raised a concern nobody wanted to hear.
+- Have you ever been asked to cut a corner?
+- When did you have to say something was not ready?
+- What would you do if you found a serious defect the day before release?
+
+**The probes that follow**
+
+- Who did you tell, and how quickly?
+- What was the pressure not to?
+- What did it cost you?
+- What happened afterwards?
+
+**Strong.** Raised early, through the right channel, with a real cost - a slipped date, an awkward conversation with someone senior - and no drama in the telling.
+
+**Weak.** Nothing at stake. Or an escalation that skipped the person who should have heard it first.
+
+**Pairs with.** Operational excellence · Great team
+
+**Your angle.** The release you argued to hold, or the defect you reported that cost your own team a date.
+
+#### JP Morgan · 4. A great team and winning culture  *(med frequency)*
+
+> *How JP Morgan words it:* A published business principle: build the best team, treat people with respect, and work as a partnership across the firm.
+
+**Means.** You got things done through a large organisation - approvals, other teams, people you had no authority over - without going around it.
+
+**What they are testing.** JPM is very large and heavily structured. The test is whether you can work through structure rather than resent it.
+
+**How it is asked**
+
+- How do you get a change through when several teams must agree?
+- Tell me about working with a team you had no authority over.
+- Describe a process you thought was unnecessary.
+- Tell me about mentoring or onboarding someone.
+
+**The probes that follow**
+
+- What was in it for them?
+- How long did it take?
+- What did you do when someone said no?
+- Did you try to change the process afterwards?
+
+**Strong.** You made it cheap for others to agree, worked within the process, and then argued to improve it with evidence from having followed it.
+
+**Weak.** A story where the process is the villain and you cleverly bypassed it. Also weak: escalating to a manager as the first move.
+
+**Pairs with.** Client service · Integrity
+
+**Your angle.** Any change needing sign-off from a team that had no reason to prioritise you. Turning up with the migration already written is the move.
+
+#### JP Morgan · 5. Risk and control mindset  *(high frequency)*
+
+> *How JP Morgan words it:* Not a numbered principle, but the operating culture of the firm and the most distinctive thing a JPM interviewer listens for in an engineer.
+
+**Means.** Before you change anything you have already asked what could go wrong, how you would know, and how you would undo it.
+
+**What they are testing.** The single biggest gap between a product-company candidate and a bank-ready one. It is not a story you tell - it is a sentence you add to every other story.
+
+**How it is asked**
+
+- What could have gone wrong?
+- How do you decide whether a change is risky?
+- Tell me about a time you were wrong about the risk of something.
+- What controls did you put around that?
+
+**The probes that follow**
+
+- How would you have detected it?
+- What was the abort procedure?
+- Who else needed to know?
+- Did you add anything afterwards so the next person would see it sooner?
+
+**Strong.** Specific failure modes with specific controls, an abort you had prepared before you started, and detection added afterwards so the same class of problem is visible next time.
+
+**Weak.** General reassurance - "we tested it thoroughly" - with no named failure mode and no rollback. Or risk mentioned only when asked.
+
+**Pairs with.** Operational excellence · Integrity
+
+**Your angle.** You have real examples: index builds, migrations, rollouts. The material exists; what is missing is the habit of saying the control part out loud.
+
+#### JP Morgan · 6. Why JPM, why financial services  *(high frequency)*
+
+> *How JP Morgan words it:* Not a principle - a question, asked at every stage from the HireVue to the MD round, and answered poorly by most engineers.
+
+**Means.** You have an actual reason to work on financial systems that is about the problems rather than the salary or the stability.
+
+**What they are testing.** The answer "large and stable" is heard as "will leave when something more interesting appears". Banks are sensitive to this because engineer attrition is expensive and visible.
+
+**How it is asked**
+
+- Why JP Morgan?
+- Why financial services?
+- Why are you leaving your current role?
+- Where do you want to be in five years?
+
+**The probes that follow**
+
+- What do you know about what this team builds?
+- What interests you about that specifically?
+- What else are you interviewing for?
+- What would make this the wrong move?
+
+**Strong.** The domain: correctness, reconciliation, money that must not be lost, latency with consequences, regulation as a design constraint. Connected to something you have actually built.
+
+**Weak.** Stability, brand, size, or compensation. Or criticism of your current employer as the reason.
+
+**Pairs with.** Integrity
+
+**Your angle.** You have built idempotent, event-driven systems where duplicates matter. That is a payments problem in everything but name - say it that way.
+
+</details>
+
+<details><summary><b>A worked story, annotated, with the probes answered</b></summary>
+
+**Question.** Tell me about a significant change you made to a production system.
+
+**Scoring against.** Operational excellence · Integrity · Client service
+
+**S - Situation**
+
+> Our orders service wrote to a Postgres table that had grown to a few hundred million rows. The operations team - the people who chase failed orders - ran a status query against it that had gone from under a second to about forty seconds, and they were the ones who told us, which is not how I want to find out.
+
+*Why it is shaped this way:* A named client: the operations team, real people with a job. And the admission that they discovered it first, which is the honest version and reads as accountability rather than as a defect in the story.
+
+**T - Task**
+
+> I owned the change. What I had to add was a composite index and a partitioning change on a table that is written to continuously by a system that takes customer orders. The constraint was that we could not take a write outage.
+
+*Why it is shaped this way:* States the actual technical risk in one sentence. The constraint is named up front, which is the shape a bank interviewer is listening for.
+
+**A - Action**
+
+> I did it in stages rather than in one change. First I reproduced the query plan on a restored snapshot so I could confirm the index would be used before touching production - the planner was doing a sequential scan because the existing index had the columns in the wrong order for that predicate. I built the new index with CREATE INDEX CONCURRENTLY so it would not take a write lock, in a low-traffic window, and watched lock waits and replication lag while it built. I did not drop the old index at the same time; I left it for a release so that a rollback was just a planner hint away rather than a rebuild. The partitioning was separate and slower - expand, migrate, contract over three releases, with the application dual-reading during the middle one. Every step went through our change process and the DBA reviewed the migration, which caught that my first partition key would have put all recent orders in one partition and recreated the hot spot.
+
+*Why it is shaped this way:* Staged, reversible, reviewed. The rejected first partition key is the honest detail that makes the review sound real rather than ceremonial, and it credits the reviewer. This paragraph is doing the work of both Operational excellence and the control element.
+
+**C - Control**
+
+> The specific things that could have gone wrong were a write lock during the index build and a bad partition key creating a new hot spot. For the first, CONCURRENTLY plus a monitored window plus a documented abort - if lock waits crossed a threshold we would cancel the build, and I had the command ready. For the second, the DBA review caught it, and afterwards I added a check on partition row-count skew to the dashboard so a bad key would be visible within a day rather than a quarter.
+
+*Why it is shaped this way:* This is the paragraph that does not exist in a product-company answer, and it is the one that most distinguishes a candidate at JPM. Two named failure modes, a specific control for each, a documented abort, and a detection mechanism added afterwards.
+
+**R - Result**
+
+> The operations query went from about forty seconds to under a second. No write outage, no incident, and no rollback needed. That has held for a bit over a year, and the skew check has never fired, which is the outcome I wanted from it.
+
+*Why it is shaped this way:* Quantified, and the absence of incident is stated as a result. "No rollback needed" and "no incident" are the sentences that land in this room.
+
+**L - Learning**
+
+> Two things. The operations team should not have been the ones to tell us - we had no alert on query latency for the queries they cared about, only on ours, so I added a p95 alert on their three critical queries. And I would involve the DBA at the design stage rather than at review; the partition key mistake would have taken five minutes to avoid and took a review cycle to catch.
+
+*Why it is shaped this way:* Both learnings are process changes, which is the currency at a bank. The first also closes the loop on the uncomfortable opening detail.
+
+**The probes, and how they are answered**
+
+- **What would you have done if the index build had started causing lock waits?** — Cancelled it. CREATE INDEX CONCURRENTLY can be cancelled and it leaves an invalid index behind, which you then drop - that is a clean-up, not an outage. I had both commands written down before I started, which is the only reason I would have been willing to run it at all.
+- **Who approved this?** — It went through our normal change process - a written change record with the rollback documented, technical review from the DBA, and sign-off from my tech lead. The partitioning work needed a second review because it spanned three releases.
+- **You said the ops team found it first. How did that conversation go?** — Not comfortably. They had been working around it for a couple of weeks before they raised it, which told me they did not think we would prioritise it. I took that seriously - the alert I added afterwards was partly about the query and partly about making sure they did not have to be the monitoring.
+- **What if the partitioning had gone wrong mid-migration?** — That is why it was expand-migrate-contract across three releases rather than one. During the middle release the application dual-read from both the old table and the partitioned one, so at any point the old path was still live and the rollback was a config change. The cost is that it takes three releases instead of one, and in this environment that is the right trade.
+- **Would you do anything differently with the timeline?** — I would run it slower, not faster. I compressed the partitioning into three consecutive releases and there was a week where two migrations were in flight at once. Nothing went wrong, but if something had, working out which change caused it would have been harder than it needed to be.
+
+**Why this one works here.** It has a named client who is a real team with a real job. It names the technical risk before the solution. Every step is staged, reversible and reviewed, and the review caught a genuine mistake that the candidate reports without defensiveness. The control paragraph names two specific failure modes with a specific control and abort procedure for each - that is the paragraph a bank is listening for and the one a product-company answer never contains. The result includes the absence of incident. And both learnings are process changes, one of which closes the uncomfortable detail the story opened with.
+
+</details>
+
+**The schedule for this room**
+
+| When | What | Note |
+|---|---|---|
+| Week 2 | Resume rewritten, referrals lined up | Kubernetes, event-driven, Postgres. This is the profile rung one is buying. |
+| Week 3 | Apply - JPM, Amex, Expedia | This is the earliest gate on the ladder. Interviews land in week four. |
+| Week 3 | Record three HireVue answers | 90 seconds, on camera, to a timer, watched back. Do not meet this format for the first time in the real thing. |
+| Week 3 | Add the control sentence to four existing stories | What could have gone wrong, what you put in place, how you would have known. Fifteen seconds each. |
+| Week 4 | Write the escalation story | A problem you raised early that cost you something. |
+| Week 4 | "Why financial services", written down | Three sentences about correctness and consequence. Not stability. |
+
+**How this room differs.** Against Amazon: speed is a liability here rather than an asset unless it is paired with safety, and "I decided and shipped it" needs a reviewer in the sentence. Against Google: no hypotheticals, far more weight on what you actually operate in production, and a video round with no human in it that Google has no equivalent of.
+
+> *Source and confidence.* Partly published. JPMorgan Chase publishes its business principles - client focus, operational excellence, integrity/fairness/responsibility, and a great team and winning culture - in its annual How We Do Business report. The HireVue video stage, its timing and format, and the weight given to risk and control thinking come from consistent candidate reporting and from the general practice of the industry rather than from JPM documentation. Treat the round mechanics as a working model and the emphasis on control as a well-evidenced pattern rather than an official rubric.
+
+---
+
+### UBER · Cultural norms (2017 reset)
+
+**Rung three.** The company that publicly rewrote its values after a cultural crisis, and now asks about ethics in a way that is not ceremonial.
+
+**What it is worth.** One dedicated round plus behavioural questions through the loop. Compressed, because the machine-coding round eats the schedule - which means each answer counts for more.
+
+**Where behaviour is scored**
+
+| Round | Time | What happens |
+|---|---|---|
+| **Recruiter screen** | 30 min | Motivation, level, timeline. Lightly behavioural. |
+| **Technical rounds** | 45-60 min each | Algorithms close to the Google bar, plus a system design round where geo and real-time topics recur for obvious reasons. |
+| **Machine coding** | 60-90 min | Runnable, tested code under a clock. Not behavioural on paper, but how you handle running out of time is read as behaviour - and it is where most candidates fail. |
+| **Hiring manager / values round** | 45-60 min | The dedicated behavioural round. Ownership, ambiguity, disagreement with senior people, and at least one ethics or judgement question. |
+| **Bar-raiser-equivalent** | 45-60 min | Not always present and not always named as such. A trained interviewer from outside the team, calibrating against the company bar rather than the team’s need. |
+
+| What they are scoring | Why it matters |
+|---|---|
+| **Ownership without a mandate** | "We act like owners" is the norm that maps most directly onto engineering work. The scored version is fixing something nobody assigned you and staying for the consequences. |
+| **Ideas over hierarchy, demonstrated** | A story where you disagreed with someone senior and were right - or were wrong and said so - is directly on-rubric. This is one of the eight norms by name. |
+| **Doing the right thing, tested seriously** | Post-2017 this is a real question with a real answer expected. They want evidence you would raise something rather than absorb it. |
+| **Perseverance through a bad stretch** | "We persevere" - a project that went badly for months before it worked. Uber operations are relentless and they want evidence you do not fold. |
+| **Global thinking, local reality** | "We build globally, we live locally" - a system that had to work differently in different markets, timezones, currencies or regulatory regimes. |
+| **Compressed schedule, higher stakes per answer** | The machine-coding round takes an hour and a half of the loop. There is less behavioural time than at Amazon and each answer is a larger share of the evidence. |
+
+**Things nobody tells you**
+
+- The machine-coding round is the differentiator and the most common failure. An unfinished elegant design scores below a finished plain one, and how you narrate the last ten minutes is read as behaviour.
+- The 2017 reset is recent enough that interviewers were there for it. Answers about ethics that sound performative land badly with people who lived through the real version.
+- Disagreeing with a senior person is a positive story here in a way it is not everywhere. "We value ideas over hierarchy" is a published norm.
+- Geo, real-time and matching problems recur across both the design and the behavioural rounds, because that is what the company is.
+
+**The story format they want**
+
+| Part | Budget | What goes in it |
+|---|---|---|
+| **S - Situation** | 20 sec · ~15% | Include the operational reality if there was one - traffic, markets, timezones, a launch date that was not moving. |
+| **T - Task** | 15 sec · ~10% | What you took on, and whether anyone asked you to. "Nobody assigned this" is a good opening at Uber. |
+| **A - Action** | 55-65 sec · ~45% | What you did. Include the disagreement if there was one and who it was with - seniority is not a reason to soften it here. |
+| **R - Result** | 20 sec · ~15% | Quantified. Operational metrics land well: incidents, latency, throughput, cost per unit. |
+| **L - Learning** | 15 sec · ~15% | What you changed. Also the right place for the honest version of how long it took and how bad it got in the middle - perseverance is a named norm. |
+
+**Rules for this room**
+
+- Have one story where you disagreed with someone significantly more senior. Say who they were and what the argument was. This is on-rubric by name.
+- Have one genuine ethics or judgement story. Post-2017 this is asked seriously, and a performative answer is worse than a small honest one.
+- Include one project that was bad for months before it worked. Perseverance is a named norm and almost every candidate only brings clean successes.
+- Own things without a mandate. "It was not my system but it was breaking our users" is the Uber opening.
+- If a story involves multiple markets, timezones or currencies, use it. "We build globally, we live locally" is the norm with the fewest good candidate stories.
+- In machine coding, narrate the trade-off when you run short: "I am going to stub the persistence layer and finish the matching logic, because that is the part you asked for." Finishing something coherent is the behaviour being scored.
+
+> **Timing.** Two minutes, and expect fewer questions than at Amazon because the loop is compressed. That raises the cost of a rambling answer - you may only get three.
+
+**The follow-up probes**
+
+*On ownership*
+
+- Tell me about something you fixed that was not yours.
+- What happens when you find a problem nobody owns?
+- Describe staying with something after the interesting part was over.
+- What is the worst thing you have had to operate?
+
+*On ideas over hierarchy*
+
+- Tell me about disagreeing with someone senior.
+- What did you do when the decision went against you?
+- Describe a time you were overruled and it turned out you were right.
+- How do you push back on a manager?
+
+*On doing the right thing*
+
+- Tell me about a time you raised something uncomfortable.
+- Have you ever been asked to do something you thought was wrong?
+- What would you do if you found the metric everyone reports was misleading?
+- Describe a decision where the fast option and the right option differed.
+
+*On perseverance*
+
+- Tell me about the longest you have spent on something hard.
+- Describe a project that went badly for a long time.
+- What kept you going?
+- When did you know it was going to work?
+
+*On scale and global reality*
+
+- Tell me about something that worked in one market and not another.
+- How have you handled timezones, currencies or locale?
+- Describe the largest volume system you have run.
+- What broke first when traffic grew?
+
+| Situation | What to do |
+|---|---|
+| **When asked the ethics question** | Answer with something real and proportionate. A small honest story - a metric you flagged as misleading, a shortcut you refused - lands better than a dramatic one that sounds constructed. |
+| **When you disagreed and lost** | Say so, and say what you did afterwards. "I disagreed, I lost, I supported it, and here is what happened" is a complete and well-scored answer. |
+| **When machine coding is running out** | Narrate the trade-off out loud and finish something coherent. Silence and an unfinished elegant design is the failure mode. |
+| **When you have no global story** | Use scale or operational reality instead. Timezone handling, a locale bug, or a regional outage all count. |
+| **When asked about perseverance** | Give the honest timeline including the bad middle. Compressing six months into "it took a while" wastes the norm. |
+
+**Anti-patterns — 6 ways to lose this room**
+
+1. **A performative ethics answer** — A grand, tidy story about integrity that sounds constructed. The people asking lived through 2017 and are unusually sensitive to a rehearsed answer here.
+   *FIX: something small, real and slightly uncomfortable, with a cost you actually paid.*
+2. **No disagreement with seniority** — Every story is collaborative and frictionless. "We value ideas over hierarchy" is a published norm and having nothing for it is a gap.
+   *FIX: one story with a named senior person and a real argument, including the version where you lost.*
+3. **Only clean successes** — No project that was bad for months. Perseverance is a named norm and a portfolio of tidy wins does not evidence it.
+   *FIX: one long, grinding project with the honest middle included.*
+4. **Unfinished machine coding, unexplained** — Running out of time on an elegant half-built design and going quiet. This is the most common way to fail an Uber loop.
+   *FIX: practise finishing. Narrate the trade-off, stub what you must, deliver something that runs.*
+5. **Waiting for a mandate** — Stories where you were assigned everything you did. "We act like owners" is the closest norm to daily engineering and this is its opposite.
+   *FIX: one story where nobody asked you and you stayed for the consequences.*
+6. **Ignoring the history** — Talking about Uber culture as though 2017 did not happen, or alternatively bringing it up as a criticism. Both land badly.
+   *FIX: know that the norms are a deliberate replacement, and let that inform the register of your ethics answer rather than becoming a topic.*
+
+**Cultural norms (2017 reset)**
+
+| # | Value | Freq | What it means | Strong | Weak |
+|---|---|---|---|---|---|
+| 1 | We act like owners | high | You fixed something nobody assigned you and stayed for the unglamorous part afterwards. | Unassigned work, followed by the boring aftermath - the alert, the runbook, the on-call rotation, the metric. Ownership is the second half. | A heroic fix with no follow-through, or work that was assigned and reframed as initiative. |
+| 2 | We value ideas over hierarchy | high | You disagreed with someone senior, handled it properly, and can describe both the winning and the losing version. | Evidence rather than volume, delivered privately rather than performatively, with the cost of being right stated honestly. Having the losing version too is stronger than only the winning one. | Being right loudly. Or a disagreement with no seniority gap, which answers a different question. |
+| 3 | We do the right thing. Period. | high | You raised something uncomfortable, or refused a shortcut, and accepted what that cost. | Small, specific, and costly to you. A misleading metric you corrected, a shortcut you refused, a number you would not report. Proportionate beats dramatic. | A grand narrative with no personal cost. Or an answer that treats the question as ceremonial. |
+| 4 | We persevere | med | You stayed on something that was bad for months before it was good. | The honest timeline including the bad middle, what nearly made you stop, and the specific thing that turned it. Admitting you considered abandoning it makes it credible. | "It was challenging but we got there." Compressed, tidy, and evidencing nothing. |
+| 5 | We are customer obsessed | med | You know what the person on the other end of your system experienced when it went wrong. | You name conflicting groups and the trade-off you made between them, rather than a single undifferentiated user who benefited. | System metrics only. Or "the customer" with no group, no experience, no conflict. |
+| 6 | We build globally, we live locally | med | You have built something that had to behave differently by market, timezone, currency or regulation. | A concrete local surprise - a locale bug, a currency rounding rule, a data-residency requirement - and a platform change that absorbed it rather than a special case bolted on. | "We supported multiple timezones" with no incident and no surprise. |
+| 7 | We make big bold bets | low | You committed to something with a real chance of failing, and can describe how you bounded the downside. | A bounded bet - a spike, a shadow deployment, a reversible migration - with an explicit exit condition decided in advance. | Recklessness described as boldness, or a "bet" with no real downside. |
+| 8 | We celebrate differences | low | You changed how a discussion or a team ran so a perspective that was being missed got in. | A specific mechanism with an outcome - written proposals before a meeting, deliberately asking the newest person first, pairing across specialisms. | A statement of values with no mechanism and no outcome. |
+
+<details><summary><b>Every value in full — how it is asked, the probes, your angle</b></summary>
+
+#### Uber · 1. We act like owners  *(high frequency)*
+
+> *How Uber words it:* An Uber cultural norm: we see something that needs doing and we do it, and we stay with the consequences.
+
+**Means.** You fixed something nobody assigned you and stayed for the unglamorous part afterwards.
+
+**What they are testing.** The norm that maps most directly onto engineering work and the most reliably asked. The staying part is what distinguishes a strong answer.
+
+**How it is asked**
+
+- Tell me about something you fixed that was not yours.
+- What do you do when you find a problem nobody owns?
+- Describe staying with something after the interesting part ended.
+- What is the worst system you have had to operate?
+
+**The probes that follow**
+
+- Why you?
+- What did it cost you?
+- What happened after the fix?
+- Are you still on the hook for it?
+
+**Strong.** Unassigned work, followed by the boring aftermath - the alert, the runbook, the on-call rotation, the metric. Ownership is the second half.
+
+**Weak.** A heroic fix with no follow-through, or work that was assigned and reframed as initiative.
+
+**Pairs with.** We persevere · We do the right thing
+
+**Your angle.** An intermittent production problem you took on, plus the alert you added so the next person would not have to.
+
+#### Uber · 2. We value ideas over hierarchy  *(high frequency)*
+
+> *How Uber words it:* An Uber cultural norm: the best idea wins regardless of who has it, and seniority is not an argument.
+
+**Means.** You disagreed with someone senior, handled it properly, and can describe both the winning and the losing version.
+
+**What they are testing.** Directly on-rubric by name, and one of the few places where a story about contradicting your manager is unambiguously positive.
+
+**How it is asked**
+
+- Tell me about disagreeing with someone senior.
+- What did you do when the decision went against you?
+- Describe being overruled and turning out to be right.
+- How do you push back on your manager?
+
+**The probes that follow**
+
+- How did you raise it?
+- What was their strongest argument?
+- What did you do after the decision?
+- Would you do it the same way again?
+
+**Strong.** Evidence rather than volume, delivered privately rather than performatively, with the cost of being right stated honestly. Having the losing version too is stronger than only the winning one.
+
+**Weak.** Being right loudly. Or a disagreement with no seniority gap, which answers a different question.
+
+**Pairs with.** We do the right thing · We act like owners
+
+**Your angle.** A design review where you went away, checked, and came back with the provider documentation rather than an opinion.
+
+#### Uber · 3. We do the right thing. Period.  *(high frequency)*
+
+> *How Uber words it:* An Uber cultural norm, and the one written in the shortest sentence. It replaced a set of values that a public crisis showed had not held.
+
+**Means.** You raised something uncomfortable, or refused a shortcut, and accepted what that cost.
+
+**What they are testing.** Asked seriously and probed one level deeper than candidates expect. The interviewers were often there for the reset and can tell a constructed answer from a real one.
+
+**How it is asked**
+
+- Tell me about raising something uncomfortable.
+- Have you been asked to do something you thought was wrong?
+- What if the metric everyone reports is misleading?
+- When did the fast option and the right option differ?
+
+**The probes that follow**
+
+- Who did you tell?
+- What was the pressure not to?
+- What did it cost?
+- What would you do if it happened again tomorrow?
+
+**Strong.** Small, specific, and costly to you. A misleading metric you corrected, a shortcut you refused, a number you would not report. Proportionate beats dramatic.
+
+**Weak.** A grand narrative with no personal cost. Or an answer that treats the question as ceremonial.
+
+**Pairs with.** We value ideas over hierarchy · We are customer obsessed
+
+**Your angle.** A dashboard number that was technically true and practically misleading, and what you did about it.
+
+#### Uber · 4. We persevere  *(med frequency)*
+
+> *How Uber words it:* An Uber cultural norm: we keep going through the hard middle, because the work that matters is rarely quick.
+
+**Means.** You stayed on something that was bad for months before it was good.
+
+**What they are testing.** The norm with the fewest candidate stories, because everyone brings clean wins. Bringing the honest grinding version is a differentiator.
+
+**How it is asked**
+
+- Tell me about the longest you have spent on something hard.
+- Describe a project that went badly for a long time.
+- What kept you going?
+- When did you know it would work?
+
+**The probes that follow**
+
+- How bad did it get?
+- Did you consider stopping?
+- What changed?
+- What did it cost you personally?
+
+**Strong.** The honest timeline including the bad middle, what nearly made you stop, and the specific thing that turned it. Admitting you considered abandoning it makes it credible.
+
+**Weak.** "It was challenging but we got there." Compressed, tidy, and evidencing nothing.
+
+**Pairs with.** We act like owners
+
+**Your angle.** A migration or a refactor that took several times longer than planned, told with the real timeline.
+
+#### Uber · 5. We are customer obsessed  *(med frequency)*
+
+> *How Uber words it:* An Uber cultural norm: riders, drivers, eaters and merchants are all customers, and their experience is the measure.
+
+**Means.** You know what the person on the other end of your system experienced when it went wrong.
+
+**What they are testing.** Uber has several distinct customer types with conflicting interests, and answers that acknowledge that tension score above answers that treat "the user" as one group.
+
+**How it is asked**
+
+- Who was the customer for your system?
+- Tell me about a trade-off between two groups of users.
+- How did you know it was working for them?
+- Describe a time you changed something because of what a user experienced.
+
+**The probes that follow**
+
+- What did they actually see?
+- Which group lost out?
+- How did you decide?
+- What did they say?
+
+**Strong.** You name conflicting groups and the trade-off you made between them, rather than a single undifferentiated user who benefited.
+
+**Weak.** System metrics only. Or "the customer" with no group, no experience, no conflict.
+
+**Pairs with.** We build globally, we live locally
+
+**Your angle.** Any case where the operations team and the end user wanted different things, and how you chose.
+
+#### Uber · 6. We build globally, we live locally  *(med frequency)*
+
+> *How Uber words it:* An Uber cultural norm: build platforms that work everywhere while respecting that every market is genuinely different.
+
+**Means.** You have built something that had to behave differently by market, timezone, currency or regulation.
+
+**What they are testing.** The norm with the fewest good stories among backend candidates, which makes even a modest one valuable.
+
+**How it is asked**
+
+- Tell me about something that worked in one market and not another.
+- How have you handled timezones or locale?
+- Describe a regulatory or regional constraint you designed around.
+- What broke when you expanded?
+
+**The probes that follow**
+
+- What was different about that market?
+- How did you find out?
+- What did you change - the platform or the market?
+- What would you do differently?
+
+**Strong.** A concrete local surprise - a locale bug, a currency rounding rule, a data-residency requirement - and a platform change that absorbed it rather than a special case bolted on.
+
+**Weak.** "We supported multiple timezones" with no incident and no surprise.
+
+**Pairs with.** We are customer obsessed
+
+**Your angle.** Timezone or currency handling that broke somewhere specific. Even a small one is better than none.
+
+#### Uber · 7. We make big bold bets  *(low frequency)*
+
+> *How Uber words it:* An Uber cultural norm: taking on things that might not work, deliberately and with eyes open.
+
+**Means.** You committed to something with a real chance of failing, and can describe how you bounded the downside.
+
+**What they are testing.** Lower frequency, and for engineers usually asked as a technology or architecture bet rather than a business one.
+
+**How it is asked**
+
+- Tell me about a risky technical decision.
+- What is the biggest bet you have made?
+- Describe choosing an approach that might not have worked.
+- When did you commit before you were sure?
+
+**The probes that follow**
+
+- What was the downside if it failed?
+- How did you bound it?
+- Did it work?
+- What did you learn if it did not?
+
+**Strong.** A bounded bet - a spike, a shadow deployment, a reversible migration - with an explicit exit condition decided in advance.
+
+**Weak.** Recklessness described as boldness, or a "bet" with no real downside.
+
+**Pairs with.** We act like owners · We persevere
+
+**Your angle.** An architectural change you committed to before it was proven, with the exit condition you set for yourself.
+
+#### Uber · 8. We celebrate differences  *(low frequency)*
+
+> *How Uber words it:* An Uber cultural norm: different backgrounds and perspectives make better decisions, and that has to be actively enabled.
+
+**Means.** You changed how a discussion or a team ran so a perspective that was being missed got in.
+
+**What they are testing.** Lower frequency for engineering loops, but a vague answer here is noticeably weaker than a concrete mechanism.
+
+**How it is asked**
+
+- Tell me about working with someone very different from you.
+- How do you make sure quieter people are heard?
+- Describe a perspective that changed your design.
+- How do you onboard someone unfamiliar with the domain?
+
+**The probes that follow**
+
+- What did you do differently?
+- Did it change the outcome?
+- Have you kept doing it?
+- How did you know it worked?
+
+**Strong.** A specific mechanism with an outcome - written proposals before a meeting, deliberately asking the newest person first, pairing across specialisms.
+
+**Weak.** A statement of values with no mechanism and no outcome.
+
+**Pairs with.** We are customer obsessed
+
+**Your angle.** How you run design discussions. A written RFC circulated before the meeting is a real mechanism with a real effect on who contributes.
+
+</details>
+
+<details><summary><b>A worked story, annotated, with the probes answered</b></summary>
+
+**Question.** Tell me about a time you disagreed with a decision made by someone more senior than you.
+
+**Scoring against.** We value ideas over hierarchy · We do the right thing · We act like owners
+
+**S - Situation**
+
+> We were adding a retry to a payment-adjacent call - a service that recorded an order against an external provider. The provider was timing out occasionally, maybe a dozen times a day, and orders were being lost. A senior engineer proposed a simple retry with backoff on the client side, which would have been in production the same week.
+
+*Why it is shaped this way:* A concrete, small, real disagreement. Payment-adjacent gives it stakes without inflating it into a crisis.
+
+**T - Task**
+
+> I thought it would double-charge people, and I was fairly junior to the person proposing it. I had to either say so properly or let it go.
+
+*Why it is shaped this way:* Names the seniority gap plainly, which is the point of the question. Also names the actual technical concern in one clause.
+
+**A - Action**
+
+> I did not argue it in the meeting, because I was not sure enough and I would have lost on confidence rather than on evidence. I went and checked what the provider actually did on timeout - whether the request had been processed. It had, in most cases: the timeout was on their response, not on their processing. So a retry would submit a second order that they would accept. I wrote that up with the provider’s own documentation and two examples from our logs where a manual retry had already produced a duplicate that operations had cleaned up by hand without telling us. Then I went to him directly rather than raising it in the group, because I did not want it to be a public correction. He looked at it and agreed within about ten minutes. We shipped an idempotency key instead, which took an extra week - and that week was a real cost, because orders were being lost while we built it.
+
+*Why it is shaped this way:* This is the whole answer. The disagreement is resolved with evidence rather than volume, the senior person is treated as reasonable and is, the delivery is private rather than performative, and the cost of being right - an extra week of lost orders - is stated instead of hidden. That last admission is what makes it credible.
+
+**R - Result**
+
+> No duplicate charges. The idempotency key has been in there about two years and it has caught roughly a hundred genuine duplicate submissions - which means the simple retry would have double-charged around a hundred people. Operations also stopped finding manual duplicates to clean up, which is how we learned they had been doing that quietly for months.
+
+*Why it is shaped this way:* The counterfactual is quantified, which is the strongest form this result can take. And the operations detail lands the "doing the right thing" norm without the candidate having to claim it.
+
+**L - Learning**
+
+> Two things. I nearly did not say anything because of the seniority difference, and the only reason I did was that I could go and check rather than having to win an argument on opinion - so now when I disagree I try to work out what evidence would settle it before I open my mouth. And the thing that actually bothers me is the operations team cleaning up duplicates by hand for months without it reaching us. We had no channel where that surfaced. I put a weekly duplicate-count metric on the dashboard so it would be visible.
+
+*Why it is shaped this way:* The first learning is a durable, transferable method. The second reaches past the immediate story to a systemic gap, and fixes it - which is ownership rather than the retelling of ownership.
+
+**The probes, and how they are answered**
+
+- **Why not raise it in the meeting?** — Because I did not have the evidence yet, and I would have been arguing "I think this might double-charge" against someone more experienced saying "retries are standard". I would have lost, and I would have lost for the wrong reason. Two hours of checking made it not an argument at all.
+- **What if he had disagreed after seeing your evidence?** — Then I would have asked what he was seeing that I was not, and if I still disagreed I would have said so once more and then supported the decision. I would have wanted the duplicate metric either way, because it makes the disagreement testable rather than permanent.
+- **You said orders were being lost during the extra week. How did you weigh that?** — Badly, at first - I was focused on being right about the duplicates. What we did was add the simple retry behind a flag for read-only operations, which were safe, while the idempotency work went on for the writes. That was his suggestion, and it was better than either of our original positions.
+- **How did the operations team end up cleaning duplicates without telling anyone?** — Because it was a small enough number that it fitted into their day, and they assumed it was known. That is usually the answer. Nobody hides these things; they just absorb them until someone asks.
+- **Has this changed how you disagree with people?** — Yes, quite specifically. I ask myself what evidence would settle this before I say anything, and if there is one I go and get it. If there is not - if it is genuinely a judgement call - I say that explicitly, because "this is a judgement call and here is mine" is a different conversation from "you are wrong".
+
+**Why this one works here.** It hits three norms at once without announcing any of them. Ideas over hierarchy is demonstrated by the junior engineer being right and handling it with evidence rather than volume. Doing the right thing arrives through the hundred prevented double-charges and the operations team quietly absorbing duplicates, neither of which the candidate claims credit for in those terms. Acting like an owner shows up in the dashboard metric added afterwards for a problem that was not theirs. The senior engineer is portrayed as reasonable and turns out to have contributed the better compromise. And the candidate names the real cost of being right, which is what stops it sounding like a story about how clever they were.
+
+</details>
+
+**The schedule for this room**
+
+| When | What | Note |
+|---|---|---|
+| Week 13 | Apply alongside Google | Uber loops run a similar length; the machine-coding round is the one to prepare hardest for. |
+| Week 14 | Write the seniority-disagreement story | Both versions - the one where you were right and the one where you lost. |
+| Week 15 | Write the ethics story | Small, real, and with a cost you actually paid. Not a constructed one. |
+| Week 16 | Write the perseverance story | The honest timeline, including the part where you nearly stopped. |
+| Week 17 | Machine coding under a clock, twice | 60-90 minutes, finished and running. Practise narrating the trade-off at minute 50. |
+| Week 18 | Record one values round | Four questions, 45 minutes. Check that the ethics answer does not sound rehearsed. |
+
+**How this room differs.** Against Amazon: similar ownership register, but Uber rewards a story where you disagreed with someone senior and Amazon rewards the story where you were right and delivered. Against Google: much more ownership, much less step-back, and an ethics question that is asked in earnest rather than as a red-flag screen.
+
+> *Source and confidence.* Partly published. Uber published its eight cultural norms in 2017, replacing the earlier fourteen values, and the norms are quoted here in substance. The loop structure, the compression caused by the machine-coding round, and the weight given to the ethics question come from consistent candidate reporting rather than from Uber documentation; treat those as a working model.
+
+---
+
+### SALESFORCE · Values: Trust, Customer Success, Innovation, Equality, Sustainability
+
+**Rung two (adjacent).** The one company that publishes its values in priority order and means the order - Trust outranks Customer Success, and they will test whether you understand what that implies.
+
+**What it is worth.** Heavier than most product companies. Values are explicitly ranked and explicitly interviewed, usually in a dedicated round with a hiring manager or skip-level.
+
+**Where behaviour is scored**
+
+| Round | Time | What happens |
+|---|---|---|
+| **Recruiter screen** | 30 min | Motivation, level, and often an early values question. "What do you know about our values" is a real opener here. |
+| **Hiring manager** | 45-60 min | Background, past work, and values-shaped behavioural questions. Frequently the first place the values round properly begins. |
+| **Technical rounds (2-3)** | 45-60 min | Coding, design, and often a practical or take-home-adjacent exercise. Behavioural questions bracket them. |
+| **Values / culture round** | 45-60 min | A dedicated round, sometimes with a skip-level or a cross-functional interviewer. Trust, equality and customer success in earnest, plus give-back and what you want from the company. |
+| **Panel / cross-functional** | varies | Salesforce loops often include someone outside your function - a product manager, a solution engineer. They assess collaboration and how you explain technical work to non-engineers. |
+
+| What they are scoring | Why it matters |
+|---|---|
+| **Trust ranks first, and the ordering is tested** | The distinguishing question: what do you do when the customer wants something that is not safe? The expected answer is that you say no and explain, not that you deliver it. |
+| **Customer success means the customer's outcome, not their request** | Salesforce is enterprise software. The customer is an admin, an ops team, another company's developers. Success means they achieved something, not that a ticket closed. |
+| **Equality is a named value and it is asked** | More reliably than at most companies on this ladder. A vague answer is noticeably weaker than a concrete mechanism. |
+| **Give-back is real** | The 1-1-1 model - one percent of equity, product and employee time to the community - is central to how Salesforce describes itself, and volunteering time is a normal part of the job. Genuine interest here is noticed; feigned interest is noticed differently. |
+| **V2MOM is the internal language** | Vision, Values, Methods, Obstacles, Measures - the planning framework used company-wide. Knowing what it is signals real research; using the vocabulary naturally signals more. |
+| **Ohana as the culture word** | Salesforce's term for its community of employees, customers and partners. You do not need to use it, but you should not be surprised by it. |
+
+**Things nobody tells you**
+
+- The values round is a real round with real weight, not a formality at the end. Candidates who prepare only technically are visibly unprepared for it.
+- Trust questions frequently have a data or security angle, because that is what trust means for a company holding other companies' customer data.
+- Salesforce hires heavily into enterprise integration, platform and data work. Your event-driven and Postgres experience maps directly; say so in those terms.
+- Because equality and give-back are asked sincerely, an answer that is transparently manufactured does more damage here than an honest "I have not done much of that, and here is what I do care about".
+
+**The story format they want**
+
+| Part | Budget | What goes in it |
+|---|---|---|
+| **S - Situation** | 20 sec · ~15% | Name the customer, and name whether they were internal or external. Enterprise context helps. |
+| **T - Task** | 15 sec · ~10% | What you owned, and what the customer was asking for. |
+| **A - Action** | 55-65 sec · ~45% | What you did. Where there was a tension between what they wanted and what was safe or correct, make that tension explicit - that is the Salesforce-shaped beat. |
+| **R - Result** | 20 sec · ~15% | Quantified, in terms of what the customer achieved rather than what you delivered. |
+| **L - Learning** | 20 sec · ~15% | What you changed, and if relevant what you would tell the customer differently. Trust is built in how bad news is delivered. |
+
+**Rules for this room**
+
+- Have one story where you told a customer no, and explained why, and the relationship survived. This is the highest-value single answer in a Salesforce loop.
+- Frame results as customer outcomes. "They cut their reconciliation time from a day to an hour" beats "we shipped the API".
+- Have a concrete equality or inclusion mechanism, not a sentiment. What you actually do differently in a meeting or an onboarding.
+- Know what V2MOM stands for and roughly how it works. It costs five minutes and it is genuine evidence of research.
+- Be honest about give-back. If you have volunteered, say what and for how long. If you have not, say what you would want to do and why - manufactured enthusiasm reads badly here.
+- Speak about security and data handling in at least one story. Trust is first and for an engineer it means exactly this.
+
+> **Timing.** Two minutes with normal follow-ups. The values round is conversational but structured - expect four or five questions, each mapped to a value, with two or three probes each.
+
+**The follow-up probes**
+
+*On trust*
+
+- Tell me about a time you had to tell a customer no.
+- How do you handle a request that is technically possible but not safe?
+- Describe delivering bad news to someone who did not want to hear it.
+- Tell me about a security or data-handling decision you made.
+- What would you do if you found customer data somewhere it should not be?
+
+*On customer success*
+
+- Who was your customer and what were they trying to achieve?
+- Tell me about a time you went beyond the request.
+- Describe understanding a need the customer had not articulated.
+- How do you know your work succeeded for them?
+
+*On innovation*
+
+- Tell me about something you built that did not exist.
+- Describe improving a process nobody asked you to improve.
+- When did you challenge how something had always been done?
+
+*On equality*
+
+- How do you make sure everyone in a discussion is heard?
+- Tell me about working with someone from a very different background.
+- Describe a perspective that changed your approach.
+- How do you onboard someone who is new to the domain?
+
+*On motivation and give-back*
+
+- Why Salesforce?
+- What do you know about how we work?
+- Have you been involved in anything outside your job?
+- What would you want to do with volunteer time?
+
+| Situation | What to do |
+|---|---|
+| **When trust and the customer request conflict** | Say the order out loud. "They wanted X, and X would have exposed data across tenants, so the answer was no - and then the work was finding what would get them the outcome safely." That sentence is the value ordering demonstrated. |
+| **When asked about equality** | Give a mechanism, not a sentiment. What you do in a design discussion, how you onboard, how you handle the person who has not spoken. Then the outcome. |
+| **When asked about give-back and you have none** | Be honest and specific about what you would want to do. Manufactured community enthusiasm is transparent and is worse than an honest gap. |
+| **When asked "why Salesforce"** | Enterprise platform problems: multi-tenancy, integration, data volume, governance. Connect to what you build. Avoid the brand and the culture as reasons - everyone says those. |
+| **When you meet a non-engineering interviewer** | Adjust the register without dumbing down. Explaining a technical decision clearly to a product manager is what that panel slot is measuring. |
+
+**Anti-patterns — 7 ways to lose this room**
+
+1. **Not knowing the values, or their order** — Salesforce publishes five values in a deliberate sequence and asks about them. Turning up without having read them is a visible lack of preparation at a company where this is a named round.
+   *FIX: Trust, Customer Success, Innovation, Equality, Sustainability. Know the order and know why Trust is first.*
+2. **Delivering whatever the customer asked for** — A story where the customer wanted something risky and you built it because they asked. This inverts the value ordering, and it is the specific thing the trust question is testing.
+   *FIX: one story where you said no, explained why, and found the safe way to the same outcome.*
+3. **Sentiment instead of mechanism on equality** — "I believe everyone should be heard." No mechanism, no outcome, and this value is asked more reliably here than almost anywhere.
+   *FIX: one specific practice with a result. Written proposals before a meeting, asking the newest person first, a pairing arrangement.*
+4. **Manufactured give-back enthusiasm** — Sudden passion for volunteering that appeared during interview prep. At a company where this is genuinely part of the culture, it is easy to spot.
+   *FIX: honesty plus specificity about what you would actually want to do.*
+5. **Results framed as delivery** — "We shipped the integration." Salesforce wants the customer outcome, because that is what Customer Success means.
+   *FIX: what the customer could do afterwards that they could not do before, with a number.*
+6. **Ignoring security and data entirely** — Trust is the first value and for an engineer it is largely about data handling. A loop with no story touching security, access or data boundaries misses the top value.
+   *FIX: one story about a data-handling or access decision, however small.*
+7. **"Why Salesforce" answered with culture** — "I love the Ohana culture." Everyone says it and it is not a reason to hire an engineer.
+   *FIX: the platform problem. Multi-tenancy, integration, governance, scale - connected to your own work.*
+
+**Values: Trust, Customer Success, Innovation, Equality, Sustainability**
+
+| # | Value | Freq | What it means | Strong | Weak |
+|---|---|---|---|---|---|
+| 1 | Trust | high | You protected data, or told an inconvenient truth, when delivering what was asked would have been easier. | A specific mechanism as the reason - column-level access, tenancy boundary, retention - rather than a policy citation, followed by finding the safe route to the same outcome. | A no with no reason and no alternative. Or a story where you delivered the risky thing because the customer insisted. |
+| 2 | Customer Success | high | You measured your work by what the customer could then do, not by what you delivered. | You asked what the outcome was rather than building the request, and the result is stated as a change in what the customer can do, with a number. | Delivery framed as success - "we shipped it on time" - with no evidence anyone was better off. |
+| 3 | Innovation | med | You improved something structurally rather than incrementally, often without being asked. | A one-off request turned into something several teams then used. Reuse is the proof, and it is the platform-shaped version of this value. | Adopting a new tool and calling it innovation. Or an improvement nobody else ever touched. |
+| 4 | Equality | high | You did something specific that changed who got heard or who got the opportunity. | A named practice with an outcome. Circulating a written proposal before a design meeting so people who think slowly in a room can contribute is a real answer with a real effect. | "I treat everyone equally." That is a statement of intent and answers a different question. |
+| 5 | Sustainability | low | You made a choice that cost more now and less later - or you thought about the cost of what you ran. | A concrete efficiency or longevity outcome - cost reduced, resources cut, a system still running years later without special handling. | Nothing prepared at all, or an answer that treats the value as purely environmental and therefore irrelevant to engineering. |
+| 6 | Why Salesforce, and the give-back question | high | You know what Salesforce engineering actually is, and you are honest about your relationship with the give-back culture. | A platform-engineering reason - multi-tenancy, integration, governance, data volume - connected to your own stack, plus an honest and specific answer on give-back. | Culture and brand as the reason. Or sudden volunteering passion that appeared during interview prep. |
+
+<details><summary><b>Every value in full — how it is asked, the probes, your angle</b></summary>
+
+#### Salesforce · 1. Trust  *(high frequency)*
+
+> *How Salesforce words it:* Salesforce's first and explicitly highest value: nothing is more important than the trust of customers, employees and the wider community.
+
+**Means.** You protected data, or told an inconvenient truth, when delivering what was asked would have been easier.
+
+**What they are testing.** Ranked first deliberately, and the ordering is the test. When trust and customer success conflict, trust wins - and a candidate who demonstrates that ordering in a story is answering the question that was actually asked.
+
+**How it is asked**
+
+- Tell me about telling a customer no.
+- How do you handle a request that is possible but not safe?
+- Describe a security or data-handling decision.
+- What would you do if you found customer data somewhere it should not be?
+- Tell me about delivering bad news.
+
+**The probes that follow**
+
+- What was the easy path?
+- How did you explain it?
+- Did the relationship survive?
+- What did you offer instead?
+
+**Strong.** A specific mechanism as the reason - column-level access, tenancy boundary, retention - rather than a policy citation, followed by finding the safe route to the same outcome.
+
+**Weak.** A no with no reason and no alternative. Or a story where you delivered the risky thing because the customer insisted.
+
+**Pairs with.** Customer Success
+
+**Your angle.** Any request for direct database access, a data export, or a permission that would have crossed a boundary. These are common and you almost certainly have one.
+
+#### Salesforce · 2. Customer Success  *(high frequency)*
+
+> *How Salesforce words it:* Salesforce's second value: the company succeeds when its customers succeed.
+
+**Means.** You measured your work by what the customer could then do, not by what you delivered.
+
+**What they are testing.** Enterprise framing. The customer is usually another company's admin or developer, and success is an outcome in their workflow rather than a closed ticket.
+
+**How it is asked**
+
+- Who was your customer and what were they trying to achieve?
+- Tell me about going beyond the request.
+- Describe understanding a need they had not articulated.
+- How do you know your work succeeded for them?
+
+**The probes that follow**
+
+- What did they ask for versus what they needed?
+- How did you find out?
+- What did they do differently afterwards?
+- How did you measure it?
+
+**Strong.** You asked what the outcome was rather than building the request, and the result is stated as a change in what the customer can do, with a number.
+
+**Weak.** Delivery framed as success - "we shipped it on time" - with no evidence anyone was better off.
+
+**Pairs with.** Trust · Innovation
+
+**Your angle.** The four-aggregate question. Asking what the dashboard needs to show rather than granting the access requested is this value in one move.
+
+#### Salesforce · 3. Innovation  *(med frequency)*
+
+> *How Salesforce words it:* Salesforce's third value: continuous improvement and a willingness to reinvent how things are done.
+
+**Means.** You improved something structurally rather than incrementally, often without being asked.
+
+**What they are testing.** For engineers this is usually about platform thinking - building the reusable thing rather than the one-off. Salesforce is a platform company and that framing lands.
+
+**How it is asked**
+
+- Tell me about something you built that did not exist.
+- Describe improving a process nobody asked you to improve.
+- When did you challenge how something had always been done?
+- What have you automated?
+
+**The probes that follow**
+
+- What made you see it?
+- Who else benefited?
+- Was it reused?
+- What did it replace?
+
+**Strong.** A one-off request turned into something several teams then used. Reuse is the proof, and it is the platform-shaped version of this value.
+
+**Weak.** Adopting a new tool and calling it innovation. Or an improvement nobody else ever touched.
+
+**Pairs with.** Customer Success
+
+**Your angle.** The read-only view that two other teams later consumed. Building the reusable thing instead of the one-off is exactly this.
+
+#### Salesforce · 4. Equality  *(high frequency)*
+
+> *How Salesforce words it:* Salesforce's fourth value, and one it has campaigned on publicly, including on pay equity.
+
+**Means.** You did something specific that changed who got heard or who got the opportunity.
+
+**What they are testing.** Asked more reliably here than at most companies on this ladder, and answered with sentiment by almost everyone. A concrete mechanism is an immediate differentiator.
+
+**How it is asked**
+
+- How do you make sure everyone is heard?
+- Tell me about working with someone very different from you.
+- Describe a perspective that changed your approach.
+- How do you onboard someone new to the domain?
+- What does an inclusive team look like to you?
+
+**The probes that follow**
+
+- What did you actually do?
+- Did it change the outcome?
+- How did you know it worked?
+- Do you still do it?
+
+**Strong.** A named practice with an outcome. Circulating a written proposal before a design meeting so people who think slowly in a room can contribute is a real answer with a real effect.
+
+**Weak.** "I treat everyone equally." That is a statement of intent and answers a different question.
+
+**Pairs with.** Trust
+
+**Your angle.** How you run design discussions and how you onboard. The written-proposal-first mechanism is genuine, common, and effective - describe its effect on who contributed.
+
+#### Salesforce · 5. Sustainability  *(low frequency)*
+
+> *How Salesforce words it:* Salesforce's fifth value, covering environmental commitment and, more broadly, building things that last.
+
+**Means.** You made a choice that cost more now and less later - or you thought about the cost of what you ran.
+
+**What they are testing.** Rarely asked directly in an engineering loop. When it comes up it is usually as efficiency, cost or maintainability rather than as environmental policy.
+
+**How it is asked**
+
+- Tell me about a decision that traded short-term speed for long-term maintainability.
+- Have you reduced the cost or resource footprint of something?
+- How do you think about technical debt?
+- What have you built that is still running?
+
+**The probes that follow**
+
+- What did it cost at the time?
+- Did the long-term benefit materialise?
+- How did you make the case?
+- Would you make the same call now?
+
+**Strong.** A concrete efficiency or longevity outcome - cost reduced, resources cut, a system still running years later without special handling.
+
+**Weak.** Nothing prepared at all, or an answer that treats the value as purely environmental and therefore irrelevant to engineering.
+
+**Pairs with.** Innovation
+
+**Your angle.** Right-sizing Kubernetes requests and limits, or reducing a query cost. Real, measurable and unglamorous, which is the correct register.
+
+#### Salesforce · 6. Why Salesforce, and the give-back question  *(high frequency)*
+
+> *How Salesforce words it:* Not a value - two questions Salesforce asks more sincerely than most companies, one about motivation and one about community involvement under the 1-1-1 model.
+
+**Means.** You know what Salesforce engineering actually is, and you are honest about your relationship with the give-back culture.
+
+**What they are testing.** The 1-1-1 model - one percent of equity, product and employee time given to the community - is central to how Salesforce presents itself, and volunteer time is a normal part of the job. Manufactured enthusiasm is transparent; honesty is not penalised.
+
+**How it is asked**
+
+- Why Salesforce?
+- What do you know about how we work?
+- Have you been involved in anything outside your job?
+- What would you do with volunteer time?
+- What do you know about V2MOM?
+
+**The probes that follow**
+
+- What interests you about that problem?
+- What else are you considering?
+- What would make this the wrong move?
+- Have you used any of our products?
+
+**Strong.** A platform-engineering reason - multi-tenancy, integration, governance, data volume - connected to your own stack, plus an honest and specific answer on give-back.
+
+**Weak.** Culture and brand as the reason. Or sudden volunteering passion that appeared during interview prep.
+
+**Pairs with.** Trust · Equality
+
+**Your angle.** Multi-tenant data isolation and event-driven integration are exactly your stack. V2MOM takes five minutes to learn and knowing it is cheap, visible evidence of research.
+
+</details>
+
+<details><summary><b>A worked story, annotated, with the probes answered</b></summary>
+
+**Question.** Tell me about a time you had to tell a customer or stakeholder no.
+
+**Scoring against.** Trust · Customer Success
+
+**S - Situation**
+
+> An internal analytics team wanted direct read access to our orders database. Their reason was reasonable - they were building a dashboard, our API did not expose the aggregate they needed, and going through us meant waiting for our sprint. They had already asked twice and been told "we will get to it".
+
+*Why it is shaped this way:* The requester is sympathetic and their reasoning is sound. Setting them up as reasonable is what makes the refusal a trust story rather than a story about being difficult.
+
+**T - Task**
+
+> I was the one who had to answer it this time. The straightforward thing was to grant a read-only role and move on - it would have taken ten minutes and made them happy.
+
+*Why it is shaped this way:* States plainly that the easy path existed and was tempting. Without this, the refusal costs nothing and demonstrates nothing.
+
+**A - Action**
+
+> I said no, and I said why in specific terms rather than in policy terms. The orders table contained customer names and partial payment identifiers alongside the fields they wanted, and a read-only role does not distinguish between columns unless you build a view - so granting it would have put personal data in a dashboard tool where we had no control over who could query it or where the results went. I also did not want a second consumer coupled to our schema, because we were mid-way through the partitioning work and their queries would have broken. But I did not stop at no. I asked what the dashboard actually needed to show, which turned out to be four aggregates over a date range - no personal data at all. We built a read-only view exposing exactly those columns, gave them access to the view rather than the table, and put a materialised refresh on it because their queries were heavy. It took two days rather than ten minutes.
+
+*Why it is shaped this way:* The refusal is grounded in a specific mechanism - column-level access, personal data, schema coupling - rather than in policy. And it does not end at no: the second half is finding the safe route to the same outcome, which is the Trust-then-Customer-Success ordering demonstrated in a single decision.
+
+**R - Result**
+
+> They got their dashboard four days later instead of the following sprint, so they were better off than the path they had asked for. No personal data left our boundary. And when the partitioning landed six weeks later, their queries did not break, because they were reading a view rather than the table - which they would not have been.
+
+*Why it is shaped this way:* The customer ends up better served by the refusal than by the request, which is the strongest possible shape for this answer. The partitioning detail proves the second reason for the refusal was real and not hypothetical.
+
+**L - Learning**
+
+> The thing I got wrong was earlier: they had asked twice and been told "we will get to it", which is why they escalated to asking for raw access in the first place. A no with a date attached would have prevented the whole situation. I now try to answer requests like that with either a date or a genuine no rather than a soft deferral, because a soft deferral is how people end up asking for a workaround.
+
+*Why it is shaped this way:* The learning locates the real failure before the story started, which is more honest and more useful than a reflection on the refusal itself.
+
+**The probes, and how they are answered**
+
+- **What if they had escalated over your head?** — Then I would have wanted the conversation to happen, because the argument was about personal data leaving a controlled boundary and that is a decision that should be made above me if it is going to be made at all. I would have put the specifics in writing first so the decision was informed rather than a matter of who pushed harder.
+- **Was the schema coupling a real reason or a convenient one?** — Both, honestly - but it turned out to be real. The partitioning six weeks later would have broken direct queries against that table. I would not have refused on those grounds alone, though; the personal data was the reason, and the coupling was the reason I did not just build them a filtered copy.
+- **Two days instead of ten minutes. How did you justify that to your own team?** — It was one ticket in the next sprint, and I made the case that we were going to spend more than two days dealing with the consequences otherwise. It also gave us something reusable - two other teams have since consumed that view.
+- **How did you tell them no without damaging the relationship?** — I told them the specific reason rather than citing a policy, and I turned up in the same conversation with the question of what they actually needed. Nobody minds a no that comes with someone trying to solve their problem. What damages a relationship is a no with no reason and no alternative.
+- **What would you have done if there had been no safe alternative?** — Said so plainly and explained what would have to change - which in that case would have been separating personal data out of that table, which is work I would then have wanted to schedule properly rather than promise vaguely. A no with a reason and a path is survivable; a no with neither is what makes people go around you.
+
+**Why this one works here.** The requester is reasonable, the easy path is stated, and the refusal is grounded in a specific mechanism rather than in policy - which is what makes it a Trust story rather than an obstruction story. It then demonstrates the value ordering explicitly: trust first, and then the actual work of getting the customer their outcome safely, which leaves them better off than the thing they asked for. The customer-success result is stated as what they could do, not what was shipped. And the learning locates the real failure before the refusal, in the soft deferral that caused the escalation, which is the kind of self-criticism that is hard to fake.
+
+</details>
+
+**The schedule for this room**
+
+| When | What | Note |
+|---|---|---|
+| Week 7 | Apply alongside the tier-two set | Salesforce loops run 4-8 weeks to onsite. |
+| Week 8 | Learn the five values in order, and why Trust is first | Fifteen minutes. It changes how you answer half the round. |
+| Week 9 | Write the "told a customer no" story | The single highest-value answer in a Salesforce loop. |
+| Week 10 | Write the equality mechanism story | A practice, not a sentiment, with an outcome. |
+| Week 11 | Read up on V2MOM and the 1-1-1 model | Cheap, specific evidence of research. Decide your honest answer on give-back. |
+| Week 12 | Record one values round | Five questions mapped to the five values. Check the equality answer has a mechanism in it. |
+
+**How this room differs.** Against Amazon: Salesforce ranks its values explicitly and expects you to reason with the ranking, where Amazon expects all sixteen to be live at once. Against JPM: both care about saying no to a request, but JPM frames it as risk and control while Salesforce frames it as trust and then finding the safe route to the customer's outcome.
+
+> *Source and confidence.* Largely published for the values themselves. Salesforce publishes its five core values in the stated order, and the 1-1-1 philanthropy model and V2MOM planning framework are both publicly described by the company. The loop structure, the existence and weight of a dedicated values round, and the emphasis on the trust-versus-request trade-off come from candidate reporting rather than from Salesforce documentation; treat the round mechanics as a working model.
+
+---
+
+### AMERICAN EXPRESS · The Blue Box Values
+
+**Rung one.** A payments company, so "We Do What Is Right" is asked about money and data rather than in the abstract - and your idempotency work is on-topic.
+
+**What it is worth.** Moderate and consistent. Behavioural questions run through the loop and concentrate in a hiring-manager round. Closer to JPM than to a product company, with a little less ceremony.
+
+**Where behaviour is scored**
+
+| Round | Time | What happens |
+|---|---|---|
+| **Recruiter screen** | 30 min | Background, motivation, level. "Why Amex" starts here and is asked again later. |
+| **Technical rounds (2-3)** | 45-60 min | Java, Spring, SQL, some system design. Slightly more coding and slightly less internals depth than JPM. |
+| **Hiring manager** | 45-60 min | The main behavioural round. Past work in depth, how you handle risk and customers, and team fit. |
+| **Senior / panel round** | 30-45 min | Sometimes present. Values-shaped: integrity, customer backing, working across teams. |
+
+| What they are scoring | Why it matters |
+|---|---|
+| **Backing the customer is the flagship value** | "We Back Our Customers" is the first Blue Box value and Amex's entire brand position. For an engineer it means knowing what a failure looked like to a cardholder or a merchant. |
+| **Integrity in a payments context** | Not abstract. It shows up as: what did you do when you found a discrepancy, a double charge, a number that did not reconcile. |
+| **Risk awareness, in lighter form than JPM** | Still expected - rollback, controls, who reviewed - but with less formal change-management vocabulary. |
+| **Teamwork across a large organisation** | "We Win As A Team" is a named value and Amex is large and matrixed. |
+| **Different views are named explicitly** | "We Need Different Views" is one of the eight, which makes an inclusion or dissent story directly on-rubric. |
+
+**Things nobody tells you**
+
+- Payments domain knowledge is worth real points here and you have more of it than you think - idempotency, exactly-once semantics, reconciliation, double-entry.
+- The behavioural bar is less adversarial than Amazon's and less formal than JPM's, which means thin answers go unchallenged and therefore unscored.
+- "Why Amex" is asked sincerely. The payments and fraud domain is a good honest answer; "large stable company" is not.
+- This is a rung-one target, which means it arrives in week four alongside JPM - before behavioural prep would naturally be complete.
+
+**The story format they want**
+
+| Part | Budget | What goes in it |
+|---|---|---|
+| **S - Situation** | 20 sec · ~15% | Name who was affected. In a payments context that is a cardholder, a merchant, or an internal operations team. |
+| **T - Task** | 15 sec · ~10% | What you owned and what the constraint was. |
+| **A - Action** | 55-65 sec · ~45% | What you did, including who reviewed it. Where money or personal data was involved, say how you protected it. |
+| **R - Result** | 20 sec · ~15% | Quantified, and include the absence of incidents where relevant. |
+| **L - Learning** | 20 sec · ~15% | What you changed. Process improvements are valued here as they are at JPM. |
+
+**Rules for this room**
+
+- Use your payments-shaped work. Idempotency keys, duplicate detection, reconciliation - these are Amex's daily problems and speaking their language is an advantage you already have.
+- Name the cardholder or merchant impact, not just the system metric.
+- Add a control sentence where money or data was involved. Lighter than JPM, but present.
+- Have a "different views" story - a time someone disagreed and was right, or you sought out a perspective you were missing. It is a named value with few prepared answers.
+- Answer "why Amex" with the domain: payments correctness, fraud, the fact that a duplicate charge is a real person's money.
+
+> **Timing.** Two minutes with normal follow-ups, three to five probes per story.
+
+**The follow-up probes**
+
+*On backing the customer*
+
+- Who was affected when this failed?
+- Tell me about going out of your way for a user.
+- How do you find out what customers actually experience?
+- Describe a time you pushed back on something for the customer's sake.
+
+*On integrity and money*
+
+- Tell me about finding a discrepancy nobody had noticed.
+- What did you do when the numbers did not reconcile?
+- Have you ever had to report your own mistake?
+- Describe a time you refused a shortcut.
+
+*On different views*
+
+- Tell me about a time someone disagreed with you and was right.
+- How do you seek out perspectives you are missing?
+- Describe working with someone whose approach was very different.
+
+*On teamwork and delivery*
+
+- How did you get another team to move for you?
+- Tell me about a deadline you were not going to make.
+- Describe a time you had to work within a constraint you disagreed with.
+
+| Situation | What to do |
+|---|---|
+| **When you can use payments vocabulary** | Use it. Idempotency, reconciliation, double-entry, exactly-once - it demonstrates domain fit without a single claim about wanting to work in payments. |
+| **When asked about a discrepancy** | Give the mechanism, not just the outcome. How you detected it, how you proved it, who you told, and how quickly. |
+| **When the round is friendly** | Fill the signal yourself. Amex interviewers probe less than Amazon, so volunteer the control and the customer impact rather than waiting. |
+| **When asked "why Amex"** | The domain. Money that has to be right, fraud as an adversarial problem, a card decline being a person standing at a till. |
+
+**Anti-patterns — 5 ways to lose this room**
+
+1. **No customer in the story** — Systems only. "We Back Our Customers" is the first Blue Box value and a loop with no affected human in it misses it entirely.
+   *FIX: name the cardholder, merchant or operations impact in every story.*
+2. **Missing the payments angle you already have** — Talking about your event-driven work generically when it is full of idempotency and duplicate-handling that is directly on-topic.
+   *FIX: reframe one story explicitly in payments terms. It is the same story with better vocabulary.*
+3. **Thin answers in a friendly room** — Fewer probes than Amazon means an unelaborated answer stays unelaborated and therefore unscored.
+   *FIX: volunteer the second layer - the control, the customer impact, the learning.*
+4. **No "different views" story** — A named value with very few prepared candidate answers, which makes it cheap to win and costly to skip.
+   *FIX: one story where someone disagreed with you and was right, or where you went looking for a perspective you lacked.*
+5. **"Why Amex" answered with stability** — Same failure as at JPM and heard the same way.
+   *FIX: the domain. Correctness, fraud, real money, real people.*
+
+**The Blue Box Values**
+
+| # | Value | Freq | What it means | Strong | Weak |
+|---|---|---|---|---|---|
+| 1 | We Back Our Customers | high | You know what your failure looked like to a cardholder, a merchant or the team serving them. | The failure translated into a human experience with a number attached, and a change made because of it. | Error rates and latency with no person anywhere in the story. |
+| 2 | We Do What Is Right | high | You reported a discrepancy, refused a shortcut, or corrected your own mistake in public. | Your own error, reported quickly and publicly, with a mechanism added so it is caught next time. | A story with no personal cost, or one where the wrongdoing was someone else's. |
+| 3 | We Need Different Views | med | You went looking for a view you did not have, or changed your mind because of one. | A specific practice - asking the operations team before designing, circulating a proposal to a team outside your own - with an outcome attached. | A general belief in diverse perspectives with no instance and no mechanism. |
+| 4 | We Win As A Team | med | You made another team's job easier, or got something done through people you had no authority over. | You turned up with the work half done for them, and the benefit landed on teams beyond your own. | Escalation as the first move, or a cross-team story where the other team is only an obstacle. |
+| 5 | We Value Personal Integrity | med | You owned an outcome that went badly without distributing the blame. | Your own contribution named first, told early, with a mechanism that prevents the repeat. | A chain of external causes with your own role buried at the end. |
+| 6 | We Have A Will To Win | low | You finished something difficult that would have been easy to abandon. | An honest timeline with the bad middle included and a concrete finish. | "It was challenging but we delivered." No middle, no cost, no evidence. |
+
+<details><summary><b>Every value in full — how it is asked, the probes, your angle</b></summary>
+
+#### American Express · 1. We Back Our Customers  *(high frequency)*
+
+> *How American Express words it:* The first Blue Box Value: putting customers at the centre of everything, and backing them when it counts.
+
+**Means.** You know what your failure looked like to a cardholder, a merchant or the team serving them.
+
+**What they are testing.** Amex's brand position and its first value. Backend engineers miss it by describing systems; the answer is the person at the till whose card declined.
+
+**How it is asked**
+
+- Who was affected when this failed?
+- Tell me about going out of your way for a user.
+- How do you find out what customers actually experience?
+- Describe pushing back for the customer's sake.
+
+**The probes that follow**
+
+- What did they see?
+- How did you find out?
+- What did you change?
+- Did they notice the improvement?
+
+**Strong.** The failure translated into a human experience with a number attached, and a change made because of it.
+
+**Weak.** Error rates and latency with no person anywhere in the story.
+
+**Pairs with.** We Do What Is Right
+
+**Your angle.** A duplicate charge, a failed order, or a decline. Translate one system metric into what a person experienced.
+
+#### American Express · 2. We Do What Is Right  *(high frequency)*
+
+> *How American Express words it:* A Blue Box Value: doing the right thing even when it is difficult, and holding to it under pressure.
+
+**Means.** You reported a discrepancy, refused a shortcut, or corrected your own mistake in public.
+
+**What they are testing.** In a payments company this is concrete rather than abstract. Money that does not reconcile is the archetypal setup.
+
+**How it is asked**
+
+- Tell me about finding a discrepancy nobody noticed.
+- Have you had to report your own mistake?
+- Describe refusing a shortcut.
+- What did you do when the numbers did not add up?
+
+**The probes that follow**
+
+- Who did you tell, and how fast?
+- What was the pressure not to?
+- What did it cost?
+- What changed afterwards?
+
+**Strong.** Your own error, reported quickly and publicly, with a mechanism added so it is caught next time.
+
+**Weak.** A story with no personal cost, or one where the wrongdoing was someone else's.
+
+**Pairs with.** We Value Personal Integrity
+
+**Your angle.** The design-review answer you got wrong and corrected in the same thread.
+
+#### American Express · 3. We Need Different Views  *(med frequency)*
+
+> *How American Express words it:* A Blue Box Value: seeking out perspectives unlike your own because they produce better decisions.
+
+**Means.** You went looking for a view you did not have, or changed your mind because of one.
+
+**What they are testing.** A named value with very few prepared candidate answers, which makes it disproportionately cheap to win.
+
+**How it is asked**
+
+- Tell me about someone who disagreed with you and was right.
+- How do you seek out perspectives you are missing?
+- Describe working with someone whose approach was very different.
+
+**The probes that follow**
+
+- How did you go looking?
+- What did you change?
+- Did the outcome differ?
+- Do you still do that?
+
+**Strong.** A specific practice - asking the operations team before designing, circulating a proposal to a team outside your own - with an outcome attached.
+
+**Weak.** A general belief in diverse perspectives with no instance and no mechanism.
+
+**Pairs with.** We Win As A Team
+
+**Your angle.** Asking the domain or operations people to sanity-check a design, and the mistake they caught.
+
+#### American Express · 4. We Win As A Team  *(med frequency)*
+
+> *How American Express words it:* A Blue Box Value: collective success over individual credit, across a large and matrixed organisation.
+
+**Means.** You made another team's job easier, or got something done through people you had no authority over.
+
+**What they are testing.** Amex is large. Working through structure rather than around it is the tested behaviour, as at JPM.
+
+**How it is asked**
+
+- How did you get another team to move for you?
+- Tell me about sharing credit.
+- Describe a cross-team delivery.
+- What did you do when a dependency slipped?
+
+**The probes that follow**
+
+- What was in it for them?
+- How did you handle the slip?
+- Who else benefited?
+- Would they work with you again?
+
+**Strong.** You turned up with the work half done for them, and the benefit landed on teams beyond your own.
+
+**Weak.** Escalation as the first move, or a cross-team story where the other team is only an obstacle.
+
+**Pairs with.** We Need Different Views
+
+**Your angle.** The event-contract change that needed three consumers to move with you.
+
+#### American Express · 5. We Value Personal Integrity  *(med frequency)*
+
+> *How American Express words it:* A Blue Box Value: personal honesty and accountability as a condition of the work, not an add-on to it.
+
+**Means.** You owned an outcome that went badly without distributing the blame.
+
+**What they are testing.** Overlaps with Do What Is Right; this one is specifically about your own conduct rather than about the decision.
+
+**How it is asked**
+
+- Tell me about a mistake you made.
+- How did you tell people?
+- Describe a commitment you could not keep.
+- What did you do when you were wrong in public?
+
+**The probes that follow**
+
+- What was your part?
+- How quickly did you say so?
+- What did you change?
+- Did it recur?
+
+**Strong.** Your own contribution named first, told early, with a mechanism that prevents the repeat.
+
+**Weak.** A chain of external causes with your own role buried at the end.
+
+**Pairs with.** We Do What Is Right
+
+**Your angle.** A production incident a change of yours contributed to, and the alert you added afterwards.
+
+#### American Express · 6. We Have A Will To Win  *(low frequency)*
+
+> *How American Express words it:* A Blue Box Value: competitive drive and follow-through, particularly when the work is hard or unglamorous.
+
+**Means.** You finished something difficult that would have been easy to abandon.
+
+**What they are testing.** Lower frequency and often folded into other questions. For engineers it usually appears as perseverance on a long migration.
+
+**How it is asked**
+
+- Tell me about something difficult you finished.
+- Describe a project that dragged.
+- What kept you going?
+- When did you consider giving up?
+
+**The probes that follow**
+
+- How long did it take?
+- What nearly stopped you?
+- Was it worth it?
+- What would you do differently?
+
+**Strong.** An honest timeline with the bad middle included and a concrete finish.
+
+**Weak.** "It was challenging but we delivered." No middle, no cost, no evidence.
+
+**Pairs with.** We Win As A Team
+
+**Your angle.** A multi-release migration that took longer than planned. The honest version is the strong version.
+
+</details>
+
+<details><summary><b>A worked story, annotated, with the probes answered</b></summary>
+
+**Question.** Tell me about a time you found a problem that others had missed.
+
+**Scoring against.** We Do What Is Right · We Back Our Customers
+
+**S - Situation**
+
+> We published order events to three consumers, and one of them - the reporting team - had a nightly job that deleted duplicate rows. It had been running for months. Nobody treated the duplicates as a bug any more because the workaround made them invisible.
+
+*Why it is shaped this way:* A quiet, unglamorous problem that had been normalised. That framing is the point: the interesting behaviour is noticing something everyone had stopped seeing.
+
+**T - Task**
+
+> I was adding a new consumer and I wanted to know whether I needed the same dedupe logic. That question turned out to be the whole thing.
+
+*Why it is shaped this way:* Honest and small. The discovery is incidental rather than heroic, which makes it credible.
+
+**A - Action**
+
+> I checked what our delivery guarantee actually was rather than assuming, and it was at-least-once - which meant duplicates were guaranteed by design and the bug was that no consumer was idempotent. I wrote that up and took it to all three consuming teams rather than only the one that had complained. One of them had never noticed, and when they went and looked they found two reports with silent double-counts in them. We agreed on an event id and a dedupe key at the consumer, and I changed our publisher to emit a stable id rather than a fresh one per delivery attempt.
+
+*Why it is shaped this way:* The mechanism is named precisely. Going to all three teams instead of the complaining one is what turns a fix into the value being demonstrated - and the silent double-count is the detail that proves it was worth doing.
+
+**R - Result**
+
+> Duplicates went to zero across all three consumers, the reporting team deleted a job that had been running about eight months, and two incorrect reports were corrected. Those reports were used for merchant-facing volume figures, so the correction mattered to someone outside the company.
+
+*Why it is shaped this way:* Quantified, and the last sentence connects a backend cleanup to a real external consequence - which is the "back our customers" register.
+
+**L - Learning**
+
+> I had operated that publisher for over a year without ever checking its delivery semantics, and I had told someone in a design review that it was exactly-once. I went back and corrected that in the same channel. Now the delivery guarantee is the first line in the README of anything I build on a queue.
+
+*Why it is shaped this way:* An uncomfortable admission - having confidently said the wrong thing - and a correction made publicly. That is the integrity beat, earned rather than claimed.
+
+**The probes, and how they are answered**
+
+- **How did the duplicates go unnoticed for so long?** — Because the workaround worked. Once the nightly job existed, the cost had already been paid and nobody was feeling it. That is generally how a bug becomes permanent.
+- **You said you had told someone the wrong thing. What did you do about that?** — Went back to the same design-review thread and corrected it, so that anyone reading it later got the right answer. It was uncomfortable but it was a two-line message.
+- **How did the team who had not noticed react?** — Not well initially, and reasonably so - it meant historical numbers were wrong. I spent a day helping them identify which reports were affected and we corrected two.
+- **What controls did you put in place?** — The stable event id at the publisher, the dedupe key at each consumer, and a duplicate-rate metric on the dashboard so a regression would be visible within a day rather than found by a nightly cleanup job.
+- **Why go to all three teams rather than fixing the one complaint?** — Because the cause was on our side, so the other two had the same exposure whether they had noticed it or not. Fixing only the team that complained would have left two teams with silent wrong numbers.
+
+**Why this one works here.** It is a money-adjacent correctness problem, which is Amex's domain in miniature. The candidate finds something everyone had stopped seeing, fixes the cause rather than the symptom, and goes to teams who had not complained - which is backing the customer without saying the words. The integrity beat is a genuinely uncomfortable public correction. And the result lands on a merchant-facing number, which connects a backend fix to a person outside the company.
+
+</details>
+
+**The schedule for this room**
+
+| When | What | Note |
+|---|---|---|
+| Week 3 | Apply alongside JPM and Expedia | Rung one moves fastest; interviews land in week four. |
+| Week 3 | Reframe one story in payments vocabulary | Idempotency, duplicates, reconciliation. Same story, better language. |
+| Week 4 | Write the discrepancy story | Something that did not reconcile and what you did about it. |
+| Week 4 | Write the "different views" story | A named value with almost no prepared competition. |
+| Week 5 | "Why Amex" in three sentences | The domain, not the stability. |
+
+**How this room differs.** Against JPM: the same domain seriousness with less formal change-control language, and slightly more coding. Against Amazon: far fewer probes, so unelaborated answers stay unscored rather than being drawn out of you.
+
+> *Source and confidence.* Largely published for the values. American Express publishes its Blue Box Values, which include backing customers, doing what is right, needing different views, winning as a team, valuing personal integrity and a will to win. Loop structure and relative weighting come from candidate reporting; treat those as a working model.
+
+---
+
+### EXPEDIA · Customer focus, data, collaboration
+
+**Rung one.** The least codified values framework here, which cuts both ways - little to memorise, and nothing to hide behind if the story is thin.
+
+**What it is worth.** The lightest behavioural bar on the ladder. Concentrated in the hiring-manager round, conversational elsewhere.
+
+**Where behaviour is scored**
+
+| Round | Time | What happens |
+|---|---|---|
+| **Recruiter screen** | 30 min | Background, motivation, level. |
+| **Technical rounds (2-3)** | 45-60 min | Algorithms - a little more than at JPM or Amex - plus system design. Availability, search, caching and booking races recur because they are the product. |
+| **Hiring manager** | 45-60 min | Where the behavioural weight sits. Past projects, how you work, team fit, why Expedia. |
+| **Panel / cross-functional** | 30-45 min | Sometimes present. Collaboration and communication with non-engineers. |
+
+| What they are scoring | Why it matters |
+|---|---|
+| **Customer experience in a marketplace** | Two sides - travellers and supply partners - with genuinely conflicting interests. Acknowledging that tension is the differentiator. |
+| **Data over opinion** | A travel marketplace runs on experimentation. A story where you measured rather than argued lands well. |
+| **Cross-team collaboration** | Expedia Group is several brands and many teams; getting things done across them is normal work. |
+| **Pragmatism** | Less appetite for elegance than Adobe, less for process than JPM. Shipping the workable thing and iterating is the register. |
+| **Conversational, low probe count** | Few follow-ups. That makes each answer a larger share of the evidence. |
+
+**Things nobody tells you**
+
+- The behavioural bar is genuinely lighter here than at any other company on the ladder. The risk is complacency rather than difficulty.
+- The domain maps unusually well onto your interview preparation: intervals and availability, caching, booking races and idempotency are all in the sheet already.
+- Rung one, so this arrives in week four alongside JPM and Amex.
+- Because there is no published values framework to prepare against, generic answers are the norm - which means a specific one stands out more than it would elsewhere.
+
+**The story format they want**
+
+| Part | Budget | What goes in it |
+|---|---|---|
+| **S - Situation** | 20 sec · ~15% | Name the user side - traveller, partner, internal ops. |
+| **T - Task** | 15 sec · ~10% | What you owned. |
+| **A - Action** | 55-65 sec · ~45% | What you did, and how you decided. Where you measured rather than argued, say so. |
+| **R - Result** | 25 sec · ~20% | Quantified. This is the section Expedia weights most. |
+| **L - Learning** | 15 sec · ~10% | What you changed. |
+
+**Rules for this room**
+
+- Put a number in every story. A measured result outweighs a well-argued one here.
+- If you have a story where the data contradicted the assumption, lead with it.
+- Acknowledge the two-sided marketplace where relevant - what is good for the traveller is often not good for the supply partner.
+- Use the availability, booking-race and caching material you already have. It maps straight onto their product.
+- Volunteer detail. Low probe count means anything you do not say is not assessed.
+
+> **Timing.** Two minutes, two or three follow-ups. Assume the story has to be complete on its own.
+
+**The follow-up probes**
+
+*On customers and the marketplace*
+
+- Who used what you built?
+- Tell me about a trade-off between two groups of users.
+- How did you know it was working?
+- Describe a time you changed something after seeing real usage.
+
+*On data*
+
+- Tell me about a time the data contradicted what everyone believed.
+- How do you decide between two approaches?
+- What did you measure, and why that?
+- Have you ever run an experiment that failed?
+
+*On collaboration*
+
+- Tell me about working across teams or brands.
+- How do you handle a dependency that slips?
+- Describe explaining a technical trade-off to a non-engineer.
+
+*On motivation*
+
+- Why Expedia?
+- What interests you about travel?
+- What do you want to work on?
+
+| Situation | What to do |
+|---|---|
+| **When the round is light** | Volunteer the second layer unprompted. Nobody is going to draw it out of you and unsaid is unscored. |
+| **When asked why Expedia** | The domain problems are real and specific - availability across suppliers, price and inventory freshness, search relevance, booking races. Pick one and connect it to something you have built. |
+| **When you have no travel angle** | Use the technical overlap instead. Booking races are inventory races; availability is intervals; freshness is caching. That is a genuine answer. |
+| **When you have no experiment story** | Use any measurement that changed your mind - a profiler result, a load test, a query plan. Data over opinion is the point, not A/B testing specifically. |
+
+**Anti-patterns — 5 ways to lose this room**
+
+1. **Coasting on a friendly round** — The lightest bar on the ladder produces the thinnest evidence, and a pleasant conversation with no specifics is a weak write-up.
+   *FIX: treat the low probe count as your responsibility. Land the number, the trade-off and the learning without being asked.*
+2. **No numbers** — A marketplace company runs on measurement, and an unquantified claim reads as an opinion.
+   *FIX: one number per story, minimum.*
+3. **One-sided customer view** — Treating "the user" as a single group when the product has travellers on one side and hotels and airlines on the other.
+   *FIX: one story that names a genuine conflict between two user groups and how you chose.*
+4. **Missing the obvious domain overlap** — Talking generically when your booking-race, availability and caching work maps directly onto their product.
+   *FIX: reframe one story in their vocabulary. It is the same work.*
+5. **"Why Expedia" answered with travel enthusiasm** — "I love to travel." Everyone says it and it is not a reason to hire an engineer.
+   *FIX: a specific problem - inventory freshness across suppliers, search ranking, double-booking under concurrency.*
+
+**Customer focus, data, collaboration**
+
+| # | Value | Freq | What it means | Strong | Weak |
+|---|---|---|---|---|---|
+| 1 | Customer focus, both sides | high | You know who was affected and, where two groups wanted different things, how you chose. | A named conflict between two groups and an explicit choice, with the cost to the losing side acknowledged. | "The user" as a single undifferentiated group, or system metrics with nobody in them. |
+| 2 | Data over opinion | high | You settled a question by measuring rather than by arguing. | A cheap measurement that settled an expensive argument, with the numbers, plus a sense of when it is not worth doing. | A confident claim with no evidence, or measurement described in general terms with no result. |
+| 3 | Cross-team collaboration | med | You delivered something that needed people outside your team, without authority over them. | You reduced the cost of saying yes, and you have a specific story about a slipped dependency and what you did instead of escalating. | Escalation as the first move, or a cross-team story with no friction in it at all. |
+| 4 | Pragmatism | med | You chose the simpler option that was good enough, deliberately, and can say what you gave up. | A deliberate trade with the cost named and, ideally, a note of what actually happened afterwards. | Debt taken accidentally and reframed as a decision, or a story where you always built the better thing. |
+
+<details><summary><b>Every value in full — how it is asked, the probes, your angle</b></summary>
+
+#### Expedia · 1. Customer focus, both sides  *(high frequency)*
+
+> *How Expedia words it:* Not a numbered value set. Expedia Group is a two-sided travel marketplace and customer experience for both travellers and supply partners is the recurring theme of its engineering work.
+
+**Means.** You know who was affected and, where two groups wanted different things, how you chose.
+
+**What they are testing.** The two-sided framing is the differentiator. Most candidates answer as though there is one user.
+
+**How it is asked**
+
+- Who used what you built?
+- Tell me about a trade-off between two user groups.
+- How did you know it was working for them?
+- Describe changing something after seeing real usage.
+
+**The probes that follow**
+
+- What did they see?
+- Which group lost out?
+- How did you decide?
+- What did they say?
+
+**Strong.** A named conflict between two groups and an explicit choice, with the cost to the losing side acknowledged.
+
+**Weak.** "The user" as a single undifferentiated group, or system metrics with nobody in them.
+
+**Pairs with.** Data over opinion
+
+**Your angle.** Any case where operations and end users wanted opposite things - speed versus verification, automation versus control.
+
+#### Expedia · 2. Data over opinion  *(high frequency)*
+
+> *How Expedia words it:* Not a published value, but the operating style of a marketplace that runs continuous experimentation.
+
+**Means.** You settled a question by measuring rather than by arguing.
+
+**What they are testing.** The highest-leverage adaptation for an Expedia loop. A number ends a disagreement in a way an argument does not, and they recognise that instinct.
+
+**How it is asked**
+
+- Tell me about a time the data contradicted the assumption.
+- How do you choose between two approaches?
+- What did you measure and why?
+- Have you run an experiment that failed?
+
+**The probes that follow**
+
+- How long did the measurement take?
+- What would you have done without it?
+- Did it change anyone's mind?
+- Do you always do this?
+
+**Strong.** A cheap measurement that settled an expensive argument, with the numbers, plus a sense of when it is not worth doing.
+
+**Weak.** A confident claim with no evidence, or measurement described in general terms with no result.
+
+**Pairs with.** Customer focus
+
+**Your angle.** The forty-minute load test. Cheap measurement, unarguable result.
+
+#### Expedia · 3. Cross-team collaboration  *(med frequency)*
+
+> *How Expedia words it:* Not a published value. Expedia Group spans several brands and many teams, and cross-team delivery is ordinary work.
+
+**Means.** You delivered something that needed people outside your team, without authority over them.
+
+**What they are testing.** Standard for a large company, tested conversationally rather than formally.
+
+**How it is asked**
+
+- Tell me about working across teams.
+- How do you handle a dependency that slips?
+- Describe explaining a technical trade-off to a non-engineer.
+
+**The probes that follow**
+
+- What was in it for them?
+- What did you do when it slipped?
+- How did you keep it moving?
+- Would they work with you again?
+
+**Strong.** You reduced the cost of saying yes, and you have a specific story about a slipped dependency and what you did instead of escalating.
+
+**Weak.** Escalation as the first move, or a cross-team story with no friction in it at all.
+
+**Pairs with.** Pragmatism
+
+**Your angle.** The event-contract change that needed downstream consumers to move.
+
+#### Expedia · 4. Pragmatism  *(med frequency)*
+
+> *How Expedia words it:* Not a published value. The observed register of Expedia engineering: ship the workable thing and iterate.
+
+**Means.** You chose the simpler option that was good enough, deliberately, and can say what you gave up.
+
+**What they are testing.** Less appetite for elegance than Adobe and less for process than JPM. Knowing when not to build the better thing is the signal.
+
+**How it is asked**
+
+- Tell me about a time you chose the simpler solution.
+- When have you accepted technical debt deliberately?
+- Describe shipping something you were not fully happy with.
+- How do you decide what is good enough?
+
+**The probes that follow**
+
+- What did you give up?
+- Did it come back?
+- Would you make the same call now?
+- How did you decide?
+
+**Strong.** A deliberate trade with the cost named and, ideally, a note of what actually happened afterwards.
+
+**Weak.** Debt taken accidentally and reframed as a decision, or a story where you always built the better thing.
+
+**Pairs with.** Data over opinion
+
+**Your angle.** A time you shipped a workaround with a follow-up ticket, and what happened to that ticket - honestly.
+
+</details>
+
+<details><summary><b>A worked story, annotated, with the probes answered</b></summary>
+
+**Question.** Tell me about a time you prevented a problem before it happened.
+
+**Scoring against.** Customer focus · Data over opinion
+
+**S - Situation**
+
+> We were adding a reservation flow where two users could try to claim the last unit of something at the same time. The design in review used a read-then-write - check availability, then create the reservation - which is the obvious shape and is wrong under concurrency.
+
+*Why it is shaped this way:* A booking race, stated in one sentence. This is Expedia's core technical problem and using it as the story is deliberate.
+
+**T - Task**
+
+> I was reviewing the design rather than writing it. I could have left a comment and moved on, but the failure mode was overselling, which is visible to a customer and expensive to unwind.
+
+*Why it is shaped this way:* Names the customer consequence immediately rather than the technical defect - which is the framing that matters here.
+
+**A - Action**
+
+> Rather than arguing about it in the review, I wrote a small load test - fifty concurrent requests for the last unit - against a branch with the proposed design. It oversold eleven times out of fifty. That ended the discussion in about a minute, which an opinion would not have. We changed it to an atomic conditional update - decrement the count where the count is still greater than zero, and check rows-affected - and I ran the same test again: zero oversells in fifty, and then zero in five thousand. I also asked what we would do if it ever did happen anyway, because no control is perfect, and we added a reconciliation check that compares reservations against inventory nightly and alerts on a mismatch.
+
+*Why it is shaped this way:* The measurement is the whole answer - eleven out of fifty is not arguable. Adding the reconciliation for the case where the control fails anyway shows the thinking did not stop at the fix.
+
+**R - Result**
+
+> No oversells since launch, which is about fourteen months. The reconciliation check has fired twice, both times for a data-migration reason rather than a race, and both were caught the next morning instead of by a customer.
+
+*Why it is shaped this way:* Quantified, and the reconciliation firing for unrelated reasons is the detail that proves it was worth building.
+
+**L - Learning**
+
+> The load test took forty minutes to write and settled something that would otherwise have been a long argument between two people with different intuitions. I now write the test before the argument rather than after it. The other thing is that I nearly did not push - it was not my design and I had a review comment queued that would have been easy to leave and let go.
+
+*Why it is shaped this way:* A transferable method plus an honest admission about nearly not bothering. The second half is what stops it reading as self-congratulation.
+
+**The probes, and how they are answered**
+
+- **Why not just use a transaction with SELECT FOR UPDATE?** — That works too, and it was the other candidate. We chose the conditional update because it holds no lock across a round trip and it was simpler to reason about at our write volume. FOR UPDATE would have been the choice if the reservation needed several rows to be consistent together.
+- **What if the reconciliation finds a mismatch?** — It alerts and it does not auto-correct, deliberately - an automatic fix on an inventory discrepancy could turn a small problem into a wrong one. Someone looks, decides, and there is a runbook for the two cases we have actually seen.
+- **How did the person whose design it was take it?** — Fine, because the test was about the design rather than about him, and eleven out of fifty is not something anyone argues with. He wrote the conditional update.
+- **Would you always write a load test for this?** — No - for something with no customer-visible failure mode it is not worth forty minutes. Overselling is visible and expensive, so the cost of being wrong justified the cost of checking.
+- **What would you do differently?** — Push earlier. I had the concern in the review and sat on it for a day because it was not my design, and it was only when I realised I would keep thinking about it that I wrote the test.
+
+**Why this one works here.** It is a booking race, which is Expedia's product problem stated in miniature. The customer consequence - overselling - is named before the technical defect. The decision is settled by measurement rather than argument, which is the data-over-opinion register a marketplace company runs on, and the numbers are specific. The follow-through adds a reconciliation for the case where the control fails anyway. And the learning admits the candidate nearly did not speak up, which keeps it honest.
+
+</details>
+
+**The schedule for this room**
+
+| When | What | Note |
+|---|---|---|
+| Week 3 | Apply alongside JPM and Amex | Rung one; interviews land in week four. |
+| Week 3 | Put a number in four stories | Expedia weights the result more than anything else. |
+| Week 4 | Reframe the booking-race work in their vocabulary | Availability, inventory, double-booking. It is already in your sheet. |
+| Week 4 | Write the two-sided trade-off story | A conflict between two user groups and an explicit choice. |
+| Week 5 | "Why Expedia" in three sentences | A specific product problem, not travel enthusiasm. |
+
+**How this room differs.** Against JPM and Amex: the same rung, but more algorithmic and much lighter on risk and control language. Against Amazon: no rubric at all to prepare against, which makes specificity worth more rather than less.
+
+> *Source and confidence.* Least codified of the companies here. Expedia Group does not publish a numbered values framework comparable to Amazon's principles or Salesforce's values, and the themes described - customer focus across a two-sided marketplace, data-driven decisions, cross-team collaboration and pragmatism - are inferred from the shape of the business and from candidate reporting rather than quoted from company material. Treat this page as a working model with lower confidence than the published-values companies, and rely on the general behavioural preparation plus the domain overlap.
+
+---
+
+### APPLE · Craft, secrecy and claimed expertise
+
+**Rung three (adjacent).** The company with no published values framework and the hardest probing of your own resume - do not write down anything you cannot go three levels deep on.
+
+**What it is worth.** Highly variable by team. Some loops are almost entirely technical; others are heavily conversational. The consistent element is depth on whatever you claim.
+
+**Where behaviour is scored**
+
+| Round | Time | What happens |
+|---|---|---|
+| **Recruiter screen** | 30 min | Background and motivation. Often vague about the actual team, deliberately. |
+| **Hiring manager** | 45-60 min | Your work in depth. This is where claimed expertise gets tested and where the behavioural weight usually sits. |
+| **Technical rounds (3-5)** | 45-60 min | Varies enormously by team - algorithms, domain-specific depth, practical debugging, sometimes hardware-adjacent context. |
+| **Cross-functional / panel** | 45-60 min | How you work with design, hardware or other software teams. Apple ships integrated products and cross-discipline collaboration is real work. |
+
+| What they are scoring | Why it matters |
+|---|---|
+| **Depth on anything you claim** | The most consistent Apple pattern. They will pick something from your resume and keep going until you reach the edge of your knowledge - and the assessment is partly whether you say so plainly when you get there. |
+| **Comfort with limited context** | Secrecy means you may be asked to reason about a problem without being told what the product is. Being unsettled by that is itself a signal. |
+| **Craft and detail** | Apple's self-image is built on it. Sloppy work described casually lands badly. |
+| **Cross-discipline collaboration** | Software, hardware, design and operations ship together. Stories that stay entirely inside a backend team demonstrate less. |
+| **Genuine motivation** | "Why Apple" is asked seriously and "I love the products" is the answer everyone gives. |
+
+**Things nobody tells you**
+
+- Team variance is the defining feature. Two Apple loops can look almost nothing alike, so prepare breadth plus depth on your own claims rather than a specific format.
+- Secrecy is real: you may not know what you would be working on until late, sometimes not until you start.
+- The resume probing is the thing to prepare for. Remove anything you cannot defend three levels down.
+- Apple is on this ladder as an adjacent option rather than a primary target - prepare it opportunistically rather than at the cost of the rung-two set.
+
+**The story format they want**
+
+| Part | Budget | What goes in it |
+|---|---|---|
+| **S - Situation** | 20 sec · ~15% | Context, briefly. |
+| **T - Task** | 15 sec · ~10% | What you owned. |
+| **A - Action** | 60-70 sec · ~50% | The mechanism, in detail. Expect to be taken deeper than you planned, so choose a story you can survive at three levels down. |
+| **R - Result** | 20 sec · ~15% | Quantified. |
+| **L - Learning** | 15 sec · ~10% | What you changed. |
+
+**Rules for this room**
+
+- Choose stories you understand to the bottom. Apple probing goes further than any other company here except Amazon's Dive Deep, and it goes further into the technology rather than into the decision.
+- Say where your knowledge ends, plainly. "I do not know how that is implemented below this layer" is a good answer; a confident guess is the failure.
+- Audit your resume before applying. Anything you cannot defend for ten minutes should not be on it.
+- Have one cross-discipline story - working with hardware, design, operations, or another engineering discipline.
+- Answer "why Apple" with the engineering problem, not the products. Scale, integration, constraint, privacy - something you can substantiate.
+
+> **Timing.** Two minutes and then expect the follow-ups to keep going. Budget for a story that gets taken apart rather than one that gets acknowledged.
+
+**The follow-up probes**
+
+*On claimed expertise*
+
+- Walk me through how that actually works, one level down.
+- And below that?
+- What happens if this component fails?
+- Why is it designed that way rather than the alternative?
+- What do you not know about it?
+
+*On craft*
+
+- What are you proudest of technically?
+- What would you rewrite?
+- How do you know when something is finished?
+- Tell me about a bug that took a long time to find.
+
+*On collaboration across disciplines*
+
+- Tell me about working with a team outside software.
+- How do you explain a technical constraint to a non-engineer?
+- Describe a disagreement between engineering and another discipline.
+
+*On motivation*
+
+- Why Apple?
+- What do you want to work on?
+- How do you feel about not knowing what you will be working on?
+- What are you looking for that you do not have now?
+
+| Situation | What to do |
+|---|---|
+| **When the probing reaches your limit** | Say so immediately and say what you would do to find out. Reaching the edge is expected; pretending not to have reached it is the failure. |
+| **When they will not tell you what the product is** | Engage with the abstraction as given. Ask the questions you would ask anyway - inputs, rates, constraints, failure modes - and do not push for the product name. |
+| **When asked why Apple** | Something substantiable. Privacy as an engineering constraint, integration across hardware and software, or scale at a specific service you can name. |
+| **When the loop feels inconsistent** | It is. Different interviewers on an Apple loop genuinely want different things; treat each round on its own terms rather than looking for a house style. |
+
+**Anti-patterns — 5 ways to lose this room**
+
+1. **A resume you cannot defend** — The single most common Apple failure. Something listed that you touched once, probed until it collapses.
+   *FIX: audit and remove. Anything that cannot survive ten minutes of questioning is a liability rather than an asset.*
+2. **Bluffing at the edge of your knowledge** — A confident guess when the probing goes one level too deep. Apple interviewers keep going, so the guess gets found.
+   *FIX: "I do not know below that layer - here is how I would find out." It is a good answer and it stops the descent cleanly.*
+3. **Being unsettled by secrecy** — Pushing to know what the product is, or visibly disliking the ambiguity. That reaction is itself information.
+   *FIX: treat the abstraction as the problem. It usually is.*
+4. **Everything inside one discipline** — No story involving hardware, design, operations or another engineering function. Apple ships integrated products.
+   *FIX: one cross-discipline story, even a modest one.*
+5. **"Why Apple" answered with fandom** — "I have used Apple products my whole life." Universal, and it says nothing about the work.
+   *FIX: an engineering reason you can substantiate - privacy as a constraint, integration, or a specific service at scale.*
+
+**Craft, secrecy and claimed expertise**
+
+| # | Value | Freq | What it means | Strong | Weak |
+|---|---|---|---|---|---|
+| 1 | Depth on what you claim | high | Everything you claim, you can explain several levels below the surface - and you say plainly where that stops. | Three or four levels of mechanism, then a clean stop: "below that I do not know, and here is how I would find out." | A confident guess at the edge. Or a resume item that collapses after two questions. |
+| 2 | Craft and detail | high | You care how the thing is made, not only whether it works. | A finishing detail nobody asked for - checking the codebase for the same defect, the runbook, the metric - described without self-congratulation. | "It worked, so we moved on." Or craft claimed as a value with no instance. |
+| 3 | Working without full context | med | You can design against a described problem without needing to know what it is for. | You ask about inputs, rates, constraints and failure modes rather than about purpose, and you write your assumptions down. | Needing the product context before you can start, or over-designing to cover every use you can imagine. |
+| 4 | Cross-discipline collaboration | med | You have worked with people who are not software engineers and adjusted how you communicate. | You changed your own framing to match theirs and something concrete came of it - a caught mistake, a better requirement. | A story where the non-engineers simply needed to be educated. |
+| 5 | Why Apple | high | You have an engineering reason that survives a follow-up. | Privacy or on-device constraint as an engineering problem, integration across layers, or a specific service at scale - connected to your own work. | "I love Apple products." Or an answer that would fit any large technology company. |
+
+<details><summary><b>Every value in full — how it is asked, the probes, your angle</b></summary>
+
+#### Apple · 1. Depth on what you claim  *(high frequency)*
+
+> *How Apple words it:* Not a published value. The most consistently reported characteristic of Apple interviews: sustained probing into anything on your resume.
+
+**Means.** Everything you claim, you can explain several levels below the surface - and you say plainly where that stops.
+
+**What they are testing.** The defining Apple pattern. The assessment is both how deep you go and how you behave when you run out.
+
+**How it is asked**
+
+- Walk me through how that works.
+- And below that?
+- Why is it designed that way?
+- What do you not know about it?
+
+**The probes that follow**
+
+- What happens if that component fails?
+- What is the alternative design and why was it not used?
+- How would you verify that?
+- Where does your knowledge end?
+
+**Strong.** Three or four levels of mechanism, then a clean stop: "below that I do not know, and here is how I would find out."
+
+**Weak.** A confident guess at the edge. Or a resume item that collapses after two questions.
+
+**Pairs with.** Craft
+
+**Your angle.** Pick two or three things you genuinely understand to the bottom - JVM behaviour, Postgres MVCC, Kubernetes scheduling - and make sure the resume leans on those.
+
+#### Apple · 2. Craft and detail  *(high frequency)*
+
+> *How Apple words it:* Not a published value, but Apple's self-description across its products, and it carries into how work is discussed.
+
+**Means.** You care how the thing is made, not only whether it works.
+
+**What they are testing.** Similar to Adobe's Exceptional, but applied to the whole system rather than mainly to code. Finishing properly is the theme.
+
+**How it is asked**
+
+- What are you proudest of technically?
+- What would you rewrite?
+- How do you know when something is done?
+- Tell me about a bug that took a long time to find.
+
+**The probes that follow**
+
+- Why that way?
+- What did you leave unfinished?
+- What would you do with another week?
+- Did anyone else notice?
+
+**Strong.** A finishing detail nobody asked for - checking the codebase for the same defect, the runbook, the metric - described without self-congratulation.
+
+**Weak.** "It worked, so we moved on." Or craft claimed as a value with no instance.
+
+**Pairs with.** Depth
+
+**Your angle.** Searching the rest of the codebase for the same shape after a fix. Small, real, and unmistakably craft.
+
+#### Apple · 3. Working without full context  *(med frequency)*
+
+> *How Apple words it:* Not a published value. A practical consequence of Apple's secrecy: engineers frequently work on components without full knowledge of the product.
+
+**Means.** You can design against a described problem without needing to know what it is for.
+
+**What they are testing.** You may be given an abstracted problem deliberately. Pushing to know the product, or being visibly uncomfortable, is itself read.
+
+**How it is asked**
+
+- How do you feel about not knowing what you will work on?
+- Tell me about working with incomplete information.
+- Have you built something without knowing how it would be used?
+
+**The probes that follow**
+
+- What did you ask for instead?
+- How did you avoid over-designing?
+- What assumptions did you write down?
+- What would have changed your design?
+
+**Strong.** You ask about inputs, rates, constraints and failure modes rather than about purpose, and you write your assumptions down.
+
+**Weak.** Needing the product context before you can start, or over-designing to cover every use you can imagine.
+
+**Pairs with.** Depth
+
+**Your angle.** The unknown-domain method in this sheet is exactly this skill. Translate the shape, do not learn the domain.
+
+#### Apple · 4. Cross-discipline collaboration  *(med frequency)*
+
+> *How Apple words it:* Not a published value. Apple ships integrated hardware and software products, so working across disciplines is ordinary.
+
+**Means.** You have worked with people who are not software engineers and adjusted how you communicate.
+
+**What they are testing.** Backend candidates often have nothing here. Even a modest story - working with operations, support or a data team - is better than none.
+
+**How it is asked**
+
+- Tell me about working with a team outside software.
+- How do you explain a technical constraint to a non-engineer?
+- Describe a disagreement between engineering and another discipline.
+
+**The probes that follow**
+
+- What did they care about that you had not considered?
+- How did you find the common language?
+- What did you change?
+- How did it end?
+
+**Strong.** You changed your own framing to match theirs and something concrete came of it - a caught mistake, a better requirement.
+
+**Weak.** A story where the non-engineers simply needed to be educated.
+
+**Pairs with.** Craft
+
+**Your angle.** Asking domain or operations people to review your class names or your design. That is cross-discipline collaboration with an outcome.
+
+#### Apple · 5. Why Apple  *(high frequency)*
+
+> *How Apple words it:* Not a value - a question, asked seriously, and answered with product enthusiasm by nearly everyone.
+
+**Means.** You have an engineering reason that survives a follow-up.
+
+**What they are testing.** The universal weak answer is fandom. A substantiable engineering reason is immediately differentiating.
+
+**How it is asked**
+
+- Why Apple?
+- What do you want to work on?
+- What are you looking for that you do not have?
+- How do you feel about the secrecy?
+
+**The probes that follow**
+
+- What do you know about that area?
+- What else are you considering?
+- What would make this the wrong move?
+- What would you miss about your current role?
+
+**Strong.** Privacy or on-device constraint as an engineering problem, integration across layers, or a specific service at scale - connected to your own work.
+
+**Weak.** "I love Apple products." Or an answer that would fit any large technology company.
+
+**Pairs with.** Depth
+
+**Your angle.** Apple runs very large backend services behind services people think of as on-device. That is your stack; be specific about which problem interests you.
+
+</details>
+
+<details><summary><b>A worked story, annotated, with the probes answered</b></summary>
+
+**Question.** Tell me about the hardest bug you have found.
+
+**Scoring against.** Depth · Craft
+
+**S - Situation**
+
+> We had a service that would, roughly once a week, stop consuming from its queue while still reporting healthy. No errors, no restarts, no memory growth. It would come back on its own after somewhere between twenty minutes and two hours.
+
+*Why it is shaped this way:* A hard, specific, non-obvious symptom. The detail that it self-recovered is what makes it genuinely difficult rather than merely annoying.
+
+**T - Task**
+
+> Nobody could reproduce it and it was rare enough that people had started restarting the pod and moving on. I picked it up because the self-recovery bothered me - something that fixes itself has a mechanism, and I wanted to know what it was.
+
+*Why it is shaped this way:* The reason for caring is technical curiosity rather than assignment, which is the right register for Apple.
+
+**A - Action**
+
+> I could not reproduce it, so I made it observable instead. I added a thread dump on demand and a consumer-lag metric, then waited for it to happen. When it did, the dump showed every consumer thread blocked on the same lock, held by a thread that was itself waiting on an HTTP call with no timeout set. The call was to an internal service that had occasional very long responses. Because the lock was held across the network call, one slow response stalled every consumer. It recovered when the socket eventually timed out at the OS level, which is why the delay was so variable - that is a kernel timeout, not an application one. The fix was two things: a real timeout on the HTTP client, and moving the network call outside the synchronised block, which it never needed to be inside. I checked the rest of the codebase for the same shape and found two more places doing it.
+
+*Why it is shaped this way:* The mechanism is followed all the way down - application lock, to HTTP client, to OS socket timeout - which is exactly the descent Apple probing performs. The variable recovery time is explained by the mechanism rather than left as a mystery. And searching for the same shape elsewhere is the craft beat.
+
+**R - Result**
+
+> It has not happened since, about eighteen months. The two other instances of the same pattern had not caused a visible problem yet, and one of them was on a call that would have been much worse - it was in the request path rather than a background consumer.
+
+*Why it is shaped this way:* Quantified, and the two latent instances demonstrate that the work generalised.
+
+**L - Learning**
+
+> The lesson I actually took was about defaults. That HTTP client had no default timeout, and I had assumed it did, because most of them do. I now check the timeout defaults of anything that goes over a network before I use it, and it is surprising how often the answer is "infinite". The other lesson is that unreproducible is not the same as uninvestigable - I spent a week trying to reproduce it before I switched to making it observable, and that week was wasted.
+
+*Why it is shaped this way:* A specific, transferable technical lesson about defaults, plus a genuine admission of a week spent the wrong way.
+
+**The probes, and how they are answered**
+
+- **Why was the recovery time so variable?** — Because it was the OS socket timeout doing the work rather than anything in the application. That is not a fixed short value, and it depends on what the remote end is doing - whether it is silent or slowly dribbling data. The variability is what eventually told me it was below the application layer.
+- **How did you get a thread dump from a pod at the moment it happened?** — I added an endpoint that dumps threads on request, and the consumer-lag metric alerted when lag started climbing with no throughput. So the alert fired, and I hit the endpoint while it was still stuck. Before that I had been getting dumps after the restart, which showed nothing.
+- **Why was the network call inside the synchronised block?** — No good reason - it had been added inside an existing block by someone extending the method, which is the usual way this happens. The lock was protecting a small piece of shared state that had nothing to do with the call.
+- **What would you have done if the thread dump had not shown it?** — Next would have been the socket level - ss or netstat inside the pod to see whether there was an established connection sitting idle, and then tcpdump if that had not been enough. The point was to keep moving down a layer at a time.
+- **You said you spent a week trying to reproduce it. When should you have stopped?** — After a day. The signal that it was not reproducible locally was clear early - it needed a slow response from a specific internal service under real conditions. Once something depends on a rare external timing, making it observable is faster than making it happen.
+
+**Why this one works here.** It is a bug story that survives descent. Every follow-up has an answer one layer further down - lock, to client, to socket, to what the next diagnostic step would have been - which is what Apple probing is testing. The variable recovery time is explained rather than waved at. Checking the codebase for the same shape and finding two latent instances is craft rather than fix-and-forget. And the learning is a specific technical habit about defaults, plus an honest admission that the first week was spent the wrong way.
+
+</details>
+
+**The schedule for this room**
+
+| When | What | Note |
+|---|---|---|
+| Opportunistic | Apple is adjacent to the ladder rather than on it | Prepare it if a referral appears; do not spend rung-two time on it. |
+| Before applying | Audit the resume | Remove anything you cannot defend for ten minutes. This is the highest-value single action for an Apple loop. |
+| Before the loop | Pick three deep areas | Things you understand to the bottom. Make sure the resume leans on those. |
+| Before the loop | One cross-discipline story | Even a modest one. Most backend candidates have none. |
+| Before the loop | "Why Apple" that survives a follow-up | An engineering reason, substantiable, not fandom. |
+
+**How this room differs.** Against Amazon: the probing goes into the technology rather than into the decision, and there is no rubric to map answers onto. Against Google: no hypotheticals, no committee, and far more variance between one loop and the next.
+
+> *Source and confidence.* Least documented of the companies here. Apple publishes no behavioural rubric and no values framework for interviewing, and its loops vary substantially by team. Everything on this page is inferred from consistent candidate reporting and from the structural facts of how Apple works - secrecy, integrated hardware and software, and craft as a stated company self-image. Treat it as the lowest-confidence page in this section and prepare breadth plus depth on your own claims rather than a format.
+
+---
+
+### FLIPKART · Audacity, Bias for Action, Customer First, Integrity, Inclusion
+
+**Rung two (adjacent).** The behavioural bar is not what fails candidates here - the 90-minute machine-coding round is, and how you handle running out of time is read as behaviour.
+
+**What it is worth.** Light relative to the machine-coding round, which is the real gate. Behavioural sits with the hiring manager and a senior round.
+
+**Where behaviour is scored**
+
+| Round | Time | What happens |
+|---|---|---|
+| **Recruiter screen** | 30 min | Background, level, motivation. |
+| **Machine coding** | 60-90 min | The differentiator. Runnable, tested code from a written problem statement, evaluated on design, extensibility and whether it actually runs. Most candidates fail here. |
+| **Problem solving / DSA** | 45-60 min | Solid mediums. |
+| **Design round** | 45-60 min | LLD and sometimes HLD, often building on the machine-coding solution. |
+| **Hiring manager** | 45-60 min | Behavioural, team fit, motivation. Where the values questions live. |
+
+| What they are scoring | Why it matters |
+|---|---|
+| **Machine coding is the gate** | It is scored on working code, clean separation of concerns, extensibility, and tests. Finishing beats elegance. |
+| **Bias for action, meant literally** | Velocity is genuinely part of the culture. Stories where you shipped and iterated land better than stories where you planned carefully. |
+| **Customer first, in an e-commerce sense** | Scale, order accuracy, delivery experience. Concrete customer-facing consequences. |
+| **Audacity** | Taking on something larger than your remit or your experience. This is the value most specific to Flipkart. |
+| **Ownership through the messy part** | High-growth environments generate a lot of unowned work; they want evidence you pick it up. |
+
+**Things nobody tells you**
+
+- The machine-coding round is the thing to prepare. Practise finishing a working, tested design in ninety minutes - most people have never done it under a clock.
+- The behavioural bar is lighter than Amazon's and the round count is lower, so preparation should be proportionate rather than equal.
+- Flipkart is adjacent to the ladder - a strong fit for your LLD work, and worth taking if a referral appears.
+- Velocity stories land better here than careful ones, which is close to the opposite of the JPM register. Do not use the same delivery in both rooms.
+
+**The story format they want**
+
+| Part | Budget | What goes in it |
+|---|---|---|
+| **S - Situation** | 15 sec · ~10% | Short. Scale or growth context if there is one. |
+| **T - Task** | 15 sec · ~10% | What you took on. |
+| **A - Action** | 60-70 sec · ~50% | What you did, fast. Where you shipped something imperfect and iterated, say so - that is on-value here rather than a confession. |
+| **R - Result** | 20 sec · ~15% | Quantified. |
+| **L - Learning** | 15 sec · ~15% | What you changed. |
+
+**Rules for this room**
+
+- Lead with action. This is the one company on the ladder where "I shipped it and then improved it" is the preferred shape rather than a risk.
+- Have an audacity story - something bigger than your remit or your experience at the time.
+- Practise machine coding to a timer. It decides the loop and it is a skill, not a knowledge test.
+- Keep the stories tight. A two-minute answer at Flipkart should feel faster than a two-minute answer at JPM.
+- Have a customer-facing consequence in at least one story - orders, delivery, payments, returns.
+
+> **Timing.** Ninety seconds to two minutes, briskly. Fewer probes than Amazon.
+
+**The follow-up probes**
+
+*On bias for action*
+
+- Tell me about something you shipped fast.
+- When did you decide not to wait?
+- Describe iterating on something imperfect.
+- What is the fastest you have taken something from idea to production?
+
+*On audacity and ownership*
+
+- Tell me about taking on something you were not qualified for.
+- Describe the largest thing you have owned.
+- What did you do when nobody owned a problem?
+- When have you been out of your depth?
+
+*On customers and scale*
+
+- What broke first when traffic grew?
+- Tell me about a customer-facing failure.
+- How did you handle a peak event?
+- Describe a trade-off between speed and correctness.
+
+*On the machine-coding round*
+
+- Why did you structure it that way?
+- How would you add feature X?
+- What did you leave out, and why?
+- What would you do with another thirty minutes?
+
+| Situation | What to do |
+|---|---|
+| **When machine coding is running short** | Say the trade-off out loud and finish something that runs. "I am stubbing persistence and finishing the core flow" is the scored behaviour. |
+| **When asked about shipping fast** | Do not hedge it into a careful story. Velocity is the value; add the safety detail as a clause rather than as the point. |
+| **When asked about being out of your depth** | Answer honestly. Audacity requires having been somewhere uncomfortable, and a story where you were always competent evidences nothing. |
+| **When asked to extend your machine-coding design** | This is why the extensibility mattered. If the design is clean, adding the feature is one class - say that and show where. |
+
+**Anti-patterns — 5 ways to lose this room**
+
+1. **Unfinished machine coding** — The dominant failure. An elegant half-built design that does not run scores below a plain complete one.
+   *FIX: practise finishing. Two full ninety-minute runs before the loop, with tests, on a clock.*
+2. **Over-careful delivery** — Bringing the JPM register - controls, approvals, staged rollout - to a bias-for-action culture reads as slow.
+   *FIX: lead with what you did. Keep the safety, but as a clause rather than the headline.*
+3. **No audacity story** — Nothing you were underqualified for. It is the most Flipkart-specific value and it needs a real example.
+   *FIX: one story where you were out of your depth and took it anyway.*
+4. **No customer consequence** — Pure infrastructure with no order, delivery or payment impact anywhere.
+   *FIX: one story with a customer-facing failure or improvement.*
+5. **Preparing behavioural at Amazon depth** — Disproportionate. The machine-coding round is the gate and it is where the preparation time should go.
+   *FIX: four solid stories and two practice machine-coding runs, in that priority order.*
+
+**Audacity, Bias for Action, Customer First, Integrity, Inclusion**
+
+| # | Value | Freq | What it means | Strong | Weak |
+|---|---|---|---|---|---|
+| 1 | Audacity | high | You took on something you were not obviously qualified for and made it work. | Genuine discomfort, bounded by method rather than by bravery, with the fallback named. | Well-scoped work described as ambitious, or recklessness with no fallback. |
+| 2 | Bias for Action | high | You shipped something imperfect and improved it rather than waiting for it to be right. | Incremental delivery with a visible fallback, and honesty about what you left out. | A careful staged rollout presented as speed, or speed with no safety net at all. |
+| 3 | Customer First | high | You know what a failure looked like to someone placing or receiving an order. | A named customer-facing consequence with a count, and a change made because of it. | Infrastructure metrics with no order and no person in the story. |
+| 4 | Integrity | med | You reported a problem or a mistake that would have been easy to leave. | Your own error, reported fast, with a mechanism added afterwards. | A story with no cost, or one where the problem was somebody else's. |
+| 5 | Inclusion | low | You did something specific that changed who contributed. | A named practice with a result. | A statement of belief with no instance. |
+
+<details><summary><b>Every value in full — how it is asked, the probes, your angle</b></summary>
+
+#### Flipkart · 1. Audacity  *(high frequency)*
+
+> *How Flipkart words it:* A published Flipkart value: aiming beyond what seems reasonable and taking on more than is comfortable.
+
+**Means.** You took on something you were not obviously qualified for and made it work.
+
+**What they are testing.** The most Flipkart-specific value. A career of competent, well-scoped work evidences nothing here.
+
+**How it is asked**
+
+- Tell me about taking on something you were not ready for.
+- What is the largest thing you have owned?
+- When have you been out of your depth?
+- Describe a goal that seemed unrealistic.
+
+**The probes that follow**
+
+- What made you think you could?
+- What went wrong?
+- What did you do when it did?
+- Would you do it again?
+
+**Strong.** Genuine discomfort, bounded by method rather than by bravery, with the fallback named.
+
+**Weak.** Well-scoped work described as ambitious, or recklessness with no fallback.
+
+**Pairs with.** Bias for Action
+
+**Your angle.** A refactor of a critical system you did not know, after the person who did know it left.
+
+#### Flipkart · 2. Bias for Action  *(high frequency)*
+
+> *How Flipkart words it:* A published Flipkart value: speed of decision and delivery over exhaustive analysis.
+
+**Means.** You shipped something imperfect and improved it rather than waiting for it to be right.
+
+**What they are testing.** Meant literally in a high-growth e-commerce culture. This is the one room on the ladder where the careful register is a liability.
+
+**How it is asked**
+
+- Tell me about something you shipped fast.
+- When did you decide not to wait?
+- Describe iterating on something imperfect.
+- How fast have you gone from idea to production?
+
+**The probes that follow**
+
+- What did you leave out?
+- What broke?
+- How did you fix it?
+- Would you do it that way again?
+
+**Strong.** Incremental delivery with a visible fallback, and honesty about what you left out.
+
+**Weak.** A careful staged rollout presented as speed, or speed with no safety net at all.
+
+**Pairs with.** Audacity · Customer First
+
+**Your angle.** Shipping three of nine converted promotion types in week two rather than converting all of them first.
+
+#### Flipkart · 3. Customer First  *(high frequency)*
+
+> *How Flipkart words it:* A published Flipkart value: the customer outcome ahead of internal convenience.
+
+**Means.** You know what a failure looked like to someone placing or receiving an order.
+
+**What they are testing.** E-commerce specifics land: order accuracy, delivery, returns, payment failures, peak-event behaviour.
+
+**How it is asked**
+
+- Tell me about a customer-facing failure.
+- What broke first when traffic grew?
+- How did you handle a peak event?
+- Describe a trade-off between speed and correctness.
+
+**The probes that follow**
+
+- What did the customer see?
+- How many were affected?
+- How did you find out?
+- What did you change?
+
+**Strong.** A named customer-facing consequence with a count, and a change made because of it.
+
+**Weak.** Infrastructure metrics with no order and no person in the story.
+
+**Pairs with.** Bias for Action
+
+**Your angle.** Overselling, duplicate charges, or lost orders. All three are in your material already.
+
+#### Flipkart · 4. Integrity  *(med frequency)*
+
+> *How Flipkart words it:* A published Flipkart value: honesty and doing the right thing, including when it is inconvenient.
+
+**Means.** You reported a problem or a mistake that would have been easy to leave.
+
+**What they are testing.** Standard integrity testing. In a high-velocity culture the specific temptation is to ship past a known defect.
+
+**How it is asked**
+
+- Tell me about reporting your own mistake.
+- Have you shipped something you knew had a problem?
+- When did you say something was not ready?
+- Describe refusing a shortcut.
+
+**The probes that follow**
+
+- Who did you tell?
+- How quickly?
+- What did it cost?
+- What changed?
+
+**Strong.** Your own error, reported fast, with a mechanism added afterwards.
+
+**Weak.** A story with no cost, or one where the problem was somebody else's.
+
+**Pairs with.** Customer First
+
+**Your angle.** A known defect you flagged before a release rather than after it.
+
+#### Flipkart · 5. Inclusion  *(low frequency)*
+
+> *How Flipkart words it:* A published Flipkart value: building teams where different people can do their best work.
+
+**Means.** You did something specific that changed who contributed.
+
+**What they are testing.** Lower frequency in engineering loops. A mechanism beats a sentiment, as everywhere.
+
+**How it is asked**
+
+- How do you make sure everyone is heard?
+- Tell me about onboarding someone.
+- Describe a perspective that changed your approach.
+
+**The probes that follow**
+
+- What did you do differently?
+- Did it change the outcome?
+- Do you still do it?
+
+**Strong.** A named practice with a result.
+
+**Weak.** A statement of belief with no instance.
+
+**Pairs with.** Customer First
+
+**Your angle.** How you onboard people onto a system you own - the written walkthrough that someone actually used.
+
+</details>
+
+<details><summary><b>A worked story, annotated, with the probes answered</b></summary>
+
+**Question.** Tell me about a time you took on something you were not ready for.
+
+**Scoring against.** Audacity · Bias for Action · Ownership
+
+**S - Situation**
+
+> Our order service was a monolith method that everyone was afraid of, and we needed to add two new promotion types in one quarter. The person who knew it best had left three months earlier.
+
+*Why it is shaped this way:* Short, and the departed expert is the detail that makes it genuinely uncomfortable rather than merely large.
+
+**T - Task**
+
+> I volunteered to restructure it, having never done a refactor of that size and never having owned that part of the codebase.
+
+*Why it is shaped this way:* The audacity beat, stated plainly and without dressing it up.
+
+**A - Action**
+
+> I did not try to understand all of it first, because that would have taken the quarter. I listed every promotion type we supported and asked what actually varied between them - it was two things: how the discount was computed and what made an order eligible. Everything else was shared. So I extracted an interface with those two operations and one implementation per promotion, kept the old method as a delegating shim for a release, and ran both paths against production traffic comparing outputs before deleting the old one. I shipped the first three promotion types in week two rather than waiting until all of them were converted, so we were getting value and finding problems while there was still time to fix them.
+
+*Why it is shaped this way:* The audacity is bounded by method rather than by bravery - what varies, shim, parallel run - and shipping incrementally is bias for action demonstrated rather than claimed.
+
+**R - Result**
+
+> Both new promotion types landed inside the quarter, at about two hours each instead of the day and a half the old method cost. No production incidents through the migration. And that area has not had a bug in about a year.
+
+*Why it is shaped this way:* Quantified in delivery speed, which is the currency here.
+
+**L - Learning**
+
+> What I would do differently is the parallel comparison - I did it by logging both outputs and diffing offline, which was fiddly and I nearly abandoned it. A proper shadow comparison with a metric would have cost an extra afternoon and made it boring. What I would keep is not trying to understand everything first. Asking what varies got me to a working structure in two days on a codebase I did not know.
+
+*Why it is shaped this way:* A specific method regret and a transferable principle, which is what stops an audacity story sounding like recklessness.
+
+**The probes, and how they are answered**
+
+- **Were you not worried about breaking order processing?** — Yes, which is why the old method stayed as a shim for a release and both paths ran in parallel against real traffic before anything was deleted. The bravery was in taking it on; the execution was deliberately boring.
+- **How did you know the two axes were the right ones?** — Because when I listed all nine existing promotions, every one of them differed only in those two things. If the tenth had differed in a third way I would have found out during the migration and added it - the shim meant that was recoverable.
+- **What would you have done if it had gone wrong mid-quarter?** — Stopped and shipped the two new promotions the old way, in the long method. That was always the fallback and it was one of the reasons for converting incrementally rather than all at once.
+- **How would you add a promotion that depends on the customer's history?** — That is a new eligibility implementation - the predicate takes the order and can look up whatever it needs. One class, no edits to existing ones, which is the whole point of the split.
+- **You said you nearly abandoned the parallel comparison. What if you had?** — Then I would have been deleting the old path on the strength of the test suite alone. The tests were good, so it probably would have been fine - but "probably fine" on order pricing is not a trade I would want to make again.
+
+**Why this one works here.** The audacity is real - an unfamiliar critical codebase whose expert had left - and it is bounded by method rather than by confidence. The incremental shipping is bias for action shown rather than asserted. The safety measures are present but stated as clauses rather than as the headline, which is the right register for this room and the wrong one for JPM. And the follow-up about extending the design is the machine-coding conversation in miniature, which is where the loop actually gets decided.
+
+</details>
+
+**The schedule for this room**
+
+| When | What | Note |
+|---|---|---|
+| Opportunistic | Flipkart is adjacent to the ladder | Worth taking if a referral appears; your LLD work fits it well. |
+| Before the loop | Two full machine-coding runs | Ninety minutes, tested, finished, on a clock. This is where the loop is decided. |
+| Before the loop | Write the audacity story | Something you were not ready for. |
+| Before the loop | Speed up the delivery | The careful JPM register reads as slow here. Same stories, briskly. |
+| Before the loop | One customer-facing failure story | Orders, payments, delivery. |
+
+**How this room differs.** Against JPM: close to the opposite register. Flipkart rewards velocity and audacity where JPM rewards control and staged safety - the same story needs a genuinely different delivery. Against Amazon: fewer probes and a lighter behavioural weight, with the machine-coding round taking the place LP occupies at Amazon.
+
+> *Source and confidence.* Values largely published. Flipkart publishes a values set centred on audacity, bias for action, customer first, integrity and inclusion. The loop structure and the dominance of the machine-coding round come from consistent candidate reporting; treat the round mechanics as a working model.
+
+---
+
+### EVERY LOOP ASKS THESE
+
+Four questions appear in almost every loop on this ladder, at every company, and almost nobody prepares them. They are not behavioural stories, so they fall between the cracks - and because they open and close rounds, they set the frame for everything else.
+
+**"Tell me about yourself"** — 60-90 seconds, three beats: where you are now and what you own, one thing you have built that you are proud of, and why you are looking. Present tense, no chronology from university, no list of technologies. This is the single most-asked question in every loop and the most commonly rambled.
+
+> Write it, time it, say it out loud twenty times. It should be boring to you before it is heard by anyone. Adjust one clause per company - the thing you emphasise as "proud of" should be the thing that rung values.
+
+**"Why are you leaving?"** — Forward-looking, never critical. "I have learned a lot running this platform and I want to work on it at a scale I cannot reach where I am" is complete. Criticism of your current employer lands worst at JPM and Amex, where discretion is itself assessed.
+
+> One sentence about what you want next. Do not explain what is wrong where you are, even if asked twice - if pressed, name a structural limit rather than a person.
+
+**"Why this company?"** — The most-failed question on this ladder. The universal weak answer names scale, brand or products. The strong answer names a specific engineering problem in their domain and connects it to something you have actually built.
+
+> Write three sentences per company. Reuse nothing. Each company page in this section has a "why" entry with the specific angle for that room.
+
+**"Do you have any questions for us?"** — Assessed, not a formality, and usually the last thing they remember. Two or three real questions. The strongest are about how the team works rather than about the company - what breaks most often, how decisions get made, what the last incident was.
+
+> Have five prepared and pick from them. Never "no, I think you covered everything" - that reads as no interest. Never salary or process here; that is the recruiter.
+
+**Questions worth asking.** Questions worth asking, by what they actually tell you. Pick two or three, and ask the ones whose answers you would act on.
+
+| Ask | What it tells you |
+|---|---|
+| **What does the on-call rotation look like, and what paged you last?** | Tells you the operational reality faster than any other question. A vague answer is itself an answer. |
+| **How does a change get from my laptop to production?** | Reveals the deployment culture, the review load and how much ceremony you are signing up for. |
+| **What is the last technical decision the team disagreed about, and how was it resolved?** | Reveals whether disagreement is safe, and whether decisions are made or drifted into. |
+| **What would you want me to have accomplished in six months?** | Tells you whether the role is defined. An unclear answer is a real signal about the team. |
+| **What is the part of the system nobody wants to touch?** | Every team has one. How readily they answer tells you about the honesty of the culture. |
+| **What is the biggest constraint on the team right now - people, tech debt, or dependencies?** | A direct question that gets surprisingly direct answers. |
+| **How does this team work with the teams around it?** | Especially useful at Microsoft and JPM, where cross-org work is most of the job. |
+| **What made the last person who joined successful?** | Gets you a concrete profile rather than a job description. |
+
+### THE RECRUITER SCREEN
+
+The recruiter screen is a filter, not a formality, and it happens before anyone reads your code. It is also the only conversation on the ladder where compensation is properly discussed, and where getting the sequencing wrong costs you real money.
+
+|  | What to do |
+|---|---|
+| **What it is actually for** | Confirming you are real, roughly the right level, available in a workable timeframe, and not going to be a surprise later. Also: motivation, which does get passed on in writing. |
+| **The 90-second version of you** | Same as "tell me about yourself" but tighter and less technical. The recruiter is not an engineer and will relay what you say - give them a sentence they can repeat accurately. |
+| **Level, discussed early** | Say what level you are targeting and why, in terms of scope rather than title. If you are targeting a level above your current one, have the reason ready - it is easier to set this now than to renegotiate later. |
+| **Timeline, honestly** | If you are interviewing elsewhere, say so without naming stages you have not reached. A real timeline speeds up scheduling; a fabricated one collapses. |
+| **Compensation - the sequencing** | You will be asked for a number or a current salary. Deflect once, politely: "I would rather understand the role and the level first - what is the band for this position?" If pressed a second time, give a researched range for the level and the market, not your current salary, and say it is flexible on the overall package. |
+| **Never do this** | Do not give a number before you know the level. Do not name your current salary in a market where you do not have to. Do not agree to a range you have not researched - once said, it becomes the ceiling. |
+| **What to ask them** | The interview structure and how many rounds, the level and its band, the team and what it builds, and the timeline. All four are reasonable and all four are useful. |
+
+### OFFERS AND NEGOTIATION
+
+This is the part of the ladder with the highest hourly value and the least preparation. The plan puts an offer in hand by end of week 13 partly so the Google and Uber conversations happen from a different position - so it is worth knowing how to handle the conversation when it arrives.
+
+|  | What to do |
+|---|---|
+| **Never accept on the call** | "Thank you - I am glad, and I would like a few days to look at it properly." Nobody has ever lost an offer to that sentence. Enthusiasm plus a pause is the correct response. |
+| **Get it in writing, in full** | Base, bonus, equity with the vesting schedule and the valuation basis, sign-on, notice expectations, level and title. A verbal number is not an offer. |
+| **Know what is negotiable where** | Sign-on is usually the most flexible, equity next, base least. At the tier-one banks the base band is genuinely rigid and the sign-on is where movement happens. At the product companies equity has the most range. |
+| **A competing offer is the strongest lever, and the plan creates one** | This is the structural reason the ladder is ordered as it is. An offer in hand by week 13 is not just insurance for the Google loop - it is the only leverage that reliably moves a number. |
+| **Ask, once, specifically** | "Based on the level and what I am bringing on the platform side, I was hoping for X. Is there room?" One clear ask, a number, and then silence. Repeated small asks erode goodwill; one specific ask rarely does. |
+| **Do not bluff a competing offer** | It gets checked more often than people expect, and at this tier the recruiting communities are small. A real competing process, described honestly and without a number you cannot substantiate, is enough. |
+| **Deadlines are usually softer than stated** | An exploding offer with a 48-hour deadline is a pressure tactic more often than a constraint. Asking for a week is normal and is very rarely refused. |
+| **Decide what you actually want before the call** | Money, scope, team, learning, stability. If you have not ranked them beforehand you will negotiate for the one that is easiest to measure, which is money, and it may not be the one that matters. |
+
+### THE STORY BANK
+
+15 slots, shared by all 11 companies. Two per Sunday from week 2. Each one needs real numbers and answers to the probes — then recut per room using the matrix above.
+
+1. **A problem nobody owned that you fixed anyway** — Ownership · Bias for Action. The clearest Ownership story. Cross a boundary, stay for the follow-through.
+2. **The hardest thing you have ever debugged** — Dive Deep · Ownership. Must survive three levels of "how did you know?". Choose one you can still explain.
+3. **A mistake you made that had real consequences** — Earn Trust · Ownership. Raised by you, not discovered. What process changed afterwards.
+4. **A time you disagreed with your manager or a senior engineer** — Have Backbone · Earn Trust. BOTH halves: the disagreement AND the commitment afterwards.
+5. **Your biggest professional failure** — Earn Trust · Learn and Be Curious. The other question that catches people. Real cost, real change.
+6. **Delivering under a hard deadline or a blocking dependency** — Deliver Results · Bias for Action. Name what you cut. There must be a trade-off.
+7. **A decision made with incomplete information** — Bias for Action · Are Right, A Lot. Use the two-way-door framing. Say what your rollback was.
+8. **Something you simplified or automated away** — Invent and Simplify · Frugality. Quantify the reduction — steps, code, time, cost.
+9. **A time you refused to ship something** — Insist on the Highest Standards. What the bar was, and what holding it cost.
+10. **Improving something for the team or a downstream consumer** — Customer Obsession · Best Employer. Your "customer" can be internal. Say who, specifically.
+11. **Something hard you taught yourself and then used** — Learn and Be Curious. Self-directed, applied, with an outcome.
+12. **A time you were wrong and changed your mind** — Are Right, A Lot · Earn Trust. The disconfirmation step is the whole point.
+13. **Mentoring or levelling someone up** — Hire and Develop the Best. One is enough at SDE2. Needs evidence they actually improved.
+14. **A proposal bigger than your remit** — Think Big · Invent and Simplify. Even if rejected — what you learned about making the case.
+15. **Spare — whatever your best story is that these prompts missed** — —. Every career has one that does not fit a template. Keep the slot.
+
+| Source | What is in there |
+|---|---|
+| **Your incident history** | On-call pages, postmortems, the thing that woke you at 3am. Richest single source: Ownership, Dive Deep, Earn Trust. |
+| **Your git history** | Search your own commits for the big refactors and the reverts. The reverts are failure stories. |
+| **Jira / tickets** | Look for the ones that took far longer than estimated. There is always a story in why. |
+| **Grafana and dashboards** | This is where your NUMBERS are. Before/after latency, error rate, restart counts, throughput. Screenshot them now. |
+| **Code review comments** | Times you pushed back, times you were pushed back on. Have Backbone and Highest Standards live here. |
+| **Your production system** | Frontend and backend pods on Kubernetes, Postgres upstream, custom event-driven components, a monolith. Every one of those is a decision someone made, and you have opinions about all of them. |
+| **WARNING** | Do this while you still have access. If a layoff comes in December you lose Grafana, Jira and the git history on the same day. Export what you need NOW. |
+
+| When | What | Note |
+|---|---|---|
+| Weeks 2–4 | Write stories 1–5 | Draft only. Get them on paper with real numbers dug out of Jira, Grafana, git history — whatever you still have access to. Do this while you are still employed. |
+| Weeks 5–8 | Write stories 6–11 | By now you know the format. Faster. |
+| Weeks 9–11 | Write stories 12–15, build the coverage matrix | Check every high-frequency principle has at least two stories. |
+| Week 12 | Rehearse all 15 out loud, recorded | Two minutes each. Count how many times you say "we". Rewrite the ones over 2:30. |
+| Week 13 | Probe drill | Have someone ask you the follow-ups cold. If you cannot answer six probes on a story, it is not ready. |
+| Ongoing | Two per Sunday | This is the schedule that actually gets it done. Fifteen stories in one weekend does not work. |
 # PART IV — TECH (Java · Spring · Postgres · Kafka · K8s · microservices)
 
 **The gradient inverts here.** The deepest tech questioning is at the **bottom** of your ladder — JP Morgan and Amex will go far deeper on `@Transactional`, thread pools and index plans than Google ever will. Google asks none of it. So Block B is the heavy one, and this whole track is front-loaded into Phase 1.

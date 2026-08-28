@@ -135,8 +135,7 @@ function esc(x) {
                     ['reference', ['templates','triggers','pool','reading']],
                     ['strategy', ['0','1','2','3','4','5']],
                     ['weekly', ['1','2','3','7','14','22']],
-                    ['method', ['why','altitude','decompose','primitives','failures','ambiguity','domain','product','worked','blind','rubric']],
-                    ['lp', ['scoring','star','probes','anti','worked','mining','bank','coverage','schedule','p-ownership','p-dive-deep','p-deliver-results','p-customer-obsession','p-bias-for-action','p-earn-trust','p-backbone','p-invent-simplify','p-highest-standards','p-learn-curious','p-are-right','p-frugality','p-hire-develop','p-think-big','p-best-employer','p-broad-responsibility']]]) {
+                    ['method', ['why','altitude','decompose','primitives','failures','ambiguity','domain','product','worked','blind','rubric']]]) {
     for (var id of pair[1]) {
       var sel = {}; sel[pair[0]] = id;
       var c4 = boot(pair[0], sel); await later(10);
@@ -146,6 +145,71 @@ function esc(x) {
     }
     console.log(pair[0].padEnd(4), ': all', pair[1].length, 'pages render');
   }
+
+  /* 6. Companies LP - every company, every page, every value.
+        A stale selection silently falls back to the first nav item, so each
+        page is checked for a marker that ONLY that page renders. */
+  var ctxL = boot('lp', {}); await later(10);
+  var COS = ctxL.PLAN.lp.co, lpPages = 0, lpVals = 0;
+  for (var c = 0; c < COS.length; c++) {
+    var comp = COS[c];
+    var ids = ['co-' + comp.id];
+    ['scoring', 'framework', 'probes', 'anti', 'worked', 'coverage', 'prep'].forEach(function (pg) {
+      ids.push(comp.id + ':' + pg);
+    });
+    comp.values.forEach(function (v) { ids.push(comp.id + ':v-' + v.id); });
+
+    for (var k = 0; k < ids.length; k++) {
+      var cx = boot('lp', { lp: ids[k] }); await later(10);
+      var html = cx.els['view-lp'].innerHTML;
+      if (!html.length) { console.log('FAIL lp', ids[k], 'empty'); failed++; continue; }
+      if (html.indexOf(comp.name.replace(/&/g, '&amp;')) < 0) {
+        console.log('FAIL lp', ids[k], 'did not render', comp.name, '- fell back?'); failed++; continue;
+      }
+      var vm = /^[a-z]+:v-(.+)$/.exec(ids[k]);
+      if (vm) {
+        var want = null;
+        comp.values.forEach(function (v) { if (v.id === vm[1]) want = v.name; });
+        if (html.indexOf(want.replace(/&/g, '&amp;')) < 0) {
+          console.log('FAIL lp', ids[k], 'wrong value page'); failed++; continue;
+        }
+        lpVals++;
+      }
+      lpPages++;
+    }
+  }
+  var shared = ['bank', 'mining', 'schedule', 'u-shapes', 'u-recut', 'u-openers', 'u-screen', 'u-offer'];
+  for (var sIx = 0; sIx < shared.length; sIx++) {
+    var cs = boot('lp', { lp: shared[sIx] }); await later(10);
+    if (cs.els['view-lp'].innerHTML.length < 200) { console.log('FAIL lp', shared[sIx]); failed++; }
+    else lpPages++;
+  }
+  console.log('lp   :', COS.length, 'companies -', lpPages, 'pages render -', lpVals, 'value pages verified distinct');
+
+  /* 7. DSA approach coverage - every question in B and C must resolve to an
+        approach, and the correctness page must render. */
+  var ctxA = boot('dsa'); await later(10);
+  var appTotal = 0, appMiss = [];
+  ctxA.PLAN.sections.forEach(function (sec) {
+    var tbl = (ctxA.PLAN.approach || {})[sec.id] || {};
+    sec.b.concat(sec.c).forEach(function (r) {
+      appTotal++;
+      if (!tbl[String(r[0])]) appMiss.push(sec.id + ' ' + r[0]);
+    });
+    if (!(ctxA.PLAN.derive || {})[sec.id]) {
+      console.log('FAIL dsa', sec.id, 'has no derivation'); failed++;
+    }
+  });
+  if (appMiss.length) {
+    console.log('FAIL', appMiss.length, 'questions with no approach:', appMiss.slice(0, 10).join(', '));
+    failed += appMiss.length;
+  }
+  var cp = boot('dsa', { dsa: 'proof' }); await later(10);
+  if (cp.els['view-dsa'].innerHTML.indexOf('Exchange argument') < 0) {
+    console.log('FAIL dsa proof page did not render'); failed++;
+  }
+  console.log('DSA :', appTotal - appMiss.length, '/', appTotal, 'approaches ·',
+    Object.keys(ctxA.PLAN.derive).length, 'derivations ·', ctxA.PLAN.proof.rows.length, 'correctness arguments');
 
   console.log(failed ? '\n' + failed + ' FAILURES' : '\nAll pages render. Content complete across pagination.');
   process.exit(failed ? 1 : 0);

@@ -15,7 +15,7 @@ Three files you read, one app you use.
 | File | What it is |
 |---|---|
 | **`PLAN.md`** | The plan and its reasoning — the ladder, the 43/57 split, the interview calendar, phase exit criteria, and what to cut when you fall behind. |
-| **`recognition-sheet.md`** | The full sheet in long form. 17 DSA sections, system design, LLD, tech — every pattern with its *disguise*, every question with what it teaches. |
+| **`recognition-sheet.md`** | The full sheet in long form. 17 DSA sections, system design, LLD, tech, behavioural — every pattern with its *disguise*, every question with what it teaches **and how it is actually solved**. Generated from `data.js`, so it cannot drift. |
 | **`index.html`** | The tracker. The same content, checkable, with spaced repetition and per-company readiness. |
 | `data.js` | All content, machine-readable. **Edit only this to change the plan.** |
 | `app.js` · `styles.css` | State, persistence, rendering · styling (light/dark via `data-theme`). |
@@ -29,7 +29,7 @@ Open the **Weekly Goal** tab and work one week at a time. Week N+1 stays **locke
 - **Core** — the spine: DSA, one system design session, LLD, tech, LP stories, mocks. Required to unlock the next week.
 - **Addons** — pattern drills, blind prompts, templates, company packs. Optional per week, and finishing all of them finishes those sections outright.
 
-The 22 weeks **partition the entire sheet** — all 1,194 trackable items appear in exactly one week each, verified by `test-weekly.js`. Finishing all 22 weeks is finishing the repo.
+The 22 weeks **partition the entire sheet** — all 1,199 trackable items appear in exactly one week each, verified by `test-weekly.js`. Finishing all 22 weeks is finishing the repo.
 
 An **Unlock anyway** override exists so a week you cannot finish never traps you permanently. Use it deliberately, not habitually.
 
@@ -104,13 +104,18 @@ No single curve peaks in January. That is why the tech track is front-loaded int
 | | Count |
 |---|---|
 | DSA sections | 17 |
-| Pattern rows (individually drillable) | 176 |
+| Pattern rows (individually drillable) | 181 |
 | DSA questions — block B / block C | 283 / 218 |
+| DSA approaches — every question, with its cost | 501 |
+| DSA derivations — statement → the right pattern row | 17 |
+| Correctness arguments — why the move is right | 12 |
 | System design sessions | 22 |
 | System design worked solutions (all 10 design sessions) | 452 rows |
 | The Method — altitude, decomposition, primitives, failure generator | 192 rows |
 | Blind prompts (no solutions) | 57 |
-| Amazon LP — principles, probes, anti-patterns, story bank | 238 rows |
+| Behavioural — companies, each with its own rubric | 11 |
+| Behavioural — individually drillable values and principles | 77 |
+| Behavioural rows — scoring, probes, anti-patterns, worked stories | ~750 |
 | Design patterns (intent, UML, runnable code, gotchas) | 13 |
 | LLD problems (entities, code, concurrency, extensions, cross-Q) | 13 |
 | LLD full worked solutions (statement, approach, UML, API, schema, code) | 13 of 13 |
@@ -121,10 +126,10 @@ No single curve peaks in January. That is why the tech track is front-loaded int
 | Tech code patterns | 34 |
 | Tech Q&A — *question → spine → **follow-up*** | 197 |
 | Concurrency practice problems (LeetCode + classic implementations) | 28 |
-| Recorded mocks | 16 |
+| Recorded mocks | 12 |
 | Templates | 29 |
 | Companies with readiness weights | 10 |
-| **Total trackable items** | **692** |
+| **Total trackable items** | **1,199** |
 
 Weighting is deliberately uneven: Graphs, Trees and DP carry 150 of the 501 DSA questions. Hashing, Intervals and Trie are small on purpose.
 
@@ -133,11 +138,11 @@ Weighting is deliberately uneven: Graphs, Trees and DP carry 150 of the 501 DSA 
 ## Tabs
 
 - **Dashboard** — current phase, day counter, the split, the interview calendar, this phase's exit criteria
-- **DSA** — 17 sections, blocks A/B/C, searchable across patterns and problems
+- **DSA** — 17 sections, blocks A/B/C, searchable across patterns and problems. Each section opens with **how to derive** the right pattern row from an unseen statement; every question carries its **approach and cost** behind a click in the drawer, so reference does not become a spoiler; and a **Why it is correct** page holds the 12 argument shapes — exchange, cut-and-paste, loop invariant, monotonicity — that answer "how do you know that is optimal?"
 - **System design** — the 6-step framework, requirement→block triggers, the six cross-question categories, 22 sessions, and an expandable **Full solution** on every design session: requirements, worked estimation, API, data model, ASCII architecture, flows, deep dives, scaling, trade-offs and **what each company pushes on**
 - **LLD** — a 13-pattern catalogue with class diagrams and runnable code; 13 problems each with entities, the concurrency races, "now add X" follow-ups and cross-questions; and an expandable **Full solution** per problem carrying the statement, requirements, approach, ASCII class diagram, public API, schema and complete code
 - **Tech** — 13 modules with runnable code patterns; every Q&A row is question → answer spine → **the follow-up they will actually ask**
-- **Amazon LP** — roughly half of Amazon's signal, treated as a workstream: how it is scored across the loop, STAR with Amazon's proportions, all 16 principles with the questions and the probes that follow, 10 anti-patterns, one fully annotated worked story, and a **15-slot story bank you fill in and rehearse**
+- **Companies LP** — behavioural as a workstream, one rubric per company. **11 companies**, each with how it is scored across that loop, the story format *they* want with their proportions, their probes, their anti-patterns, a worked story cut for that room, and every value on its own page — Amazon's 16 Leadership Principles, Google's Googleyness attributes, Microsoft's growth mindset and the AA round, Adobe's four core values, JPM's business principles and the HireVue stage, Uber's 2017 cultural norms, Salesforce's five ranked values, the Amex Blue Box, Expedia, Apple and Flipkart. The **story bank is shared**: 15 stories, a **recut matrix** that turns one story into eleven, the **ten shapes** worth writing, plus the four openers every loop asks, the recruiter screen and the compensation question, and offers and negotiation
 - **Revision** — the spaced-repetition queue
 - **Ladder** — recorded mocks, then readiness per company grouped by rung
 - **Reference** — templates, every trigger table in one searchable index, blind hard pool

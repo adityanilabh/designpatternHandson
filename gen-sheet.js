@@ -44,6 +44,275 @@ function emitList(w, title, items) {
   w('');
 }
 
+/* ------------------------------------------------------- BEHAVIOURAL --- */
+function behavioural(w) {
+  var L = PLAN.lp, U = L.universal;
+
+  w('## BEHAVIOURAL — CURATED COMPANIES LP');
+  w('');
+  w('Behavioural is not one round with one framework. Every company on this ladder scores it, ' +
+    'each against its own named rubric, and the story that wins at Amazon is not shaped like the ' +
+    'story that wins at Google. **The story bank is one bank** — ' + L.slots.length + ' stories, recut per room. ' +
+    'That is the entire reason for putting the companies side by side.');
+  w('');
+
+  var totalValues = 0;
+  L.co.forEach(function (c) { totalValues += c.values.length; });
+  emitTable(w, ['Company', 'Rubric', 'Values', 'What it is worth'],
+    L.co.map(function (c) { return [c.name, c.label, String(c.values.length), c.weight]; }), true);
+  w('> ' + L.co.length + ' companies · ' + totalValues + ' individually drillable values and principles.');
+  w('');
+
+  /* the recut matrix - the highest-leverage page in the section */
+  w('### THE RECUT MATRIX — same story, eleven rooms');
+  w('');
+  w(U.recut.intro);
+  w('');
+  emitTable(w, ['Room', 'Register', 'Add', 'Remove'], U.recut.rows, true);
+  w('**One event, four rooms.** ' + U.recut.worked.intro);
+  w('');
+  U.recut.worked.rows.forEach(function (r) {
+    w('- **' + r[0] + '** — ' + r[1]);
+  });
+  w('');
+
+  /* the ten shapes */
+  w('### THE TEN SHAPES — what to write, and what it covers');
+  w('');
+  w(U.coverage.intro);
+  w('');
+  emitTable(w, ['Story shape', 'Covers', 'Note'], U.coverage.shapes, true);
+  w('> ' + U.coverage.rule);
+  w('');
+
+  /* per company */
+  L.co.forEach(function (c) {
+    w('---');
+    w('');
+    w('### ' + c.name.toUpperCase() + ' · ' + c.label);
+    w('');
+    w('**' + c.rung + '.** ' + c.oneLine);
+    w('');
+    w('**What it is worth.** ' + c.weight);
+    w('');
+
+    w('**Where behaviour is scored**');
+    w('');
+    emitTable(w, ['Round', 'Time', 'What happens'], c.scoring.rounds, true);
+    emitTable(w, ['What they are scoring', 'Why it matters'], c.scoring.rubric, true);
+    emitList(w, 'Things nobody tells you', c.scoring.reality);
+
+    w('**The story format they want**');
+    w('');
+    emitTable(w, ['Part', 'Budget', 'What goes in it'], c.framework.parts, true);
+    emitList(w, 'Rules for this room', c.framework.rules);
+    w('> **Timing.** ' + c.framework.timing);
+    w('');
+
+    w('**The follow-up probes**');
+    w('');
+    c.probes.groups.forEach(function (g) {
+      w('*' + g[0] + '*');
+      w('');
+      g[1].forEach(function (q) { w('- ' + q); });
+      w('');
+    });
+    emitTable(w, ['Situation', 'What to do'], c.probes.tactics, true);
+
+    w('**Anti-patterns — ' + c.anti.length + ' ways to lose this room**');
+    w('');
+    c.anti.forEach(function (a, i) {
+      w((i + 1) + '. **' + a[0] + '** — ' + a[1]);
+      w('   *' + a[2] + '*');
+    });
+    w('');
+
+    w('**' + c.label + '**');
+    w('');
+    emitTable(w, ['#', 'Value', 'Freq', 'What it means', 'Strong', 'Weak'],
+      c.values.map(function (v) { return [String(v.n), v.name, v.freq, v.means, v.strong, v.weak]; }));
+
+    w('<details><summary><b>Every value in full — how it is asked, the probes, your angle</b></summary>');
+    w('');
+    c.values.forEach(function (v) {
+      w('#### ' + c.name + ' · ' + v.n + '. ' + v.name + '  *(' + v.freq + ' frequency)*');
+      w('');
+      w('> *How ' + c.name + ' words it:* ' + v.official);
+      w('');
+      w('**Means.** ' + v.means);
+      w('');
+      w('**What they are testing.** ' + v.signal);
+      w('');
+      emitList(w, 'How it is asked', v.asked);
+      emitList(w, 'The probes that follow', v.probes);
+      w('**Strong.** ' + v.strong);
+      w('');
+      w('**Weak.** ' + v.weak);
+      w('');
+      w('**Pairs with.** ' + v.pairs);
+      w('');
+      if (v.yourAngle) { w('**Your angle.** ' + v.yourAngle); w(''); }
+    });
+    w('</details>');
+    w('');
+
+    w('<details><summary><b>A worked story, annotated, with the probes answered</b></summary>');
+    w('');
+    w('**Question.** ' + c.worked.question);
+    w('');
+    w('**Scoring against.** ' + c.worked.principle);
+    w('');
+    c.worked.story.forEach(function (s) {
+      w('**' + s[0] + '**');
+      w('');
+      w('> ' + s[1]);
+      w('');
+      w('*Why it is shaped this way:* ' + s[2]);
+      w('');
+    });
+    w('**The probes, and how they are answered**');
+    w('');
+    c.worked.probesAndAnswers.forEach(function (r) {
+      w('- **' + r[0] + '** — ' + r[1]);
+    });
+    w('');
+    w('**Why this one works here.** ' + c.worked.why);
+    w('');
+    w('</details>');
+    w('');
+
+    w('**The schedule for this room**');
+    w('');
+    emitTable(w, ['When', 'What', 'Note'], c.prep);
+
+    w('**How this room differs.** ' + c.contrast);
+    w('');
+    w('> *Source and confidence.* ' + c.source);
+    w('');
+  });
+
+  /* shared */
+  w('---');
+  w('');
+  w('### EVERY LOOP ASKS THESE');
+  w('');
+  w(U.openers.intro);
+  w('');
+  U.openers.rows.forEach(function (r) {
+    w('**' + r[0] + '** — ' + r[1]);
+    w('');
+    w('> ' + r[2]);
+    w('');
+  });
+  w('**Questions worth asking.** ' + U.openers.questions.intro);
+  w('');
+  emitTable(w, ['Ask', 'What it tells you'], U.openers.questions.rows, true);
+
+  w('### THE RECRUITER SCREEN');
+  w('');
+  w(U.screen.intro);
+  w('');
+  emitTable(w, ['', 'What to do'], U.screen.rows, true);
+
+  w('### OFFERS AND NEGOTIATION');
+  w('');
+  w(U.offer.intro);
+  w('');
+  emitTable(w, ['', 'What to do'], U.offer.rows, true);
+
+  w('### THE STORY BANK');
+  w('');
+  w(L.slots.length + ' slots, shared by all ' + L.co.length + ' companies. Two per Sunday from week 2. ' +
+    'Each one needs real numbers and answers to the probes — then recut per room using the matrix above.');
+  w('');
+  L.slots.forEach(function (r, i) {
+    w((i + 1) + '. **' + r[0] + '** — ' + r[1] + (r[2] ? '. ' + r[2] : ''));
+  });
+  w('');
+  emitTable(w, ['Source', 'What is in there'], L.mining, true);
+  emitTable(w, ['When', 'What', 'Note'], L.plan);
+}
+
+/* -------------------------------------------------------------- PART I --- */
+function partOne() {
+  var out = [];
+  function w(s) { out.push(s == null ? '' : s); }
+
+  var totalP = 0, totalB = 0, totalC = 0;
+  PLAN.sections.forEach(function (s) { totalP += s.p.length; totalB += s.b.length; totalC += s.c.length; });
+
+  w('# PART I — DSA');
+  w('');
+  w('Seventeen sections, ' + totalP + ' pattern rows, ' + (totalB + totalC) + ' questions. Weight is deliberately ' +
+    'uneven — Arrays, Strings, Trees, Graphs and DP carry the plan; Bit/Math and Design are small on purpose.');
+  w('');
+  w('Each section has four parts. **Derive** is the reasoning chain from an unseen statement to the right row of ' +
+    'block A. **A · Patterns** is the machinery, read as *disguise → move*. **B** is the tier 1–2 set and **C** the ' +
+    'Google/Uber hard tier — and every question in both carries the actual approach and its cost, so a section you ' +
+    'are weak at does not just point you at LeetCode.');
+  w('');
+  w('> In the tracker the approach sits behind a click, so it cannot spoil a problem you are about to solve. ' +
+    'Here it is inline — read the sheet as reference, solve from the tracker.');
+  w('');
+  w('---');
+  w('');
+
+  /* the correctness arguments, once, up front - they apply to every section */
+  w('## §0 · WHY IT IS CORRECT — the argument shapes');
+  w('');
+  w(PLAN.proof.intro);
+  w('');
+  w('> ' + PLAN.proof.note);
+  w('');
+  PLAN.proof.rows.forEach(function (r) {
+    w('**' + r[0] + '** — ' + r[1]);
+    w('');
+    w('> *Say it like this:* ' + r[2]);
+    w('');
+    w('*Where:* ' + r[3]);
+    w('');
+  });
+  w('**The drill.** ' + PLAN.proof.drill);
+  w('');
+  w('---');
+  w('');
+
+  PLAN.sections.forEach(function (s) {
+    w('## §' + s.n + ' · ' + s.name.toUpperCase() + (s.sub ? ' — ' + s.sub : ''));
+    w('');
+    if (PLAN.derive[s.id]) {
+      w('**Derive it.** ' + PLAN.derive[s.id]);
+      w('');
+    }
+
+    w('### A · Patterns');
+    w('');
+    emitTable(w, ['Pattern', 'The disguise — what you actually hear', 'The move', 'Cost'], s.p, true);
+
+    var tbl = (PLAN.approach || {})[s.id] || {};
+
+    w('### B · Tier 1–2  *(' + s.b.length + ')*');
+    w('');
+    emitTable(w, ['LC', 'Name', 'D', 'The thing it teaches', 'The approach, and what it costs'],
+      s.b.map(function (r) {
+        return [String(r[0]), '**' + cell(r[1]) + '**', r[2], r[3] || '—', tbl[String(r[0])] || '—'];
+      }));
+
+    w('### C · Google / Uber L4  *(' + s.c.length + ')*');
+    w('');
+    if (s.cx) { w('**Extra machinery.** ' + s.cx); w(''); }
+    emitTable(w, ['LC', 'Name', 'D', 'Why it is here', 'The approach, and what it costs'],
+      s.c.map(function (r) {
+        return [String(r[0]), '**' + cell(r[1]) + '**', r[2], r[3] || '—', tbl[String(r[0])] || '—'];
+      }));
+
+    w('---');
+    w('');
+  });
+
+  return out.join('\n');
+}
+
 /* ------------------------------------------------------------- PART II --- */
 function partTwo() {
   var out = [];
@@ -349,17 +618,7 @@ function partThree() {
     w('');
   });
 
-  w('## AMAZON LEADERSHIP PRINCIPLES');
-  w('');
-  w('LP is roughly half of the Amazon hiring signal and the bar-raiser can reject you on it alone. It has its own section in the tracker (' +
-    PLAN.lp.principles.length + ' principles, the follow-up probes, ' + PLAN.lp.antipatterns.length +
-    ' anti-patterns and an annotated worked story). The story bank you fill in has these ' +
-    PLAN.lp.slots.length + ' slots:');
-  w('');
-  PLAN.lp.slots.forEach(function (r) {
-    w('- **' + r[0] + '** — ' + r[1] + (r[2] ? '. ' + r[2] : ''));
-  });
-  w('');
+  behavioural(w);
   return out.join(String.fromCharCode(10));
 }
 
@@ -447,12 +706,14 @@ function splice(text, startMarker, endMarker, replacement) {
   return text.slice(0, a) + replacement + text.slice(b);
 }
 
+md = splice(md, '# PART I — DSA', '# PART II — SYSTEM DESIGN', partOne());
 md = splice(md, '# PART II — SYSTEM DESIGN', '# PART III — LLD', partTwo());
 md = splice(md, '# PART III — LLD', '# PART IV — TECH', partThree());
 md = splice(md, '# PART IV — TECH', '# PART V — HOW THIS SHEET MAPS', partFour());
 fs.writeFileSync('recognition-sheet.md', md, 'utf8');
 
 console.log('regenerated from data.js:');
+console.log('  Part I   —', PLAN.sections.length, 'DSA sections');
 console.log('  Part II —', PLAN.sd.length, 'system design sessions');
 console.log('  Part III —', PLAN.lldProblems.length, 'LLD problems');
 console.log('  Part IV —', PLAN.tech.length, 'tech modules');

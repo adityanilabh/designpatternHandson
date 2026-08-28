@@ -221,7 +221,7 @@ function lldItems() {
   });
   PLAN.lp.slots.forEach(function (s, i) {
     out.push({ key: 'lp-story-' + i, lc: null, name: s[0], note: s[2],
-      diff: '', kind: 'lp', group: 'Amazon LP story bank' });
+      diff: '', kind: 'lp', group: 'Behavioural story bank' });
   });
   return out;
 }
@@ -392,7 +392,14 @@ function navModel(tab) {
     PLAN.sections.forEach(function (s) {
       (s.phase === 1 ? g1 : g2).push({ id: s.id, n: '§' + s.n, label: s.name, sub: s.sub });
     });
-    return [{ g: 'Phase 1 · foundations', items: g1 }, { g: 'Phase 2 · depth', items: g2 }];
+    return [
+      { g: 'Phase 1 · foundations', items: g1 },
+      { g: 'Phase 2 · depth', items: g2 },
+      { g: 'Reference', items: [
+        { id: 'proof', n: '', label: 'Why it is correct',
+          sub: PLAN.proof.rows.length + ' argument shapes' }
+      ]}
+    ];
   }
 
   if (tab === 'sd') {
@@ -452,29 +459,46 @@ function navModel(tab) {
   }
 
   if (tab === 'lp') {
-    var hi = [], med = [], lo = [];
-    PLAN.lp.principles.forEach(function (p) {
-      var row = { id: 'p-' + p.id, n: String(p.n), label: p.name, sub: p.freq + ' frequency' };
-      (p.freq === 'high' ? hi : p.freq === 'med' ? med : lo).push(row);
+    var co = lpCo();
+    var comps = PLAN.lp.co.map(function (c) {
+      return { id: 'co-' + c.id, n: '', label: c.name, sub: c.navSub,
+               cls: 'nav-co' + (c.id === co.id ? ' nav-co-on' : '') };
     });
-    return [
-      { g: 'How it is scored', items: [
-        { id: 'scoring',  n: '', label: 'How LP is scored',    sub: 'and where it happens' },
-        { id: 'star',     n: '', label: 'STAR, Amazon’s way', sub: 'the proportions matter' },
-        { id: 'probes',   n: '', label: 'The follow-up probes', sub: 'where stories break' },
-        { id: 'anti',     n: '', label: 'Anti-patterns',        sub: PLAN.lp.antipatterns.length + ' ways to fail' },
-        { id: 'worked',   n: '', label: 'A worked story',       sub: 'annotated, with probes' }
-      ]},
-      { g: 'Principles · high frequency', items: hi },
-      { g: 'Principles · medium',          items: med },
-      { g: 'Principles · low',             items: lo },
-      { g: 'Your stories', items: [
-        { id: 'mining',   n: '', label: 'Where to mine stories', sub: 'do this while employed' },
-        { id: 'bank',     n: '', label: 'The story bank',        sub: PLAN.lp.slots.length + ' slots' },
-        { id: 'coverage', n: '', label: 'Coverage matrix',       sub: 'gaps are visible at debrief' },
-        { id: 'schedule', n: '', label: 'The schedule',          sub: 'two per Sunday' }
+    var hi = [], med = [], lo = [];
+    co.values.forEach(function (v) {
+      var row = { id: co.id + ':v-' + v.id, n: String(v.n), label: v.name, sub: v.freq + ' frequency', cls: 'nav-sub' };
+      (v.freq === 'high' ? hi : v.freq === 'med' ? med : lo).push(row);
+    });
+    var groups = [
+      { g: 'Companies', items: comps },
+      { g: co.name + ' · how it is scored', items: [
+        { id: co.id + ':scoring',   n: '', label: 'How it is scored',   sub: 'and where it happens', cls: 'nav-sub' },
+        { id: co.id + ':framework', n: '', label: 'The story format',   sub: 'their proportions', cls: 'nav-sub' },
+        { id: co.id + ':probes',    n: '', label: 'The follow-up probes', sub: 'where stories break', cls: 'nav-sub' },
+        { id: co.id + ':anti',      n: '', label: 'Anti-patterns',      sub: co.anti.length + ' ways to fail', cls: 'nav-sub' },
+        { id: co.id + ':worked',    n: '', label: 'A worked story',     sub: 'annotated, with probes', cls: 'nav-sub' }
       ]}
     ];
+    if (hi.length)  groups.push({ g: co.name + ' · ' + co.label + ' · high', items: hi });
+    if (med.length) groups.push({ g: co.name + ' · medium', items: med });
+    if (lo.length)  groups.push({ g: co.name + ' · low', items: lo });
+    groups.push({ g: co.name + ' · your plan', items: [
+      { id: co.id + ':coverage', n: '', label: 'Coverage matrix',  sub: 'gaps are visible at debrief', cls: 'nav-sub' },
+      { id: co.id + ':prep',     n: '', label: 'The schedule',     sub: 'what to do, and when', cls: 'nav-sub' }
+    ]});
+    groups.push({ g: 'Your stories · shared by every company', items: [
+      { id: 'bank',     n: '', label: 'The story bank',   sub: PLAN.lp.slots.length + ' slots' },
+      { id: 'u-shapes', n: '', label: 'The ten shapes',   sub: 'one story, four rubrics' },
+      { id: 'u-recut',  n: '', label: 'The recut matrix', sub: 'same story, eleven rooms' },
+      { id: 'mining',   n: '', label: 'Where to mine stories', sub: 'do this while employed' },
+      { id: 'schedule', n: '', label: 'Writing cadence',  sub: 'two per Sunday' }
+    ]});
+    groups.push({ g: 'Every loop asks these', items: [
+      { id: 'u-openers', n: '', label: 'The four openers', sub: 'nobody prepares them' },
+      { id: 'u-screen',  n: '', label: 'The recruiter screen', sub: 'and the comp question' },
+      { id: 'u-offer',   n: '', label: 'Offers and negotiation', sub: 'the highest hourly value' }
+    ]});
+    return groups;
   }
 
   if (tab === 'lld') {
@@ -555,7 +579,8 @@ function renderSidenav(tab) {
     shown += items.length;
     h += '<div class="nav-group">' + esc(grp.g) + '</div>';
     items.forEach(function (it) {
-      h += '<button class="nav-item' + (it.id === sel ? ' on' : '') + '" data-nav="' + esc(it.id) + '">' +
+      h += '<button class="nav-item' + (it.cls ? ' ' + it.cls : '') + (it.id === sel ? ' on' : '') +
+        '" data-nav="' + esc(it.id) + '">' +
         (it.n ? '<span class="nav-n">' + esc(it.n) + '</span>' : '') +
         '<span class="nav-lbl">' + esc(it.label) +
         (it.sub ? '<span>' + esc(it.sub) + '</span>' : '') + '</span></button>';
@@ -702,9 +727,9 @@ function buildWeeks() {
     Object.keys(mm).forEach(function (k) { mm[k].forEach(function (it) { push(+k, 'core', it); }); });
   });
 
-  /* ---- Amazon LP : two stories a week from week 2 ---- */
+  /* ---- Behavioural : two stories a week from week 2 ---- */
   PLAN.lp.slots.forEach(function (s, ix) {
-    push(2 + Math.floor(ix / 2), 'core', G('lp-story-' + ix, 'problem', s[0], s[1], 'Amazon LP'));
+    push(2 + Math.floor(ix / 2), 'core', G('lp-story-' + ix, 'problem', s[0], s[1], 'Story bank'));
   });
 
   /* ---- templates : by the deadline group they carry ---- */
@@ -898,6 +923,21 @@ function problemLinks(lc, name) {
     ' title="Find this on GeeksforGeeks">GfG</a>';
 }
 
+/* the approach + cost for a DSA question, keyed by section and LC field.
+   Deliberately behind a click in the drawer so it does not spoil a solve. */
+function approachFor(key) {
+  var m = /^ds-([a-z]+)-[bc]-(\d+)$/.exec(key || '');
+  if (!m) return '';
+  var sec = null;
+  PLAN.sections.forEach(function (x) { if (x.id === m[1]) sec = x; });
+  if (!sec) return '';
+  var list = key.indexOf('-b-') > 0 ? sec.b : sec.c;
+  var row = list[parseInt(m[2], 10)];
+  if (!row) return '';
+  var tbl = (PLAN.approach || {})[sec.id] || {};
+  return tbl[String(row[0])] || '';
+}
+
 function questionRow(key, q) {
   var p = state.problems[key] || {};
   var diffCls = { E: 'e', M: 'm', H: 'h' }[q[2]] || '';
@@ -910,8 +950,27 @@ function questionRow(key, q) {
     '<span class="dot ' + esc(p.status || '') + '"></span></div>';
 }
 
+/* "how do you know that is correct?" - a Google question, and the one part
+   of DSA preparation nobody rehearses. */
+function renderProof() {
+  var P = PLAN.proof;
+  var h = '<div class="pane-head"><div class="eyebrow">DSA &middot; reference</div>' +
+    '<h1>Why it is correct</h1><p class="pane-sub">' + esc(P.intro) + '</p></div>';
+  h += '<div class="learn">' + esc(P.note) + '</div>';
+  P.rows.forEach(function (r) {
+    h += '<h2 class="pane-h2">' + esc(r[0]) + '</h2>' +
+      '<p class="pane-p">' + esc(r[1]) + '</p>' +
+      '<div class="lp-said">' + esc(r[2]) + '</div>' +
+      '<div class="exit"><b>Where you say it.</b> ' + esc(r[3]) + '</div>';
+  });
+  h += '<h2 class="pane-h2">The drill</h2><div class="exit">' + esc(P.drill) + '</div>';
+  h += pagerFor('dsa');
+  $('#view-dsa').innerHTML = h;
+}
+
 function renderDsa() {
   var id = selected('dsa');
+  if (id === 'proof') { renderProof(); return; }
   var s = null;
   PLAN.sections.forEach(function (x) { if (x.id === id) s = x; });
   if (!s) s = PLAN.sections[0];
@@ -930,6 +989,10 @@ function renderDsa() {
     '<span><b>' + bd + '</b>/' + s.b.length + ' block B solved</span>' +
     '<span><b>' + cd + '</b>/' + s.c.length + ' block C solved</span>' +
     '</div></div>';
+
+  if (PLAN.derive && PLAN.derive[s.id]) {
+    h += '<div class="derive"><i>getting to the right row</i>' + esc(PLAN.derive[s.id]) + '</div>';
+  }
 
   h += '<h2 class="pane-h2">A &middot; Patterns</h2>' +
     '<p class="pane-p">The machinery. Each row is <b>disguise &rarr; move</b>, and the disguise column is what the ' +
@@ -1785,10 +1848,32 @@ function renderMethod() {
   };
 }
 
-/* ---------------------------------------------------------- Amazon LP --- */
+/* ------------------------------------------------------- COMPANIES LP ---
+   One story bank, eleven rubrics. Selection ids:
+     co-<id>          the company overview
+     <coid>:<page>    a page for that company
+     <coid>:v-<vid>   one value / principle page
+     bank | mining | schedule | u-*   shared across every company          */
 function lpHead(eyebrow, title, sub) {
   return '<div class="pane-head"><div class="eyebrow">' + esc(eyebrow) + '</div><h1>' + esc(title) + '</h1>' +
     (sub ? '<p class="pane-sub">' + esc(sub) + '</p>' : '') + '</div>';
+}
+
+/* the active company is read from the raw selection, so navModel can build
+   its own sub-nav without recursing through selected() */
+function lpCoId() {
+  var s = (state.ui.sel && state.ui.sel.lp) || '', id = '';
+  var m = /^co-(.+)$/.exec(s);
+  if (m) id = m[1];
+  else if (s.indexOf(':') > 0) id = s.slice(0, s.indexOf(':'));
+  var ok = false;
+  PLAN.lp.co.forEach(function (c) { if (c.id === id) ok = true; });
+  return ok ? id : 'amazon';
+}
+function lpCo() {
+  var id = lpCoId(), out = PLAN.lp.co[0];
+  PLAN.lp.co.forEach(function (c) { if (c.id === id) out = c; });
+  return out;
 }
 
 function renderLpStory(i) {
@@ -1831,66 +1916,175 @@ function renderLpStory(i) {
   return h + '</div>';
 }
 
-function renderLp() {
-  var id = selected('lp'), h = '';
-  var lp = PLAN.lp;
+/* ---- the shared pages ---- */
+function renderLpShared(id) {
+  var U = PLAN.lp.universal, h = '';
 
-  if (id === 'scoring') {
-    h += lpHead('Amazon LP', 'How LP is scored', lp.scoring.intro);
+  if (id === 'bank') {
+    var doneCount = 0;
+    PLAN.lp.slots.forEach(function (_, i) {
+      var p = state.problems['lp-story-' + i];
+      if (p && p.done) doneCount++;
+    });
+    h += lpHead('Shared · every company', 'The story bank',
+      'Fifteen slots, and they serve all eleven rubrics. Write the story once; recut the emphasis per room.');
+    h += '<div class="pane-stats"><span><b>' + doneCount + '</b>/' + PLAN.lp.slots.length + ' rehearsed</span></div>';
+    PLAN.lp.slots.forEach(function (_, i) { h += renderLpStory(i); });
+
+  } else if (id === 'u-shapes') {
+    h += lpHead('Shared · every company', 'The ten shapes', U.coverage.intro);
+    h += '<div class="tbl-wrap"><table><thead><tr><th>Story shape</th><th>Covers</th><th>Note</th></tr></thead><tbody>';
+    U.coverage.shapes.forEach(function (r) {
+      h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="canon">' + esc(r[1]) + '</td>' +
+        '<td class="trig">' + esc(r[2]) + '</td></tr>';
+    });
+    h += '</tbody></table></div><div class="exit">' + esc(U.coverage.rule) + '</div>';
+
+  } else if (id === 'u-recut') {
+    h += lpHead('Shared · every company', 'The recut matrix', U.recut.intro);
+    h += '<div class="learn">' + esc(U.recut.note) + '</div>';
+    h += '<div class="tbl-wrap"><table><thead><tr><th>Room</th><th>Register</th><th>Add</th><th>Remove</th></tr></thead><tbody>';
+    U.recut.rows.forEach(function (r) {
+      h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="canon">' + esc(r[1]) + '</td>' +
+        '<td class="trig">' + esc(r[2]) + '</td><td class="trig">' + esc(r[3]) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    h += '<h2 class="pane-h2">One event, four rooms</h2><p class="pane-p">' + esc(U.recut.worked.intro) + '</p>';
+    U.recut.worked.rows.forEach(function (r) {
+      h += '<h3 class="pane-h3">' + esc(r[0]) + '</h3><div class="lp-said">' + esc(r[1]) + '</div>';
+    });
+
+  } else if (id === 'mining') {
+    h += lpHead('Shared · every company', 'Where to mine stories',
+      'You already have fifteen stories. They are in systems you may lose access to.');
+    h += '<div class="tbl-wrap"><table><thead><tr><th>Source</th><th>What is in there</th></tr></thead><tbody>';
+    PLAN.lp.mining.forEach(function (r) {
+      h += '<tr class="' + (r[0] === 'WARNING' ? 'hot' : '') + '"><td class="fire">' + esc(r[0]) + '</td>' +
+        '<td class="trig">' + esc(r[1]) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+
+  } else if (id === 'schedule') {
+    h += lpHead('Shared · every company', 'Writing cadence',
+      'Fifteen stories in one weekend does not work. This is the cadence that does. Per-company recuts are on each company’s own schedule page.');
+    h += '<div class="tbl-wrap"><table><thead><tr><th>When</th><th>What</th><th>Note</th></tr></thead><tbody>';
+    PLAN.lp.plan.forEach(function (r) {
+      h += '<tr><td class="canon">' + esc(r[0]) + '</td><td class="fire">' + esc(r[1]) + '</td>' +
+        '<td class="trig">' + esc(r[2]) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+
+  } else if (id === 'u-openers') {
+    h += lpHead('Every loop', 'The four openers', U.openers.intro);
+    U.openers.rows.forEach(function (r) {
+      h += '<h2 class="pane-h2">' + esc(r[0]) + '</h2><p class="pane-p">' + esc(r[1]) + '</p>' +
+        '<div class="exit">' + esc(r[2]) + '</div>';
+    });
+    h += '<h2 class="pane-h2">Questions worth asking</h2><p class="pane-p">' + esc(U.openers.questions.intro) + '</p>';
+    h += '<div class="tbl-wrap"><table><thead><tr><th>Ask</th><th>What it tells you</th></tr></thead><tbody>';
+    U.openers.questions.rows.forEach(function (r) {
+      h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+
+  } else if (id === 'u-screen') {
+    h += lpHead('Every loop', 'The recruiter screen', U.screen.intro);
+    h += '<div class="tbl-wrap"><table><thead><tr><th></th><th>What to do</th></tr></thead><tbody>';
+    U.screen.rows.forEach(function (r) {
+      h += '<tr class="' + (r[0] === 'Never do this' ? 'hot' : '') + '"><td class="fire">' + esc(r[0]) + '</td>' +
+        '<td class="trig">' + esc(r[1]) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+
+  } else {
+    h += lpHead('Every loop', 'Offers and negotiation', U.offer.intro);
+    h += '<div class="tbl-wrap"><table><thead><tr><th></th><th>What to do</th></tr></thead><tbody>';
+    U.offer.rows.forEach(function (r) {
+      h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  return h;
+}
+
+/* ---- one company ---- */
+function renderLpCompany(co, page) {
+  var h = '';
+
+  if (page === '') {                                     /* the overview */
+    h += '<div class="pane-head"><div class="eyebrow">' + esc(co.rung) + ' &middot; ' + esc(co.label) +
+      '</div><h1>' + esc(co.name) + '</h1><p class="pane-sub">' + esc(co.oneLine) + '</p></div>';
+    h += '<div class="learn"><b>What it is worth.</b> ' + esc(co.weight) + '</div>';
+    h += '<h2 class="pane-h2">The rubric, in one table</h2>' +
+      '<div class="tbl-wrap"><table><thead><tr><th></th><th>Value</th><th>Freq</th><th>What it actually means</th></tr></thead><tbody>';
+    co.values.forEach(function (v) {
+      h += '<tr><td class="canon">' + v.n + '</td>' +
+        '<td class="fire"><button class="lnk-btn" data-nav="' + esc(co.id + ':v-' + v.id) + '">' + esc(v.name) + '</button></td>' +
+        '<td class="canon"><span class="chip freq-' + v.freq + '">' + v.freq + '</span></td>' +
+        '<td class="trig">' + esc(v.means) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    h += '<h2 class="pane-h2">How this room differs from the others</h2><div class="exit">' + esc(co.contrast) + '</div>';
+    h += '<h2 class="pane-h2">How much of this is published</h2><div class="sd-who"><i>source and confidence</i>' +
+      esc(co.source) + '</div>';
+
+  } else if (page === 'scoring') {
+    h += lpHead(co.name, 'How it is scored', co.scoring.intro);
     h += '<h2 class="pane-h2">Where it happens</h2>' +
       '<div class="tbl-wrap"><table><thead><tr><th>Round</th><th>Time</th><th>What happens</th></tr></thead><tbody>';
-    lp.scoring.rounds.forEach(function (r) {
+    co.scoring.rounds.forEach(function (r) {
       h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="canon">' + esc(r[1]) + '</td>' +
         '<td class="trig">' + esc(r[2]) + '</td></tr>';
     });
     h += '</tbody></table></div>';
     h += '<h2 class="pane-h2">What they are actually scoring</h2>' +
       '<div class="tbl-wrap"><table><thead><tr><th></th><th>Why it matters</th></tr></thead><tbody>';
-    lp.scoring.rubric.forEach(function (r) {
+    co.scoring.rubric.forEach(function (r) {
       h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td></tr>';
     });
     h += '</tbody></table></div>';
-    h += '<h2 class="pane-h2">Things nobody tells you</h2>' + bulletList(lp.scoring.reality, 'fail');
+    h += '<h2 class="pane-h2">Things nobody tells you</h2>' + bulletList(co.scoring.reality, 'fail');
 
-  } else if (id === 'star') {
-    h += lpHead('Amazon LP', 'STAR, Amazon’s way', lp.star.intro);
+  } else if (page === 'framework') {
+    var F = co.framework;
+    h += lpHead(co.name, 'The story format', F.intro);
     h += '<div class="tbl-wrap"><table><thead><tr><th>Part</th><th>Budget</th><th>What goes in it</th></tr></thead><tbody>';
-    lp.star.parts.forEach(function (r) {
+    F.parts.forEach(function (r) {
       h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="canon">' + esc(r[1]) + '</td>' +
         '<td class="trig">' + esc(r[2]) + '</td></tr>';
     });
     h += '</tbody></table></div>';
-    h += '<div class="learn"><b>Timing.</b> ' + esc(lp.star.timing) + '</div>';
-    h += '<h2 class="pane-h2">Rules</h2><ol class="rules">';
-    lp.star.rules.forEach(function (r) { h += '<li>' + esc(r) + '</li>'; });
+    h += '<div class="learn"><b>Timing.</b> ' + esc(F.timing) + '</div>';
+    h += '<h2 class="pane-h2">Rules for this room</h2><ol class="rules">';
+    F.rules.forEach(function (r) { h += '<li>' + esc(r) + '</li>'; });
     h += '</ol>';
 
-  } else if (id === 'probes') {
-    h += lpHead('Amazon LP', 'The follow-up probes', lp.probes.intro);
-    lp.probes.groups.forEach(function (g) {
+  } else if (page === 'probes') {
+    h += lpHead(co.name, 'The follow-up probes', co.probes.intro);
+    co.probes.groups.forEach(function (g) {
       h += '<h2 class="pane-h2">' + esc(g[0]) + '</h2>' + bulletList(g[1], 'asked');
     });
     h += '<h2 class="pane-h2">How to handle them</h2>' +
       '<div class="tbl-wrap"><table><thead><tr><th>Situation</th><th>What to do</th></tr></thead><tbody>';
-    lp.probes.tactics.forEach(function (r) {
+    co.probes.tactics.forEach(function (r) {
       h += '<tr><td class="fire">' + esc(r[0]) + '</td><td class="trig">' + esc(r[1]) + '</td></tr>';
     });
     h += '</tbody></table></div>';
 
-  } else if (id === 'anti') {
-    h += lpHead('Amazon LP', 'Anti-patterns',
-      'Ten ways candidates lose an LP round. The first one costs more offers than the other nine combined.');
-    lp.antipatterns.forEach(function (r, i) {
+  } else if (page === 'anti') {
+    h += lpHead(co.name, 'Anti-patterns',
+      co.anti.length + ' ways candidates lose this round. They are not the same ' + co.anti.length + ' at the next company.');
+    co.anti.forEach(function (r, i) {
       h += '<h2 class="pane-h2">' + (i + 1) + '. ' + esc(r[0]) + '</h2>' +
         '<p class="pane-p">' + esc(r[1]) + '</p>' +
         '<div class="exit">' + esc(r[2]) + '</div>';
     });
 
-  } else if (id === 'worked') {
-    var w = lp.worked;
-    h += lpHead('Amazon LP', 'A worked story',
-      'One complete answer, annotated. The right column is why each part is shaped that way.');
-    h += '<div class="learn"><b>Question.</b> ' + esc(w.question) + '<br><b>Principle.</b> ' + esc(w.principle) + '</div>';
+  } else if (page === 'worked') {
+    var w = co.worked;
+    h += lpHead(co.name, 'A worked story',
+      'One complete answer, cut for this room. The right column is why each part is shaped that way.');
+    h += '<div class="learn"><b>Question.</b> ' + esc(w.question) + '<br><b>Scoring against.</b> ' + esc(w.principle) + '</div>';
     w.story.forEach(function (s) {
       h += '<h2 class="pane-h2">' + esc(s[0]) + '</h2>' +
         '<div class="lp-said">' + esc(s[1]) + '</div>' +
@@ -1901,76 +2095,79 @@ function renderLp() {
       h += '<div class="qa static"><div class="qa-body"><b class="qa-q">' + esc(r[0]) + '</b>' +
         '<span class="qa-f">' + esc(r[1]) + '</span></div></div>';
     });
-    h += '<h2 class="pane-h2">Why this one works</h2><div class="exit">' + esc(w.why) + '</div>';
+    h += '<h2 class="pane-h2">Why this one works here</h2><div class="exit">' + esc(w.why) + '</div>';
 
-  } else if (id === 'mining') {
-    h += lpHead('Amazon LP', 'Where to mine stories',
-      'You already have fifteen stories. They are in systems you may lose access to.');
-    h += '<div class="tbl-wrap"><table><thead><tr><th>Source</th><th>What is in there</th></tr></thead><tbody>';
-    lp.mining.forEach(function (r) {
-      h += '<tr class="' + (r[0] === 'WARNING' ? 'hot' : '') + '"><td class="fire">' + esc(r[0]) + '</td>' +
-        '<td class="trig">' + esc(r[1]) + '</td></tr>';
-    });
-    h += '</tbody></table></div>';
-
-  } else if (id === 'bank') {
-    var doneCount = 0;
-    PLAN.lp.slots.forEach(function (_, i) {
-      var p = state.problems['lp-story-' + i];
-      if (p && p.done) doneCount++;
-    });
-    h += lpHead('Amazon LP', 'The story bank',
-      'Fifteen slots. Two per Sunday from week 2. Each one needs real numbers and answers to six probes.');
-    h += '<div class="pane-stats"><span><b>' + doneCount + '</b>/' + PLAN.lp.slots.length + ' rehearsed</span></div>';
-    PLAN.lp.slots.forEach(function (_, i) { h += renderLpStory(i); });
-
-  } else if (id === 'coverage') {
-    h += lpHead('Amazon LP', 'Coverage matrix',
-      'Interviewers compare notes at debrief. A principle with no story is a visible gap; four stories for one principle is one data point.');
-    h += '<div class="tbl-wrap"><table><thead><tr><th>Principle</th><th>Freq</th><th>Slots that can cover it</th></tr></thead><tbody>';
-    PLAN.lp.principles.forEach(function (pr) {
+  } else if (page === 'coverage') {
+    h += lpHead(co.name, 'Coverage matrix',
+      'Interviewers compare notes at debrief. A value with no story is a visible gap; four stories for one value is one data point.');
+    h += '<div class="tbl-wrap"><table><thead><tr><th>' + esc(co.label) + '</th><th>Freq</th><th>Slots that can cover it</th></tr></thead><tbody>';
+    co.values.forEach(function (v) {
       var hits = [];
       PLAN.lp.slots.forEach(function (s, i) {
-        if (s[1].toLowerCase().indexOf(pr.name.toLowerCase()) >= 0) hits.push(i + 1);
+        var hay = (s[0] + ' ' + s[1] + ' ' + s[2]).toLowerCase();
+        var needle = v.name.toLowerCase().replace(/^we /, '');
+        if (hay.indexOf(needle) >= 0) hits.push(i + 1);
       });
-      h += '<tr><td class="fire">' + esc(pr.name) + '</td>' +
-        '<td class="canon"><span class="chip freq-' + pr.freq + '">' + pr.freq + '</span></td>' +
+      h += '<tr><td class="fire">' + esc(v.name) + '</td>' +
+        '<td class="canon"><span class="chip freq-' + v.freq + '">' + v.freq + '</span></td>' +
         '<td class="' + (hits.length ? 'trig' : 'canon') + '">' +
-        (hits.length ? 'slots ' + hits.join(', ') : '&mdash; prepare one if you have room') + '</td></tr>';
+        (hits.length ? 'slots ' + hits.join(', ') : '&mdash; recut an existing story, or write one') + '</td></tr>';
     });
     h += '</tbody></table></div>' +
-      '<div class="exit"><b>The target.</b> Every high-frequency principle covered by at least two different stories, ' +
-      'and no single story doing more than three principles. If one story covers five, it is too long.</div>';
+      '<div class="exit"><b>The target.</b> Every high-frequency value covered by at least two different stories, ' +
+      'and no single story doing more than three. Where a slot is blank, start from ' +
+      '<button class="lnk-btn" data-nav="u-shapes">the ten shapes</button> rather than from a new event.</div>';
 
-  } else if (id === 'schedule') {
-    h += lpHead('Amazon LP', 'The schedule', 'Fifteen stories in one weekend does not work. This is the cadence that does.');
+  } else {                                                    /* prep */
+    h += lpHead(co.name, 'The schedule', 'What to do for this room, and when. The shared writing cadence is under Your stories.');
     h += '<div class="tbl-wrap"><table><thead><tr><th>When</th><th>What</th><th>Note</th></tr></thead><tbody>';
-    lp.plan.forEach(function (r) {
+    co.prep.forEach(function (r) {
       h += '<tr><td class="canon">' + esc(r[0]) + '</td><td class="fire">' + esc(r[1]) + '</td>' +
         '<td class="trig">' + esc(r[2]) + '</td></tr>';
     });
     h += '</tbody></table></div>';
+  }
+  return h;
+}
 
+/* ---- one value / principle ---- */
+function renderLpValue(co, v) {
+  var h = '<div class="pane-head"><div class="eyebrow">' + esc(co.name) + ' &middot; ' + esc(co.label) +
+    ' ' + v.n + ' of ' + co.values.length + ' &middot; ' +
+    '<span class="chip freq-' + v.freq + '">' + v.freq + ' frequency</span></div>' +
+    '<h1>' + esc(v.name) + '</h1>' +
+    '<p class="pane-sub">' + esc(v.means) + '</p></div>';
+
+  h += '<div class="lp-official"><i>how ' + esc(co.name) + ' words it</i>' + esc(v.official) + '</div>';
+  h += '<h2 class="pane-h2">What they are actually testing</h2><div class="learn">' + esc(v.signal) + '</div>';
+  h += '<h2 class="pane-h2">How it is asked</h2>' + bulletList(v.asked, 'asked');
+  h += '<h2 class="pane-h2">The probes that follow</h2>' + bulletList(v.probes);
+  h += '<h2 class="pane-h2">Strong vs weak</h2>' +
+    '<div class="learn"><b>Strong.</b> ' + esc(v.strong) + '</div>' +
+    '<div class="lp-weak"><b>Weak.</b> ' + esc(v.weak) + '</div>';
+  h += '<h2 class="pane-h2">Usually pairs with</h2><div class="exit">' + esc(v.pairs) + '</div>';
+  if (v.yourAngle) {
+    h += '<h2 class="pane-h2">Your angle</h2><div class="sd-who"><i>from your own work</i>' + esc(v.yourAngle) + '</div>';
+  }
+  return h;
+}
+
+function renderLp() {
+  var id = selected('lp'), h = '';
+  var SHARED = ['bank', 'mining', 'schedule', 'u-shapes', 'u-recut', 'u-openers', 'u-screen', 'u-offer'];
+
+  if (SHARED.indexOf(id) >= 0) {
+    h = renderLpShared(id);
   } else {
-    var pr = null;
-    PLAN.lp.principles.forEach(function (x) { if ('p-' + x.id === id) pr = x; });
-    if (!pr) pr = PLAN.lp.principles[0];
-
-    h += '<div class="pane-head"><div class="eyebrow">Leadership Principle ' + pr.n + ' of 16 &middot; ' +
-      '<span class="chip freq-' + pr.freq + '">' + pr.freq + ' frequency</span></div>' +
-      '<h1>' + esc(pr.name) + '</h1>' +
-      '<p class="pane-sub">' + esc(pr.means) + '</p></div>';
-
-    h += '<div class="lp-official"><i>Amazon’s wording</i>' + esc(pr.official) + '</div>';
-    h += '<h2 class="pane-h2">What they are actually testing</h2><div class="learn">' + esc(pr.signal) + '</div>';
-    h += '<h2 class="pane-h2">How it is asked</h2>' + bulletList(pr.asked, 'asked');
-    h += '<h2 class="pane-h2">The probes that follow</h2>' + bulletList(pr.probes);
-    h += '<h2 class="pane-h2">Strong vs weak</h2>' +
-      '<div class="learn"><b>Strong.</b> ' + esc(pr.strong) + '</div>' +
-      '<div class="lp-weak"><b>Weak.</b> ' + esc(pr.weak) + '</div>';
-    h += '<h2 class="pane-h2">Usually pairs with</h2><div class="exit">' + esc(pr.pairs) + '</div>';
-    if (pr.yourAngle) {
-      h += '<h2 class="pane-h2">Your angle</h2><div class="sd-who"><i>from your own work</i>' + esc(pr.yourAngle) + '</div>';
+    var co = lpCo(), page = '';
+    var i = id.indexOf(':');
+    if (i > 0) page = id.slice(i + 1);
+    if (page.slice(0, 2) === 'v-') {
+      var vid = page.slice(2), val = co.values[0];
+      co.values.forEach(function (x) { if (x.id === vid) val = x; });
+      h = renderLpValue(co, val);
+    } else {
+      h = renderLpCompany(co, page);
     }
   }
 
@@ -2014,7 +2211,7 @@ function renderRevision() {
 /* --------------------------------------------------------- companies --- */
 var BUCKET_LBL = {
   core: 'DSA block B (tier 1–2)', hard: 'DSA block C (hard tier)', tech: 'Tech modules',
-  sd: 'System design', lld: 'LLD / machine coding', lp: 'Amazon LP stories',
+  sd: 'System design', lld: 'LLD / machine coding', lp: 'Behavioural story bank',
   mock: 'Recorded mocks', pack: 'Company pack (optional)'
 };
 var TIER_LBL = {
@@ -2270,6 +2467,16 @@ function openDrawer(key) {
   }
   if (it.note) h += '<div class="learn">' + esc(it.note) + '</div>';
 
+  var appr = approachFor(key);
+  if (appr) {
+    var shown = !!state.ui.open['appr-' + key];
+    h += '<div class="appr' + (shown ? ' open' : '') + '">' +
+      '<button class="appr-btn" data-appr="' + esc(key) + '">' +
+      (shown ? '▾' : '▸') + ' Approach &amp; cost' +
+      '<span>' + (shown ? 'hide' : 'spoiler — only after you have tried it') + '</span></button>' +
+      (shown ? '<div class="appr-body">' + esc(appr) + '</div>' : '') + '</div>';
+  }
+
   h += '<div class="field"><label>Status</label><div class="btnrow">' +
     '<button class="btn ok ' + (p.status === 'clean' ? 'on' : '') + '" data-st="clean">Clean</button>' +
     '<button class="btn warn ' + (p.status === 'ugly' ? 'on' : '') + '" data-st="ugly">Ugly</button>' +
@@ -2516,6 +2723,14 @@ document.addEventListener('click', function (e) {
   if ((a = t.closest('[data-mod]'))) { toggleOpen('mod-' + a.getAttribute('data-mod')); save(); renderTech(); return; }
   if ((a = t.closest('[data-secopen]'))) { toggleOpen(a.getAttribute('data-secopen')); save(); renderSd(); return; }
   if ((a = t.closest('[data-cotoggle]'))) { toggleOpen('co-' + a.getAttribute('data-cotoggle')); save(); renderCompanies(); return; }
+  if ((a = t.closest('[data-appr]'))) {
+    e.stopPropagation();
+    var ak = 'appr-' + a.getAttribute('data-appr');
+    state.ui.open[ak] = !state.ui.open[ak];
+    save(); openDrawer(a.getAttribute('data-appr'));
+    return;
+  }
+
   if ((a = t.closest('[data-open]'))) { openDrawer(a.getAttribute('data-open')); return; }
 
   if (t.id === 'scrim' || t.id === 'dr-close') { closeDrawer(); return; }
