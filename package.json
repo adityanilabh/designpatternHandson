@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:lib": "tsx scripts/verify-lib.ts",
-    "verify": "npm run verify:content && npm run verify:lib && npm test"
+    "verify": "npm run verify:content && npm run verify:lib && npm test && npm run build && npm run verify:pages",
+    "verify:pages": "tsx scripts/verify-pages.ts"
   },
   "dependencies": {
     "next": "16.3.3",
