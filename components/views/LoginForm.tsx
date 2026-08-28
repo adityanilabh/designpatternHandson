@@ -8,6 +8,52 @@ import { isSupabaseConfigured, supabaseSetupHint } from '@/lib/supabase/env';
 
 type Mode = 'signin' | 'signup';
 
+/* Supabase's raw auth errors are accurate and useless — "Email not confirmed"
+   does not tell you that the confirmation mail was probably never delivered,
+   or what to do about it. Each of these is a real failure a person will hit. */
+function explain(raw: string): { text: string; canResend?: boolean } {
+  const m = raw.toLowerCase();
+
+  if (m.includes('email not confirmed')) {
+    return {
+      canResend: true,
+      text:
+        'Your account exists, but the email address has not been confirmed yet — and the ' +
+        'confirmation mail may never have arrived. Supabase\'s built-in mailer is limited to a ' +
+        'few messages an hour and is often dropped by Gmail. Check spam, resend below, or ' +
+        'confirm the account directly in the Supabase dashboard under Authentication → Users.',
+    };
+  }
+  if (m.includes('invalid login credentials')) {
+    return {
+      text:
+        'That email and password combination does not match an account. If you have not ' +
+        'registered yet, use “Create an account instead”.',
+    };
+  }
+  if (m.includes('already registered') || m.includes('already been registered')) {
+    return { text: 'An account with that email already exists — sign in instead.' };
+  }
+  if (m.includes('rate limit') || m.includes('you can only request this after')) {
+    return {
+      text:
+        'Supabase is rate-limiting email for this project — its built-in mailer allows only a ' +
+        'few messages an hour. Wait a minute, or configure custom SMTP (see TODO.md).',
+    };
+  }
+  if (m.includes('password should be')) {
+    return { text: raw + ' Use at least 8 characters here.' };
+  }
+  if (m.includes('provider is not enabled')) {
+    return {
+      text:
+        'That sign-in provider is not enabled on the Supabase project yet. Enable it under ' +
+        'Authentication → Providers, or use an email address instead.',
+    };
+  }
+  return { text: raw };
+}
+
 export default function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -19,7 +65,9 @@ export default function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState(params.get('error') || '');
+  const [err, setErr] = useState<{ text: string; canResend?: boolean } | null>(
+    params.get('error') ? explain(params.get('error')!) : null
+  );
   const [ok, setOk] = useState('');
 
   const supabase = getSupabaseBrowser();
@@ -47,30 +95,52 @@ export default function LoginForm() {
   }
 
   async function oauth(provider: 'google' | 'github') {
-    setBusy(true); setMsg('');
+    setBusy(true); setErr(null); setOk('');
     const { error } = await supabase!.auth.signInWithOAuth({
       provider,
       options: { redirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
     });
-    if (error) { setMsg(error.message); setBusy(false); }
-    /* on success the browser navigates away, so no need to unset busy */
+    if (error) { setErr(explain(error.message)); setBusy(false); }
+    /* on success the browser navigates away, so busy is never unset */
+  }
+
+  async function resendConfirmation() {
+    setBusy(true); setOk('');
+    const { error } = await supabase!.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
+    });
+    if (error) setErr(explain(error.message));
+    else { setErr(null); setOk(`Confirmation email sent to ${email}. Check spam — it often lands there.`); }
+    setBusy(false);
   }
 
   async function withPassword(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true); setMsg(''); setOk('');
+    setBusy(true); setErr(null); setOk('');
 
     if (mode === 'signup') {
-      const { error } = await supabase!.auth.signUp({
+      const { data, error } = await supabase!.auth.signUp({
         email,
         password,
         options: { emailRedirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
       });
-      if (error) setMsg(error.message);
-      else setOk('Check your email to confirm the address, then sign in.');
+      if (error) {
+        setErr(explain(error.message));
+      } else if (data.session) {
+        /* the project has confirmation turned off — straight in */
+        router.push(next); router.refresh(); return;
+      } else {
+        setOk(
+          `Account created. Confirm ${email} using the link we sent, then sign in. ` +
+          'If it does not arrive, check spam or confirm the account in the Supabase dashboard.'
+        );
+        setMode('signin');
+      }
     } else {
       const { error } = await supabase!.auth.signInWithPassword({ email, password });
-      if (error) setMsg(error.message);
+      if (error) setErr(explain(error.message));
       else { router.push(next); router.refresh(); return; }
     }
     setBusy(false);
@@ -87,7 +157,18 @@ export default function LoginForm() {
         </p>
       </div>
 
-      {msg && <div className="warnbox" role="alert">{msg}</div>}
+      {err && (
+        <div className="warnbox" role="alert">
+          {err.text}
+          {err.canResend && (
+            <div className="btnrow" style={{ marginTop: 12 }}>
+              <button className="btn sm" type="button" disabled={busy || !email} onClick={resendConfirmation}>
+                {busy ? 'Sending…' : 'Resend confirmation email'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {ok && <div className="learn" role="status">{ok}</div>}
 
       <div className="btnrow" style={{ marginTop: 4 }}>
@@ -123,7 +204,7 @@ export default function LoginForm() {
           </button>
           <button
             className="btn ghost" type="button" disabled={busy}
-            onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setMsg(''); setOk(''); }}
+            onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setErr(null); setOk(''); }}
           >
             {mode === 'signin' ? 'Create an account instead' : 'I already have an account'}
           </button>
