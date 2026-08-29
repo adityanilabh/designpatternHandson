@@ -36,3 +36,12 @@ export function approachFor(key: string): string {
   const tbl = (PLAN.approach || {})[sec.id] || {};
   return tbl[String(row[0])] || '';
 }
+
+/* How this section's problems announce themselves — the "which pattern is this"
+   paragraph authored per section in content/dsa.ts. Shown on the left page of
+   the item dialog, because recognising the shape is the part that transfers. */
+export function deriveFor(key: string): string {
+  const m = /^ds-([a-z]+)-[bc]-\d+$/.exec(key || '');
+  if (!m) return '';
+  return (PLAN.derive || {})[m[1]] || '';
+}

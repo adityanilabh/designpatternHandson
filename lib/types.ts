@@ -26,7 +26,9 @@ export interface Review {
 }
 
 export interface ProblemLog {
-  trigger?: string;     /* what in the wording should have tipped you off */
+  /* No longer collected — the field stays so that anything already written is
+     still loaded, synced and shown read-only rather than silently destroyed. */
+  trigger?: string;
   technique?: string;   /* what actually solved it */
   mistake?: string;     /* the mental model that was wrong — the point of the log */
 }
@@ -36,6 +38,9 @@ export interface ProblemState {
   status: Status;
   mins: number;
   log: ProblemLog;
+  /* Approach family ids ticked for this problem — see content/approaches.ts.
+     Replaces the free-text "technique" box, which nobody filled in. */
+  approaches?: string[];
   reviews: Review[];
 }
 

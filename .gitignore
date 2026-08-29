@@ -44,3 +44,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+
+# resolver run log (the cache beside it is kept: it is the provenance record)
+scripts/.gen.log

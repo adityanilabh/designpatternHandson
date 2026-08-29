@@ -61,7 +61,16 @@ export function problemToRow(userId: string, key: string, p: ProblemState): Prog
     /* empty string and "not written" are the same thing here, and null keeps
        the column honest about which rows actually carry a log */
     log_trigger: p.log?.trigger?.trim() || null,
-    log_technique: p.log?.technique?.trim() || null,
+    /* The approach checkboxes ride in log_technique, encoded as a JSON array.
+
+       The column is literally "what technique solved it", so this is the same
+       fact in a better shape — and doing it this way needs no migration, which
+       matters because the schema is already live. A row written before the
+       checkboxes existed holds prose, not JSON; rowToProblem tells them apart
+       by whether it parses, so nothing anyone typed is lost. */
+    log_technique: p.approaches?.length
+      ? JSON.stringify(p.approaches)
+      : (p.log?.technique?.trim() || null),
     log_mistake: p.log?.mistake?.trim() || null,
   };
 }
@@ -78,14 +87,30 @@ export function rowToProblem(row: ProgressRow, reviews: ReviewRow[]): ProblemSta
      nothing to localStorage across a full 900-item sheet. */
   const log: ProblemState['log'] = {};
   if (row.log_trigger) log.trigger = row.log_trigger;
-  if (row.log_technique) log.technique = row.log_technique;
   if (row.log_mistake) log.mistake = row.log_mistake;
+
+  /* log_technique holds either a JSON array of approach ids (written by the
+     checkboxes) or free prose (written before they existed). Parse decides. */
+  let approaches: string[] | undefined;
+  if (row.log_technique) {
+    const raw = row.log_technique.trim();
+    if (raw.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.every((x) => typeof x === 'string')) {
+          approaches = parsed as string[];
+        }
+      } catch { /* not JSON after all — fall through and keep it as prose */ }
+    }
+    if (!approaches) log.technique = row.log_technique;
+  }
 
   return {
     done: !!row.done,
     status: (row.status || '') as Status,
     mins: row.mins || 0,
     log,
+    ...(approaches && approaches.length ? { approaches } : {}),
     reviews: reviews
       .map((r) => ({ due: r.due, done: !!r.done }))
       .sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : 0)),

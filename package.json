@@ -12,8 +12,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:lib": "tsx scripts/verify-lib.ts",
-    "verify": "npm run verify:content && npm run verify:lib && npm test && npm run build && npm run verify:pages",
-    "verify:pages": "tsx scripts/verify-pages.ts"
+    "verify": "npm run verify:content && npm run verify:vocab && npm run verify:lib && npm test && npm run build && npm run verify:pages",
+    "verify:pages": "tsx scripts/verify-pages.ts",
+    "verify:vocab": "tsx scripts/verify-vocab.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",

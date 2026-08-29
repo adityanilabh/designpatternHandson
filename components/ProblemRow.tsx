@@ -31,7 +31,7 @@ export default function ProblemRow({ itemKey, name, lc = null, note, diff, readO
       className={`prow${done ? ' done' : ''}`}
       role="button"
       tabIndex={0}
-      aria-label={`${lc != null ? `LC ${lc} ` : ''}${name}`}
+      aria-label={`${lc != null ? `LeetCode ${lc} ` : ''}${name}`}
       onClick={() => openDrawer(itemKey, readOnly)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDrawer(itemKey, readOnly); }

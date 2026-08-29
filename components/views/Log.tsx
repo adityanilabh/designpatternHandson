@@ -49,7 +49,7 @@ export default function Log() {
               onKeyDown={(e) => { if (e.key === 'Enter') openDrawer(x.key); }}
             >
               <div className="log-hd">
-                <b>{x.lc != null ? `LC ${x.lc} · ` : ''}{x.name}</b>
+                <b>{x.lc != null ? `LeetCode ${x.lc} · ` : ''}{x.name}</b>
                 <span className="spacer" />
                 <span className={`dot ${p.status}`} />
                 <span className="dim" style={{ marginLeft: 8 }}>

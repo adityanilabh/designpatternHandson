@@ -14,6 +14,13 @@ export default function SdLayout({ children }: { children: React.ReactNode }) {
         groups={[
           { g: 'Tier 1–2', items: b.map(item) },
           { g: 'Top tier', items: c.map(item) },
+          /* Reference material rather than a session: no number, no week, and
+             it carries no progress key. */
+          { g: 'Reference', items: [{
+            href: '/sd/vocabulary',
+            label: 'Design vocabulary',
+            sub: '182 terms, plain words',
+          }] },
         ]}
       />
       <main id="pane">{children}</main>

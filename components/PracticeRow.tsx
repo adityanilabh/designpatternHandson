@@ -39,19 +39,20 @@ export default function PracticeRow({
       {lc != null ? (
         <ProblemLinks lc={lc} name={name} />
       ) : (
-        <>
+        <span className="p-links">
           <a
-            className="p-lc lnk"
+            className="lnk-chip impl"
             href={`https://www.google.com/search?q=${encodeURIComponent(`java ${name} implementation interview`)}`}
             target="_blank"
             rel="noopener noreferrer"
-            title="No LeetCode equivalent — search"
+            title={`No LeetCode equivalent — search for ${name}`}
+            aria-label={`Search the web for a ${name} implementation, opens in a new tab`}
             onClick={(e) => e.stopPropagation()}
           >
-            impl
+            Implement
+            <span className="chip-out" aria-hidden="true">↗</span>
           </a>
-          <span className="p-gfg" style={{ opacity: 0.35 }}>—</span>
-        </>
+        </span>
       )}
       <span className="p-name">{name}</span>
       {note && <span className="p-note">{note}</span>}

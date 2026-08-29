@@ -58,6 +58,7 @@ export interface Store extends AppState {
   setStatus: (key: string, status: Status) => void;
   setMins: (key: string, mins: number) => void;
   setLog: (key: string, field: 'trigger' | 'technique' | 'mistake', value: string) => void;
+  toggleApproach: (key: string, family: string) => void;
   toggleReview: (key: string, index: number, done: boolean) => void;
   rescheduleReviews: (key: string) => void;
   clearItem: (key: string) => void;
@@ -98,6 +99,7 @@ function withProblem(
   const draft: ProblemState = {
     ...current,
     log: { ...current.log },
+    approaches: current.approaches ? [...current.approaches] : undefined,
     reviews: current.reviews.map((r) => ({ ...r })),
   };
   const next = fn(draft);
@@ -141,6 +143,18 @@ export const useStore = create<Store>()(
 
       setLog: (key, field, value) => set((s) => withProblem(s, key, (p) => {
         p.log = { ...p.log, [field]: value };
+        return p;
+      })),
+
+      /* Kept in the stored order of content/approaches.ts rather than click
+         order, so two devices that tick the same boxes produce the same array
+         and the sync does not see a spurious difference. */
+      toggleApproach: (key, family) => set((s) => withProblem(s, key, (p) => {
+        const have = new Set(p.approaches || []);
+        if (have.has(family)) have.delete(family);
+        else have.add(family);
+        p.approaches = [...have].sort();
+        if (!p.approaches.length) delete p.approaches;
         return p;
       })),
 
